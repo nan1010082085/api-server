@@ -3,7 +3,7 @@
  *
  * Uses DeepSeek LLM to generate business page Schema JSON (list, statistic,
  * detail pages) from natural language. System prompt dynamically built from
- * @schema-form/ai-shared metadata.
+ * @schema-platform/ai-shared metadata.
  *
  * Tool execution is handled by ToolNode in the graph — this node only
  * invokes the LLM and returns its response.
@@ -11,7 +11,7 @@
 
 import { getLLM } from '../services/llmCache.js'
 import { HumanMessage, SystemMessage, AIMessage, AIMessageChunk } from '@langchain/core/messages'
-import { buildPageSystemPrompt } from '@schema-form/ai-shared/promptBuilder'
+import { buildPageSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
 import { getMetadata } from '../tools/toolHandlers.js'
 import { editorTools } from '../tools/editorTools.js'
 import { generateSchemaTool } from '../tools/flowTools.js'

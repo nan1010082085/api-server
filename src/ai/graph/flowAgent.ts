@@ -2,7 +2,7 @@
  * Flow Agent node.
  *
  * Uses DeepSeek LLM to generate FlowGraph JSON (nodes + edges) from
- * natural language. System prompt dynamically built from @schema-form/ai-shared
+ * natural language. System prompt dynamically built from @schema-platform/ai-shared
  * metadata.
  *
  * Tool execution is handled by ToolNode in the graph — this node only
@@ -11,7 +11,7 @@
 
 import { getLLM } from '../services/llmCache.js'
 import { HumanMessage, SystemMessage, AIMessage, AIMessageChunk } from '@langchain/core/messages'
-import { buildFlowSystemPrompt } from '@schema-form/ai-shared/promptBuilder'
+import { buildFlowSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
 import { getMetadata } from '../tools/toolHandlers.js'
 import { flowTools } from '../tools/flowTools.js'
 import { collaborationTools } from '../tools/collaborationTools.js'

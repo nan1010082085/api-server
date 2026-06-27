@@ -2,7 +2,7 @@
  * Editor Agent node.
  *
  * Uses DeepSeek LLM to generate Widget Schema JSON from natural language.
- * System prompt dynamically built from @schema-form/ai-shared metadata.
+ * System prompt dynamically built from @schema-platform/ai-shared metadata.
  *
  * Tool execution is handled by ToolNode in the graph — this node only
  * invokes the LLM and returns its response.
@@ -10,7 +10,7 @@
 
 import { getLLM } from '../services/llmCache.js'
 import { HumanMessage, SystemMessage, AIMessage, AIMessageChunk } from '@langchain/core/messages'
-import { buildEditorSystemPrompt } from '@schema-form/ai-shared/promptBuilder'
+import { buildEditorSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
 import { getMetadata } from '../tools/toolHandlers.js'
 import { editorTools } from '../tools/editorTools.js'
 import { generateSchemaTool } from '../tools/flowTools.js'

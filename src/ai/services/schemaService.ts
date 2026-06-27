@@ -211,7 +211,7 @@ async function getWidgetTypeSets(): Promise<{ VALID_TYPES: Set<string>; CONTAINE
     const { dirname, join } = await import('node:path')
     const { createRequire } = await import('node:module')
     const require = createRequire(import.meta.url)
-    const pkgPath = require.resolve('@schema-form/ai-shared/package.json')
+    const pkgPath = require.resolve('@schema-platform/ai-shared/package.json')
     const jsonPath = join(dirname(pkgPath), 'metadata.json')
     const metadata = JSON.parse(readFileSync(jsonPath, 'utf-8')) as { widgets: WidgetAIMetadata[] }
     cachedWidgetTypes = new Set(metadata.widgets.map((w) => w.type))

@@ -35,9 +35,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
-      '@schema-form/ai-shared':
-        specifier: file:../schema-form-ai/shared
-        version: file:../schema-form-ai/shared
+      '@schema-platform/ai-shared':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@schema-platform/flow-shared':
         specifier: ^1.0.0
         version: 1.0.0
@@ -1012,8 +1012,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@schema-form/ai-shared@file:../schema-form-ai/shared':
-    resolution: {directory: ../schema-form-ai/shared, type: directory}
+  '@schema-platform/ai-shared@1.0.0':
+    resolution: {integrity: sha512-nhV0cuboUh5SInMQSaArWzKvtEfa4knOAm2LOB77s9XslblwQdNxFuxyr//EEflRZ10vvgOpWXkVT8VktN0sMQ==, tarball: https://npm.pkg.github.com/download/@schema-platform/ai-shared/1.0.0/b8447ab909d25bf7b7523f544f6e548488e1ea06}
 
   '@schema-platform/flow-shared@1.0.0':
     resolution: {integrity: sha512-D5/H1BhmLk6dWMMfd6vAfSgD/nQxPu218KCvlaxKouVml59wCl+DLSL4F+rGxmxjhSpwnycnv7fLpzN3qRxlvw==, tarball: https://npm.pkg.github.com/download/@schema-platform/flow-shared/1.0.0/90fd53ae603f5265902ef92301d125ca30927aeb}
@@ -3236,7 +3236,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.2':
     optional: true
 
-  '@schema-form/ai-shared@file:../schema-form-ai/shared':
+  '@schema-platform/ai-shared@1.0.0':
     dependencies:
       '@schema-platform/flow-shared': 1.0.0
 

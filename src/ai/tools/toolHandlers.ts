@@ -30,13 +30,13 @@ import type { ToolResult } from './types.js'
 // Metadata 加载（单一入口，消除 6 处重复）
 // ────────────────────────────────────────────
 
-import type { AIMetadata } from '@schema-form/ai-shared'
+import type { AIMetadata } from '@schema-platform/ai-shared'
 
 let _metadata: AIMetadata | null = null
 
 export function getMetadata(): AIMetadata {
   if (!_metadata) {
-    const pkgPath = require.resolve('@schema-form/ai-shared/package.json')
+    const pkgPath = require.resolve('@schema-platform/ai-shared/package.json')
     const jsonPath = join(dirname(pkgPath), 'metadata.json')
     _metadata = JSON.parse(readFileSync(jsonPath, 'utf-8')) as AIMetadata
   }
