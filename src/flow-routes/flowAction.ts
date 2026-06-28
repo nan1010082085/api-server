@@ -6,7 +6,6 @@
  * POST /api/flow-actions/reject   — 审批拒绝
  */
 import Router from '@koa/router'
-import { v4 as uuidv4 } from 'uuid'
 import { authMiddleware } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { z } from 'zod'
@@ -132,7 +131,6 @@ router.post('/approve', requireAuth, validate(approveSchema), async (ctx) => {
   // 记录审批日志
   const { ApprovalLogModel } = await import('../flow-models/ApprovalLog.js')
   await ApprovalLogModel.create({
-    _id: uuidv4(),
     tenantId: task.tenantId,
     instanceId,
     taskId,
@@ -193,7 +191,6 @@ router.post('/reject', requireAuth, validate(rejectSchema), async (ctx) => {
   // 记录审批日志
   const { ApprovalLogModel } = await import('../flow-models/ApprovalLog.js')
   await ApprovalLogModel.create({
-    _id: uuidv4(),
     tenantId: task.tenantId,
     instanceId,
     taskId,

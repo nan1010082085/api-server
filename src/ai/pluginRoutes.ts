@@ -12,7 +12,6 @@
  */
 
 import Router from '@koa/router'
-import { v4 as uuidv4 } from 'uuid'
 import { validate } from '../middleware/validate.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { pluginCreateSchema, pluginUpdateSchema, pluginInstallSchema } from './schemas/aiSchemas.js'
@@ -83,40 +82,54 @@ router.get('/plugins', async (ctx) => {
 
 router.get('/plugins/user/installed', authMiddleware(), async (ctx) => {
   const userId = ctx.state.user.id
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
 
-  const userPlugins = await UserPluginModel.find({ userId }).lean()
-  const pluginIds = userPlugins.map((up) => up.pluginId)
+  const allUserPlugins = await UserPluginModel.find({ userId }).lean()
+  const pluginIds = allUserPlugins.map((up) => up.pluginId)
 
   if (pluginIds.length === 0) {
-    ctx.body = { success: true, data: [] }
+    ctx.body = {
+      success: true,
+      data: { items: [], total: 0, page, pageSize, totalPages: 0 },
+    }
     return
   }
 
-  const plugins = await PluginModel.find({ _id: { $in: pluginIds } }).lean()
-  const userPluginMap = new Map(userPlugins.map((up) => [up.pluginId, up]))
+  const total = pluginIds.length
+  const pagedPluginIds = pluginIds.slice((page - 1) * pageSize, page * pageSize)
+
+  const plugins = await PluginModel.find({ _id: { $in: pagedPluginIds } }).lean()
+  const userPluginMap = new Map(allUserPlugins.map((up) => [up.pluginId, up]))
 
   ctx.body = {
     success: true,
-    data: plugins.map((p) => {
-      const up = userPluginMap.get(p._id)
-      return {
-        id: p._id,
-        name: p.name,
-        description: p.description,
-        author: p.author,
-        version: p.version,
-        category: p.category,
-        icon: p.icon,
-        tools: p.tools,
-        prompt: p.prompt,
-        downloads: p.downloads,
-        rating: p.rating,
-        isBuiltin: p.isBuiltin,
-        userConfig: up?.config ?? {},
-        userEnabled: up?.enabled ?? true,
-        installedAt: up?.installedAt,
-      }
-    }),
+    data: {
+      items: plugins.map((p) => {
+        const up = userPluginMap.get(p._id)
+        return {
+          id: p._id,
+          name: p.name,
+          description: p.description,
+          author: p.author,
+          version: p.version,
+          category: p.category,
+          icon: p.icon,
+          tools: p.tools,
+          prompt: p.prompt,
+          downloads: p.downloads,
+          rating: p.rating,
+          isBuiltin: p.isBuiltin,
+          userConfig: up?.config ?? {},
+          userEnabled: up?.enabled ?? true,
+          installedAt: up?.installedAt,
+        }
+      }),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
   }
 })
 
@@ -175,7 +188,6 @@ router.post('/plugins', authMiddleware(), validate(pluginCreateSchema), async (c
   }
 
   const plugin = await PluginModel.create({
-    _id: uuidv4(),
     ...body,
     author: ctx.state.user.username ?? body.author ?? 'anonymous',
   })
@@ -278,7 +290,7 @@ router.post('/plugins/:id/install', authMiddleware(), validate(pluginInstallSche
     { userId, pluginId: id },
     {
       $set: { config: config ?? {}, enabled: true },
-      $setOnInsert: { _id: uuidv4(), userId, pluginId: id },
+      $setOnInsert: { userId, pluginId: id },
     },
     { upsert: true, new: true },
   )

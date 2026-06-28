@@ -34,7 +34,6 @@ const versionSnapshotSchema = new mongoose.Schema(
 
 const formSchemaDef = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     editId: { type: String, required: true, unique: true, index: true },
     version: { type: String, required: true },

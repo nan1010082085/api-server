@@ -2,7 +2,6 @@ import mongoose from 'mongoose'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 interface IApprovalLog {
-  _id: string
   tenantId: string
   instanceId: string
   nodeId: string
@@ -16,7 +15,6 @@ interface IApprovalLog {
 }
 
 const approvalLogSchema = new mongoose.Schema({
-  _id: { type: String, required: true },
   tenantId: { type: String, default: '000000', index: true },
   instanceId: { type: String, required: true, index: true },
   nodeId: { type: String, required: true },

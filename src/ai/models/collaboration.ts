@@ -13,7 +13,6 @@ import { tenantPlugin } from '../../middleware/tenantPlugin.js'
 // ────────────────────────────────────────────
 
 export interface ICollaborationSession {
-  _id: string
   tenantId: string
   conversationId: string
   participants: string[]
@@ -27,9 +26,8 @@ export interface ICollaborationSession {
 
 const collaborationSessionSchema = new mongoose.Schema<ICollaborationSession>(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
-    conversationId: { type: String, required: true, index: true },
+    conversationId: { type: String, required: true },
     participants: { type: [String], default: [] },
   },
   {

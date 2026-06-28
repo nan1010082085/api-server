@@ -4,7 +4,6 @@ import { tenantPlugin } from '../middleware/tenantPlugin.js'
 export type TimerJobStatus = 'pending' | 'fired' | 'cancelled'
 
 export interface ITimerJob {
-  _id: string
   tenantId: string
   instanceId: string
   tokenId: string
@@ -19,7 +18,6 @@ export interface ITimerJob {
 
 const timerJobSchema = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     instanceId: { type: String, required: true, index: true },
     tokenId: { type: String, required: true },

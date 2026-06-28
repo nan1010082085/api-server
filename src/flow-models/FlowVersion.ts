@@ -3,7 +3,6 @@ import type { FlowGraph, FlowGraphMetadata } from '@schema-platform/flow-shared'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IFlowVersion {
-  _id: string
   tenantId: string
   definitionId: string
   version: string
@@ -15,7 +14,6 @@ export interface IFlowVersion {
 
 const flowVersionSchema = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     definitionId: { type: String, required: true, index: true },
     version: { type: String, required: true },

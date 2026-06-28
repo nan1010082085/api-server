@@ -96,31 +96,33 @@ router.get('/', requireAuth, async (ctx) => {
 // ────────────────────────────────────────────
 
 router.get('/conversations', requireAuth, async (ctx) => {
-  const limit = Math.min(Math.max(Number(ctx.query.limit) || 10, 1), 50)
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
+  const skip = (page - 1) * pageSize
 
-  const conversations = await AIConversationModel.find()
-    .sort({ updatedAt: -1 })
-    .limit(limit)
-    .lean()
+  const [conversations, total] = await Promise.all([
+    AIConversationModel.find()
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(pageSize)
+      .lean(),
+    AIConversationModel.countDocuments(),
+  ])
 
-  const data = conversations.map((c) => {
+  const items = conversations.map((c) => {
     const messageCount = c.messages?.length ?? 0
 
-    // Estimate token usage per conversation from message content length
     const totalChars = c.messages?.reduce(
       (sum: number, m: { content?: string }) => sum + (m.content?.length ?? 0),
       0,
     ) ?? 0
     const tokenUsage = Math.round(totalChars / 3)
 
-    // Derive title from first user message
     const firstUserMsg = c.messages?.find((m: { role: string }) => m.role === 'user')
     const title = firstUserMsg?.content?.slice(0, 50) || 'New conversation'
 
-    // Map source to agentType label
     const agentType = c.activeAgent ?? c.source ?? 'auto'
 
-    // Determine status: if last message is from assistant, it's completed
     const lastMessage = c.messages?.[c.messages.length - 1]
     const status = lastMessage?.role === 'assistant' ? 'completed' : 'active'
 
@@ -138,7 +140,13 @@ router.get('/conversations', requireAuth, async (ctx) => {
 
   ctx.body = {
     success: true,
-    data,
+    data: {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
   }
 })
 

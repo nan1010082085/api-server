@@ -1,9 +1,7 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IPost {
-  _id: string
   tenantId: string
   postCode: string
   postName: string
@@ -16,7 +14,6 @@ export interface IPost {
 
 const postSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     postCode: { type: String, required: true },
     postName: { type: String, required: true },

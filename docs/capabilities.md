@@ -17,7 +17,7 @@
 | AI 引擎 | LangGraph (多 Agent 架构) |
 | 实时通信 | Socket.IO |
 | 缓存 | Redis (可选) |
-| 部署 | 传统 HTTP Server / Vercel Serverless |
+| 部署 | 传统 HTTP Server (自建服务器) |
 
 ## 三、核心能力矩阵
 
@@ -127,7 +127,7 @@
 | CORS | 可配置的跨域来源 | ✅ |
 | Helmet | 安全头 | ✅ |
 | 优雅关闭 | SIGTERM/SIGINT 信号处理 | ✅ |
-| Serverless | Vercel handler，支持 MongoDB 重连 | ✅ |
+| 优雅关闭 | SIGTERM/SIGINT 信号处理 | ✅ |
 | Redis 缓存 | 可选的缓存层，支持 key 模式删除 | ✅ |
 | 结构化日志 | 统一日志格式 | ✅ |
 | 数据库种子 | 权限/角色/菜单/管理员/微应用/模板/OAuth 客户端 | ✅ |

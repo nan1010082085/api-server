@@ -34,7 +34,6 @@ const retryPolicySchema = new mongoose.Schema(
 
 const webhookSchemaDef = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     name: { type: String, required: true, trim: true },
     url: { type: String, required: true, trim: true },
     events: {

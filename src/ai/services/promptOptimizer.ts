@@ -13,7 +13,6 @@
  * 4. Save new version with optimization metadata
  */
 
-import { v4 as uuidv4 } from 'uuid'
 import { AIFeedbackModel } from '../../models/AIFeedback.js'
 import { PromptVersionModel } from '../models/promptVersion.js'
 import type { IPromptVersion } from '../models/promptVersion.js'
@@ -349,7 +348,6 @@ export class PromptOptimizer {
     // Save new version
     const newVersion = previousVersion + 1
     await PromptVersionModel.create({
-      _id: uuidv4(),
       promptId,
       version: newVersion,
       content: optimizedContent,
@@ -497,7 +495,6 @@ export class PromptOptimizer {
 
     const newVersion = (latestVersion?.version ?? 0) + 1
     const restored = await PromptVersionModel.create({
-      _id: uuidv4(),
       promptId,
       version: newVersion,
       content: promptVersion.content,

@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid'
 import { NodeExecutionLogModel, type INodeExecutionLog } from '../models/NodeExecutionLog.js'
 
 /**
@@ -12,7 +11,6 @@ export async function logNodeStart(
   input: Record<string, unknown> = {},
 ): Promise<INodeExecutionLog> {
   return NodeExecutionLogModel.create({
-    _id: uuidv4(),
     instanceId,
     nodeId,
     nodeName,

@@ -2,7 +2,6 @@ import mongoose from 'mongoose'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IFlowTemplate {
-  _id: string
   tenantId: string
   name: string
   description: string
@@ -22,7 +21,6 @@ export interface IFlowTemplate {
 
 const flowTemplateSchema = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     name: { type: String, required: true, maxlength: 200 },
     description: { type: String, default: '', maxlength: 1000 },

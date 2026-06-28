@@ -119,41 +119,57 @@ router.get('/stats', async (ctx) => {
 
 /**
  * Query params:
- * - limit: Number of records to return (default 50, max 200)
+ * - page: Page number (default 1)
+ * - pageSize: Items per page (default 20, max 100)
+ * - limit: Legacy param, used as pageSize if page/pageSize not provided (default 50, max 200)
  * - agentName: Filter by agent name
  * - success: Filter by success status (true/false)
  */
 router.get('/recent', async (ctx) => {
-  const { limit: limitStr, agentName, success: successStr } = ctx.query as {
+  const { limit: limitStr, agentName, success: successStr, page: pageStr, pageSize: pageSizeStr } = ctx.query as {
     limit?: string
     agentName?: string
     success?: string
+    page?: string
+    pageSize?: string
   }
 
-  const limit = Math.min(Math.max(parseInt(limitStr ?? '50', 10) || 50, 1), 200)
-  const filter: Record<string, unknown> = {}
+  const page = Math.max(1, parseInt(pageStr as string) || 1)
+  const defaultPageSize = limitStr ? Math.min(Math.max(parseInt(limitStr, 10) || 50, 1), 200) : 50
+  const pageSize = Math.min(100, Math.max(1, parseInt(pageSizeStr as string) || defaultPageSize))
 
+  const filter: Record<string, unknown> = {}
   if (agentName) filter.agentName = agentName
   if (successStr !== undefined) filter.success = successStr === 'true'
 
-  const metrics = await AgentMetricModel.find(filter)
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .lean()
+  const [metrics, total] = await Promise.all([
+    AgentMetricModel.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean(),
+    AgentMetricModel.countDocuments(filter),
+  ])
 
   ctx.body = {
     success: true,
-    data: metrics.map((m) => ({
-      id: m._id,
-      agentName: m.agentName,
-      operation: m.operation,
-      duration: m.duration,
-      success: m.success,
-      error: m.error,
-      tokenUsage: m.tokenUsage,
-      metadata: m.metadata,
-      createdAt: m.createdAt,
-    })),
+    data: {
+      items: metrics.map((m) => ({
+        id: m._id,
+        agentName: m.agentName,
+        operation: m.operation,
+        duration: m.duration,
+        success: m.success,
+        error: m.error,
+        tokenUsage: m.tokenUsage,
+        metadata: m.metadata,
+        createdAt: m.createdAt,
+      })),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
   }
 })
 
@@ -169,18 +185,24 @@ router.get('/recent', async (ctx) => {
  *
  * Query params:
  * - threshold: Duration threshold in ms for slow operations (default 10000)
- * - limit: Number of alerts to return (default 20)
+ * - page: Page number (default 1)
+ * - pageSize: Items per page (default 20, max 100)
+ * - limit: Legacy param, used as pageSize if page/pageSize not provided (default 20, max 100)
  */
 router.get('/alerts', async (ctx) => {
-  const { threshold: thresholdStr, limit: limitStr } = ctx.query as {
+  const { threshold: thresholdStr, limit: limitStr, page: pageStr, pageSize: pageSizeStr } = ctx.query as {
     threshold?: string
     limit?: string
+    page?: string
+    pageSize?: string
   }
 
   const threshold = parseInt(thresholdStr ?? '10000', 10) || 10000
-  const limit = Math.min(Math.max(parseInt(limitStr ?? '20', 10) || 20, 1), 100)
+  const page = Math.max(1, parseInt(pageStr as string) || 1)
+  const defaultPageSize = limitStr ? Math.min(Math.max(parseInt(limitStr, 10) || 20, 1), 100) : 20
+  const pageSize = Math.min(100, Math.max(1, parseInt(pageSizeStr as string) || defaultPageSize))
 
-  const alerts = await AgentMetricModel.aggregate([
+  const result = await AgentMetricModel.aggregate([
     {
       $match: {
         $or: [
@@ -204,27 +226,44 @@ router.get('/alerts', async (ctx) => {
         },
       },
     },
-    { $sort: { createdAt: -1 } },
-    { $limit: limit },
     {
-      $project: {
-        _id: 0,
-        id: '$_id',
-        agentName: 1,
-        operation: 1,
-        duration: 1,
-        success: 1,
-        error: 1,
-        tokenUsage: 1,
-        alertType: 1,
-        createdAt: 1,
+      $facet: {
+        items: [
+          { $sort: { createdAt: -1 } },
+          { $skip: (page - 1) * pageSize },
+          { $limit: pageSize },
+          {
+            $project: {
+              _id: 0,
+              id: '$_id',
+              agentName: 1,
+              operation: 1,
+              duration: 1,
+              success: 1,
+              error: 1,
+              tokenUsage: 1,
+              alertType: 1,
+              createdAt: 1,
+            },
+          },
+        ],
+        totalCount: [{ $count: 'count' }],
       },
     },
   ])
 
+  const alerts = result[0].items
+  const total = result[0].totalCount[0]?.count ?? 0
+
   ctx.body = {
     success: true,
-    data: alerts,
+    data: {
+      items: alerts,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
   }
 })
 

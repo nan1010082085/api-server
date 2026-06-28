@@ -5,7 +5,6 @@
  * Handles participant tracking, message broadcasting, and session persistence.
  */
 
-import { v4 as uuidv4 } from 'uuid'
 import { CollaborationSessionModel, type ICollaborationSession } from '../models/collaboration.js'
 
 // ────────────────────────────────────────────
@@ -40,7 +39,7 @@ export async function joinSession(
     { conversationId },
     {
       $addToSet: { participants: userId },
-      $setOnInsert: { _id: uuidv4(), conversationId },
+      $setOnInsert: { conversationId },
     },
     { upsert: true, new: true },
   )
@@ -154,7 +153,7 @@ export function createCollaborationMessage(
   timestamp: Date
 } {
   return {
-    id: uuidv4(),
+    id: crypto.randomUUID(),
     userId,
     content,
     conversationId,

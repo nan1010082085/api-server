@@ -6,7 +6,6 @@
  */
 
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../../middleware/tenantPlugin.js'
 
 // ────────────────────────────────────────────
@@ -39,7 +38,6 @@ export interface IPromptTemplate {
 
 const promptTemplateSchema = new mongoose.Schema<IPromptTemplate>(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     name: {
       type: String,

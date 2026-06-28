@@ -1,5 +1,4 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export type SubmissionStatus = 'submitted' | 'approved' | 'rejected'
@@ -18,7 +17,6 @@ export interface IFormSubmission {
 
 const formSubmissionDef = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     schemaId: { type: String, required: true, index: true },
     data: { type: mongoose.Schema.Types.Mixed, required: true },
     submitterId: { type: String, default: null, index: true },

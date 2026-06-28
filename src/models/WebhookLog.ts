@@ -2,7 +2,6 @@ import mongoose from 'mongoose'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IWebhookLog {
-  _id: string
   webhookId: string
   event: string
   status: 'success' | 'failed'
@@ -17,7 +16,6 @@ export interface IWebhookLog {
 
 const webhookLogSchemaDef = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     webhookId: { type: String, required: true, index: true },
     event: { type: String, required: true, index: true },
     status: {

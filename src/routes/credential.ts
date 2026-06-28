@@ -1,11 +1,11 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { CredentialModel } from '../models/Credential.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { encrypt, decrypt } from '../services/credentialService.js'
 import { createCredentialSchema, updateCredentialSchema } from '../schemas/credentialSchemas.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -59,7 +59,6 @@ router.post('/', requireAuth, requirePermission('credential:create'), validate(c
   const encryptedData = encrypt(data)
 
   const credential = await CredentialModel.create({
-    _id: uuidv4(),
     name: name.trim(),
     type,
     data: encryptedData,
@@ -77,7 +76,7 @@ router.post('/', requireAuth, requirePermission('credential:create'), validate(c
 router.get('/:id', requireAuth, async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -118,7 +117,7 @@ router.put('/:id', requireAuth, requirePermission('credential:edit'), validate(u
     name?: string; type?: string; data?: Record<string, string>
   }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -147,7 +146,7 @@ router.put('/:id', requireAuth, requirePermission('credential:edit'), validate(u
 router.delete('/:id', requireAuth, requirePermission('credential:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

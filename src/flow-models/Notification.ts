@@ -25,7 +25,6 @@ export interface INotification {
 
 const notificationSchema = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     userId: { type: String, required: true, index: true },
     type: {

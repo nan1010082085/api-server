@@ -21,7 +21,6 @@ import mongoose from 'mongoose'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface ISchemaEmbedding {
-  _id: string
   tenantId: string
   schemaId: string
   editId: string
@@ -51,7 +50,6 @@ const metadataSchema = new mongoose.Schema(
 
 const schemaEmbeddingDef = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     schemaId: { type: String, required: true, index: true },
     editId: { type: String, required: true, unique: true, index: true },

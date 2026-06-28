@@ -1,9 +1,7 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IConfig {
-  _id: string
   tenantId: string
   name: string
   key: string
@@ -17,7 +15,6 @@ export interface IConfig {
 
 const configSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     name: { type: String, required: true },
     key: { type: String, required: true },

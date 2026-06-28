@@ -3,10 +3,6 @@ import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 const AIFeedbackSchema = new mongoose.Schema(
   {
-    _id: {
-      type: String,
-      required: true,
-    },
     tenantId: { type: String, default: '000000', index: true },
     conversationId: {
       type: String,

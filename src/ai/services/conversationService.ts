@@ -6,7 +6,6 @@
  */
 
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { ChatOpenAI } from '@langchain/openai'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import type { AIMessage, ActiveAgent, AgentSource } from '../graph/state.js'
@@ -67,7 +66,6 @@ export interface IAIConversation {
 
 const messageSchema = new mongoose.Schema<AIConversationMessage>(
   {
-    _id: { type: String, default: () => uuidv4() },
     role: { type: String, enum: ['user', 'assistant', 'system'], required: true },
     content: { type: String, required: true },
     thinking: { type: String },
@@ -131,7 +129,6 @@ export async function createConversation(params: {
   version?: string
 }): Promise<IAIConversation> {
   return AIConversationModel.create({
-    _id: uuidv4(),
     source: params.source,
     schemaId: params.schemaId,
     flowId: params.flowId,

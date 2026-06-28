@@ -1,5 +1,4 @@
 import { EventEmitter } from 'node:events'
-import { v4 as uuidv4 } from 'uuid'
 import { FlowMessageModel } from '../flow-models/FlowMessage.js'
 import type { IFlowMessage } from '../flow-models/FlowMessage.js'
 
@@ -45,7 +44,6 @@ export class MessageQueue {
    */
   async send(input: SendMessageInput): Promise<IFlowMessage> {
     const message = await FlowMessageModel.create({
-      _id: uuidv4(),
       channel: input.channel,
       payload: input.payload,
       senderInstanceId: input.senderInstanceId,

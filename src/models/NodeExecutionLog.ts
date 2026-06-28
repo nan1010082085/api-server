@@ -1,11 +1,9 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export type NodeExecutionStatus = 'running' | 'completed' | 'failed' | 'skipped'
 
 export interface INodeExecutionLog {
-  _id: string
   tenantId: string
   instanceId: string
   nodeId: string
@@ -23,7 +21,6 @@ export interface INodeExecutionLog {
 
 const nodeExecutionLogSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     instanceId: { type: String, required: true, index: true },
     nodeId: { type: String, required: true },

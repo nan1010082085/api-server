@@ -5,7 +5,6 @@
  */
 
 import { UserBehaviorModel } from '../../models/UserBehavior.js'
-import { v4 as uuidv4 } from 'uuid'
 
 interface BehaviorRecord {
   userId: string
@@ -26,7 +25,6 @@ interface UserPreferences {
  */
 export async function recordBehavior(record: BehaviorRecord): Promise<void> {
   await UserBehaviorModel.create({
-    _id: uuidv4(),
     userId: record.userId,
     action: record.action,
     target: record.target ?? '',

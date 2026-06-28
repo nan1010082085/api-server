@@ -1,9 +1,7 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface ISSOSession {
-  _id: string
   userId: string
   sessionToken: string
   userAgent: string
@@ -16,12 +14,11 @@ export interface ISSOSession {
 
 const ssoSessionSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     userId: { type: String, required: true, index: true },
     sessionToken: { type: String, required: true, unique: true, index: true },
     userAgent: { type: String, default: '' },
     ip: { type: String, default: '' },
-    expiresAt: { type: Date, required: true, index: true },
+    expiresAt: { type: Date, required: true },
     tenantId: { type: String, default: '000000', index: true },
   },
   {

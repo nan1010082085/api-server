@@ -1,11 +1,11 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { WebhookModel } from '../models/Webhook.js'
 import { WebhookLogModel } from '../models/WebhookLog.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createWebhookSchema, updateWebhookSchema } from '../schemas/webhookSchemas.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -28,7 +28,6 @@ router.post('/', requireAuth, requirePermission('webhook:create'), validate(crea
   const userId = (ctx.state.user as { id: string }).id
 
   const webhook = await WebhookModel.create({
-    _id: uuidv4(),
     name: body.name,
     url: body.url,
     events: body.events,
@@ -87,7 +86,7 @@ router.get('/', requireAuth, requirePermission('webhook:view'), async (ctx) => {
 router.get('/:id', requireAuth, requirePermission('webhook:view'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -110,7 +109,7 @@ router.get('/:id', requireAuth, requirePermission('webhook:view'), async (ctx) =
 router.put('/:id', requireAuth, requirePermission('webhook:edit'), validate(updateWebhookSchema), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -135,7 +134,7 @@ router.put('/:id', requireAuth, requirePermission('webhook:edit'), validate(upda
 router.delete('/:id', requireAuth, requirePermission('webhook:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -160,7 +159,7 @@ router.get('/:id/logs', requireAuth, requirePermission('webhook:view'), async (c
   const { id } = ctx.params
   const { event, status, page: pageStr = '1', pageSize: pageSizeStr = '20' } = ctx.query
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

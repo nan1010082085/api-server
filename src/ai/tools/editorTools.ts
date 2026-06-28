@@ -265,7 +265,7 @@ export const updateSchemaTool = tool(
       if (schema) {
         const { PublishedSchemaModel } = await import('../../models/PublishedSchema.js')
         const publishId = uuidv4()
-        await PublishedSchemaModel.create({ _id: uuidv4(), sourceId: schema.editId, publishId, name: schema.name, type: schema.type, json: widgets, version, publishedAt: now })
+        await PublishedSchemaModel.create({ sourceId: schema.editId, publishId, name: schema.name, type: schema.type, json: widgets, version, publishedAt: now })
       }
     }
 

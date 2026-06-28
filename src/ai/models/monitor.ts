@@ -22,7 +22,6 @@ export interface ITokenUsage {
 }
 
 export interface IAgentMetric {
-  _id: string
   tenantId: string
   agentName: string
   operation: string
@@ -49,7 +48,6 @@ const tokenUsageSchema = new mongoose.Schema(
 
 const agentMetricSchema = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     agentName: {
       type: String,

@@ -1,9 +1,7 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IPermission {
-  _id: string
   tenantId: string
   code: string        // 权限编码，如 flow:design, flow:approve
   name: string        // 权限名称
@@ -15,7 +13,6 @@ export interface IPermission {
 
 const permissionSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     code: { type: String, required: true, unique: true },
     name: { type: String, required: true },

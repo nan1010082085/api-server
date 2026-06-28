@@ -8,7 +8,6 @@
 import { HumanMessage } from '@langchain/core/messages'
 import { isGraphInterrupt } from '@langchain/langgraph'
 import { Command } from '@langchain/langgraph'
-import { v4 as uuidv4 } from 'uuid'
 import { graph } from './graph/graph.js'
 import { adaptWidgets } from './services/schemaAdapter.js'
 import { createSendError } from './graph/agentErrorHandler.js'

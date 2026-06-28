@@ -1,5 +1,4 @@
 import Router from '@koa/router'
-import { validate as uuidValidate } from 'uuid'
 import { FlowInstanceModel } from '../flow-models/FlowInstance.js'
 import { FlowDefinitionModel } from '../flow-models/FlowDefinition.js'
 import { authMiddleware, type JwtPayload } from '../middleware/auth.js'
@@ -9,6 +8,7 @@ import { validate } from '../middleware/validate.js'
 import { startInstanceSchema } from '../flow-schemas/instanceSchemas.js'
 import { flowEngine } from '../flow-services/FlowEngine.js'
 import { flowPermissionService } from '../flow-services/FlowPermissionService.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 const dataScope = dataScopeMiddleware()
@@ -95,7 +95,7 @@ router.get('/', requireAuth, requireFlowView, dataScope, async (ctx) => {
   const skip = (page - 1) * pageSize
 
   const filter: Record<string, unknown> = {}
-  if (definitionId && uuidValidate(definitionId as string)) filter.definitionId = definitionId
+  if (definitionId && mongoose.Types.ObjectId.isValid(definitionId as string)) filter.definitionId = definitionId
   if (
     status &&
     ['running', 'completed', 'terminated', 'suspended', 'failed'].includes(status as string)
@@ -173,7 +173,7 @@ router.post('/', requireAuth, requireFlowStart, validate(startInstanceSchema), a
 // GET /api/flow-instances/:id
 router.get('/:id', requireAuth, requireFlowView, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -192,7 +192,7 @@ router.get('/:id', requireAuth, requireFlowView, async (ctx) => {
 // POST /api/flow-instances/:id/terminate
 router.post('/:id/terminate', requireAuth, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -206,7 +206,7 @@ router.post('/:id/terminate', requireAuth, async (ctx) => {
 // POST /api/flow-instances/:id/suspend
 router.post('/:id/suspend', requireAuth, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -220,7 +220,7 @@ router.post('/:id/suspend', requireAuth, async (ctx) => {
 // POST /api/flow-instances/:id/resume
 router.post('/:id/resume', requireAuth, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

@@ -9,7 +9,6 @@ import http from 'node:http'
 import Koa from 'koa'
 import cors from '@koa/cors'
 import bodyParser from 'koa-bodyparser'
-import { v4 as uuidv4 } from 'uuid'
 import { errorHandler } from '../middleware/errorHandler.js'
 import tenantRouter from '../routes/tenant.js'
 import { TenantModel } from '../models/Tenant.js'
@@ -131,8 +130,8 @@ describe('Tenant CRUD API', () => {
   // ── GET /api/tenants ──
 
   it('GET /api/tenants lists tenants with pagination', async () => {
-    await TenantModel.create({ _id: uuidv4(), name: 'Alpha', code: 'alpha', status: 'active' })
-    await TenantModel.create({ _id: uuidv4(), name: 'Beta', code: 'beta', status: 'inactive' })
+    await TenantModel.create({ name: 'Alpha', code: 'alpha', status: 'active' })
+    await TenantModel.create({ name: 'Beta', code: 'beta', status: 'inactive' })
 
     const { status, body } = await request('GET', '/api/tenants?page=1&pageSize=10')
 
@@ -146,8 +145,8 @@ describe('Tenant CRUD API', () => {
   })
 
   it('GET /api/tenants supports search', async () => {
-    await TenantModel.create({ _id: uuidv4(), name: 'Production', code: 'prod' })
-    await TenantModel.create({ _id: uuidv4(), name: 'Staging', code: 'staging' })
+    await TenantModel.create({ name: 'Production', code: 'prod' })
+    await TenantModel.create({ name: 'Staging', code: 'staging' })
 
     const { body } = await request('GET', '/api/tenants?search=prod')
 
@@ -156,8 +155,8 @@ describe('Tenant CRUD API', () => {
   })
 
   it('GET /api/tenants supports status filter', async () => {
-    await TenantModel.create({ _id: uuidv4(), name: 'Active', code: 'active-t', status: 'active' })
-    await TenantModel.create({ _id: uuidv4(), name: 'Inactive', code: 'inactive-t', status: 'inactive' })
+    await TenantModel.create({ name: 'Active', code: 'active-t', status: 'active' })
+    await TenantModel.create({ name: 'Inactive', code: 'inactive-t', status: 'inactive' })
 
     const { body } = await request('GET', '/api/tenants?status=active')
 
@@ -168,10 +167,9 @@ describe('Tenant CRUD API', () => {
   // ── GET /api/tenants/:id ──
 
   it('GET /api/tenants/:id returns a tenant', async () => {
-    const id = uuidv4()
-    await TenantModel.create({ _id: id, name: 'Test', code: 'test-get' })
+    const tenant = await TenantModel.create({ name: 'Test', code: 'test-get' })
 
-    const { status, body } = await request('GET', `/api/tenants/${id}`)
+    const { status, body } = await request('GET', `/api/tenants/${tenant._id}`)
 
     expect(status).toBe(200)
     expect(body.success).toBe(true)
@@ -194,10 +192,9 @@ describe('Tenant CRUD API', () => {
   // ── PUT /api/tenants/:id ──
 
   it('PUT /api/tenants/:id updates a tenant', async () => {
-    const id = uuidv4()
-    await TenantModel.create({ _id: id, name: 'Old Name', code: 'old-code' })
+    const tenant = await TenantModel.create({ name: 'Old Name', code: 'old-code' })
 
-    const { status, body } = await request('PUT', `/api/tenants/${id}`, { name: 'New Name' })
+    const { status, body } = await request('PUT', `/api/tenants/${tenant._id}`, { name: 'New Name' })
 
     expect(status).toBe(200)
     expect(body.success).toBe(true)
@@ -206,15 +203,13 @@ describe('Tenant CRUD API', () => {
   })
 
   it('PUT /api/tenants/:id updates config partially', async () => {
-    const id = uuidv4()
-    await TenantModel.create({
-      _id: id,
+    const tenant = await TenantModel.create({
       name: 'Config Test',
       code: 'config-test',
       config: { maxUsers: 100, features: ['a'] },
     })
 
-    const { status, body } = await request('PUT', `/api/tenants/${id}`, {
+    const { status, body } = await request('PUT', `/api/tenants/${tenant._id}`, {
       config: { maxUsers: 500 },
     })
 
@@ -223,10 +218,8 @@ describe('Tenant CRUD API', () => {
   })
 
   it('PUT /api/tenants/:id rejects duplicate code', async () => {
-    const idA = uuidv4()
-    const idB = uuidv4()
-    await TenantModel.create({ _id: idA, name: 'A', code: 'code-a' })
-    await TenantModel.create({ _id: idB, name: 'B', code: 'code-b' })
+    await TenantModel.create({ name: 'A', code: 'code-a' })
+    const tenantB = await TenantModel.create({ name: 'B', code: 'code-b' })
 
     const { status, body } = await request('PUT', `/api/tenants/${idB}`, { code: 'code-a' })
 
@@ -243,16 +236,15 @@ describe('Tenant CRUD API', () => {
   // ── DELETE /api/tenants/:id ──
 
   it('DELETE /api/tenants/:id deletes a tenant', async () => {
-    const id = uuidv4()
-    await TenantModel.create({ _id: id, name: 'Delete Me', code: 'del-me' })
+    const tenant = await TenantModel.create({ name: 'Delete Me', code: 'del-me' })
 
-    const { status, body } = await request('DELETE', `/api/tenants/${id}`)
+    const { status, body } = await request('DELETE', `/api/tenants/${tenant._id}`)
 
     expect(status).toBe(200)
     expect(body.success).toBe(true)
     expect(body.data).toBeNull()
 
-    const found = await TenantModel.findById(id)
+    const found = await TenantModel.findById(tenant._id)
     expect(found).toBeNull()
   })
 

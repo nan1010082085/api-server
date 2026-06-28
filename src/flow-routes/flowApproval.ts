@@ -14,8 +14,19 @@ router.get('/', requireAuth, async (ctx) => {
     ctx.body = { success: false, error: { message: 'instanceId is required' } }
     return
   }
-  const logs = await ApprovalLogModel.find({ instanceId }).sort({ createdAt: 1 })
-  ctx.body = { success: true, data: logs }
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
+  const filter = { instanceId }
+
+  const [items, total] = await Promise.all([
+    ApprovalLogModel.find(filter).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize),
+    ApprovalLogModel.countDocuments(filter),
+  ])
+
+  ctx.body = {
+    success: true,
+    data: { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+  }
 })
 
 export default router

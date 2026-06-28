@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid'
 import { encrypt } from '../services/credentialService.js'
 import { ModelConfigModel, type IModelConfig, type IModelParameters } from '../models/ModelConfig.js'
 
@@ -57,7 +56,6 @@ export async function seedModelConfigs(): Promise<void> {
     const apiKey = config.apiKeyPlain ? encrypt({ apiKey: config.apiKeyPlain }) : ''
 
     await ModelConfigModel.create({
-      _id: uuidv4(),
       name: config.name,
       provider: config.provider,
       model: config.model,

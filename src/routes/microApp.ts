@@ -1,10 +1,10 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { MicroAppModel } from '../models/MicroApp.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createMicroAppSchema, updateMicroAppSchema } from '../schemas/microAppSchemas.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 const router = new Router({ prefix: '/api/micro-apps' })
@@ -54,7 +54,7 @@ router.get('/', requireAuth, requirePermission('microapp:view'), async (ctx) => 
 // GET /api/micro-apps/:id — 获取单个微应用
 router.get('/:id', requireAuth, requirePermission('microapp:view'), async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -92,7 +92,6 @@ router.post('/', requireAuth, requirePermission('microapp:create'), validate(cre
   }
 
   const microApp = await MicroAppModel.create({
-    _id: uuidv4(),
     name: body.name,
     url: body.url,
     icon: body.icon ?? '',
@@ -123,7 +122,7 @@ router.put('/:id', requireAuth, requirePermission('microapp:edit'), validate(upd
     remark?: string
   }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -158,7 +157,7 @@ router.put('/:id', requireAuth, requirePermission('microapp:edit'), validate(upd
 router.delete('/:id', requireAuth, requirePermission('microapp:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

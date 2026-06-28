@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid'
 import { type NotificationType, type INotification, NotificationModel } from '../flow-models/Notification.js'
 import { getIO } from '../socket.js'
 
@@ -57,7 +56,6 @@ export class NotificationService {
 
   async sendNotification(userId: string, type: NotificationType, data: TaskNotificationData): Promise<INotification> {
     const doc = await this.model.create({
-      _id: uuidv4(),
       userId,
       type,
       title: this.getTitle(type, data),
@@ -90,7 +88,6 @@ export class NotificationService {
 
   async sendBatchNotifications(userIds: string[], type: NotificationType, data: TaskNotificationData): Promise<void> {
     const notifications = userIds.map((userId) => ({
-      _id: uuidv4(),
       userId,
       type,
       title: this.getTitle(type, data),

@@ -1,5 +1,4 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export type ModelProvider = 'deepseek' | 'openai' | 'anthropic' | 'ollama'
@@ -11,7 +10,6 @@ export interface IModelParameters {
 }
 
 export interface IModelConfig {
-  _id: string
   name: string
   provider: ModelProvider
   model: string
@@ -35,7 +33,6 @@ const modelParametersSchema = new mongoose.Schema<IModelParameters>(
 
 const modelConfigSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     name: { type: String, required: true, trim: true },
     provider: {
       type: String,

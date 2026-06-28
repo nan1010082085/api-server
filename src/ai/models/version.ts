@@ -22,7 +22,6 @@ export interface IAIVersion {
 
 const aiVersionSchema = new mongoose.Schema<IAIVersion>(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     conversationId: { type: String, required: true },
     messageId: { type: String, required: true },

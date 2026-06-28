@@ -5,7 +5,6 @@
  * 步骤：layout → components → validation → styling
  */
 
-import { v4 as uuidv4 } from 'uuid'
 import { getClient, buildMessages, parseStructuredOutput, withRetry } from '../graph/agentBase.js'
 import { buildEditorSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
 import { getMetadata } from './toolHandlers.js'

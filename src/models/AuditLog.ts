@@ -1,9 +1,7 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IAuditLog {
-  _id: string
   tenantId: string
   userId: string
   username: string
@@ -28,7 +26,6 @@ export interface IAuditLog {
 
 const auditLogSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     userId: { type: String, default: '', index: true },
     username: { type: String, default: '' },

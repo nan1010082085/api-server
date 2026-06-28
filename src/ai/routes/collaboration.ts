@@ -33,11 +33,22 @@ const joinLeaveSchema = z.object({
 // ────────────────────────────────────────────
 
 router.get('/sessions', async (ctx) => {
-  const sessions = getActiveSessions()
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
+
+  const allSessions = getActiveSessions()
+  const total = allSessions.length
+  const items = allSessions.slice((page - 1) * pageSize, page * pageSize)
 
   ctx.body = {
     success: true,
-    data: sessions,
+    data: {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
   }
 })
 

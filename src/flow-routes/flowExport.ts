@@ -75,7 +75,15 @@ router.get('/approval-logs', requireAuth, async (ctx) => {
       ctx.body = { success: false, error: { message: 'Instance not found' } }
       return
     }
-    const logs = await ApprovalLogModel.find({ instanceId }).sort({ createdAt: -1 })
+    const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 50))
+    const filter = { instanceId }
+
+    const [logs, total] = await Promise.all([
+      ApprovalLogModel.find(filter).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize),
+      ApprovalLogModel.countDocuments(filter),
+    ])
+
     const def = await FlowDefinitionModel.findOne({ _id: instance.definitionId }).select('_id name')
     const taskIds = [...new Set(logs.map((l) => l.taskId))]
     const tasks = await TaskInstanceModel.find({ _id: { $in: taskIds } }).select('_id assignee')
@@ -94,7 +102,10 @@ router.get('/approval-logs', requireAuth, async (ctx) => {
     }))
 
     if (format === 'json') {
-      ctx.body = { success: true, data: rows }
+      ctx.body = {
+        success: true,
+        data: { items: rows, total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+      }
       return
     }
     const csv = generateCsv(rows)
@@ -131,7 +142,13 @@ router.get('/approval-logs', requireAuth, async (ctx) => {
     logQuery.createdAt = created
   }
 
-  const logs = await ApprovalLogModel.find(logQuery).sort({ createdAt: -1 })
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 50))
+
+  const [logs, total] = await Promise.all([
+    ApprovalLogModel.find(logQuery).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize),
+    ApprovalLogModel.countDocuments(logQuery),
+  ])
 
   // Gather unique IDs for batch lookup
   const uniqueInstanceIds = [...new Set(logs.map((l) => l.instanceId))]
@@ -167,7 +184,10 @@ router.get('/approval-logs', requireAuth, async (ctx) => {
   })
 
   if (format === 'json') {
-    ctx.body = { success: true, data: rows }
+    ctx.body = {
+      success: true,
+      data: { items: rows, total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+    }
     return
   }
 

@@ -1,7 +1,7 @@
 import { ClientModel } from '../models/Client.js'
 import { DEFAULT_TENANT_ID } from './initDefaultTenant.js'
 
-const PROD_ORIGIN = process.env.PROD_ORIGIN || 'http://localhost:8828'
+const PROD_ORIGIN = process.env.PROD_ORIGIN || 'https://pyflow.icu'
 
 const DEFAULT_CLIENTS = [
   {
@@ -51,17 +51,16 @@ const DEFAULT_CLIENTS = [
 
 /**
  * 种子 SSO Client 配置
- * 使用 upsert 保证幂等：按 clientId 去重，已存在的不会被覆盖
+ * 使用 upsert + $setOnInsert 保证幂等：仅在记录不存在时创建，不覆盖用户修改
  */
 export async function seedClients(): Promise<void> {
   let created = 0
-  let updated = 0
 
   for (const client of DEFAULT_CLIENTS) {
     const result = await ClientModel.updateOne(
       { clientId: client.clientId },
       {
-        $set: {
+        $setOnInsert: {
           ...client,
           secret: '',
           scopes: ['openid', 'profile', 'email'],
@@ -72,9 +71,8 @@ export async function seedClients(): Promise<void> {
       { upsert: true },
     )
     if (result.upsertedCount > 0) created++
-    else if (result.modifiedCount > 0) updated++
   }
 
-  const skipped = DEFAULT_CLIENTS.length - created - updated
-  console.log(`[seed] SSO clients: ${created} created, ${updated} updated, ${skipped} unchanged`)
+  const skipped = DEFAULT_CLIENTS.length - created
+  console.log(`[seed] SSO clients: ${created} created, ${skipped} already existed`)
 }

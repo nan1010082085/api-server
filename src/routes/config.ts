@@ -1,10 +1,10 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { ConfigModel } from '../models/Config.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createConfigSchema, updateConfigSchema } from '../schemas/configSchemas.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 const router = new Router({ prefix: '/api/config' })
@@ -72,7 +72,7 @@ router.get('/key/:key', requireAuth, async (ctx) => {
 // GET /api/config/:id — 获取单个参数
 router.get('/:id', requireAuth, requirePermission('config:view'), async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -102,7 +102,6 @@ router.post('/', requireAuth, requirePermission('config:create'), validate(creat
   }
 
   const config = await ConfigModel.create({
-    _id: uuidv4(),
     name: body.name,
     key: body.key,
     value: body.value ?? '',
@@ -122,7 +121,7 @@ router.put('/:id', requireAuth, requirePermission('config:edit'), validate(updat
     name?: string; key?: string; value?: string; type?: string; status?: string; remark?: string
   }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -156,7 +155,7 @@ router.put('/:id', requireAuth, requirePermission('config:edit'), validate(updat
 router.delete('/:id', requireAuth, requirePermission('config:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

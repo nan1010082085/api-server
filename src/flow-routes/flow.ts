@@ -1,5 +1,4 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { FlowDefinitionModel } from '../flow-models/FlowDefinition.js'
 import { FlowVersionModel } from '../flow-models/FlowVersion.js'
 import { FlowInstanceModel } from '../flow-models/FlowInstance.js'
@@ -9,6 +8,7 @@ import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createFlowSchema, updateFlowSchema } from '../flow-schemas/flowSchemas.js'
 import { flowPermissionService } from '../flow-services/FlowPermissionService.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 const requireFlowDesign = requirePermission('flow:design')
@@ -54,7 +54,6 @@ router.post('/', requireAuth, requireFlowDesign, validate(createFlowSchema), asy
   }
 
   const definition = await FlowDefinitionModel.create({
-    _id: uuidv4(),
     name: name.trim(),
     description: description ?? '',
     category: category ?? '',
@@ -74,7 +73,7 @@ router.post('/', requireAuth, requireFlowDesign, validate(createFlowSchema), asy
 // GET /api/flows/:id
 router.get('/:id', requireAuth, requireFlowView, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -93,7 +92,7 @@ router.get('/:id', requireAuth, requireFlowView, async (ctx) => {
 // PUT /api/flows/:id
 router.put('/:id', requireAuth, requireFlowDesign, validate(updateFlowSchema), async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -147,7 +146,7 @@ router.put('/:id', requireAuth, requireFlowDesign, validate(updateFlowSchema), a
 // DELETE /api/flows/:id
 router.delete('/:id', requireAuth, requireFlowDesign, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -184,7 +183,7 @@ router.delete('/:id', requireAuth, requireFlowDesign, async (ctx) => {
 // POST /api/flows/:id/publish
 router.post('/:id/publish', requireAuth, requireFlowDesign, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

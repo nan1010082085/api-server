@@ -1,5 +1,4 @@
 import crypto from 'node:crypto'
-import { v4 as uuidv4 } from 'uuid'
 import { eventBus } from './eventBus.js'
 import { WebhookModel, type IWebhook } from '../models/Webhook.js'
 import { WebhookLogModel } from '../models/WebhookLog.js'
@@ -126,7 +125,6 @@ async function deliverWithRetry(
 
     // Log attempt
     await WebhookLogModel.create({
-      _id: uuidv4(),
       webhookId: webhook._id,
       event,
       status: lastResult.success ? 'success' : 'failed',

@@ -1,12 +1,10 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export type ClientType = 'confidential' | 'public'
 export type ClientStatus = 'active' | 'disabled'
 
 export interface IClient {
-  _id: string
   clientId: string
   name: string
   secret: string
@@ -21,7 +19,6 @@ export interface IClient {
 
 const clientSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     clientId: { type: String, required: true, unique: true, index: true },
     name: { type: String, required: true },
     secret: { type: String, required: true },

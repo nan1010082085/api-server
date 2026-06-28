@@ -1,11 +1,11 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { TenantModel } from '../models/Tenant.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createTenantSchema, updateTenantSchema } from '../schemas/tenantSchemas.js'
 import { initTenantData } from '../utils/tenantInit.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -59,7 +59,7 @@ router.get('/', requireAuth, requirePermission('tenant:view'), async (ctx) => {
 router.get('/:id', requireAuth, requirePermission('tenant:view'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -94,7 +94,6 @@ router.post('/', requireAuth, requirePermission('tenant:create'), validate(creat
   }
 
   const tenant = await TenantModel.create({
-    _id: uuidv4(),
     name,
     code,
     status: status || 'active',
@@ -119,7 +118,7 @@ router.post('/', requireAuth, requirePermission('tenant:create'), validate(creat
 router.put('/:id', requireAuth, requirePermission('tenant:edit'), validate(updateTenantSchema), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -170,7 +169,7 @@ router.put('/:id', requireAuth, requirePermission('tenant:edit'), validate(updat
 router.delete('/:id', requireAuth, requirePermission('tenant:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

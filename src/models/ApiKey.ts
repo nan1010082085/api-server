@@ -1,12 +1,10 @@
 import mongoose from 'mongoose'
 import { randomBytes } from 'node:crypto'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export type ApiKeyStatus = 'active' | 'disabled'
 
 export interface IApiKey {
-  _id: string
   name: string
   key: string
   tenantId: string
@@ -25,7 +23,6 @@ function generateApiKey(): string {
 
 const apiKeySchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     name: { type: String, required: true },
     key: { type: String, required: true, unique: true, default: generateApiKey },
     tenantId: { type: String, default: '000000', index: true },
@@ -51,8 +48,7 @@ apiKeySchema.plugin(tenantPlugin)
 
 // 租户内按状态查询
 apiKeySchema.index({ tenantId: 1, status: 1 })
-// 按 key 精确查询（用于认证）
-apiKeySchema.index({ key: 1 })
+// key 字段已有 unique: true 索引，无需重复定义
 // 租户内按创建者查询
 apiKeySchema.index({ tenantId: 1, createdBy: 1 })
 

@@ -9,7 +9,6 @@ import http from 'node:http'
 import Koa from 'koa'
 import cors from '@koa/cors'
 import bodyParser from 'koa-bodyparser'
-import { v4 as uuidv4 } from 'uuid'
 import { errorHandler } from '../middleware/errorHandler.js'
 import deptsRouter from '../routes/depts.js'
 import { DeptModel } from '../models/Dept.js'
@@ -93,18 +92,17 @@ describe('Dept CRUD API', () => {
   })
 
   it('POST /api/depts creates a child department', async () => {
-    const parentId = uuidv4()
-    await DeptModel.create({ _id: parentId, name: '总公司' })
+    const parent = await DeptModel.create({ name: '总公司' })
 
     const { status, body } = await request('POST', '/api/depts', {
       name: '技术部',
-      parentId,
+      parentId: parent._id,
       sort: 1,
       leader: '张三',
     })
 
     expect(status).toBe(201)
-    expect(body.data.parentId).toBe(parentId)
+    expect(body.data.parentId).toBe(parent._id)
     expect(body.data.sort).toBe(1)
     expect(body.data.leader).toBe('张三')
   })
@@ -127,13 +125,12 @@ describe('Dept CRUD API', () => {
   })
 
   it('POST /api/depts rejects duplicate name at same level', async () => {
-    const rootId = uuidv4()
-    await DeptModel.create({ _id: rootId, name: '总公司' })
-    await DeptModel.create({ _id: uuidv4(), name: '技术部', parentId: rootId })
+    const root = await DeptModel.create({ name: '总公司' })
+    await DeptModel.create({ name: '技术部', parentId: root._id })
 
     const { status, body } = await request('POST', '/api/depts', {
       name: '技术部',
-      parentId: rootId,
+      parentId: root._id,
     })
 
     expect(status).toBe(409)
@@ -141,13 +138,11 @@ describe('Dept CRUD API', () => {
   })
 
   it('POST /api/depts allows same name under different parents', async () => {
-    const rootA = uuidv4()
-    const rootB = uuidv4()
-    await DeptModel.create({ _id: rootA, name: 'A公司' })
-    await DeptModel.create({ _id: rootB, name: 'B公司' })
+    const rootA = await DeptModel.create({ name: 'A公司' })
+    const rootB = await DeptModel.create({ name: 'B公司' })
 
-    await request('POST', '/api/depts', { name: '技术部', parentId: rootA })
-    const { status } = await request('POST', '/api/depts', { name: '技术部', parentId: rootB })
+    await request('POST', '/api/depts', { name: '技术部', parentId: rootA._id })
+    const { status } = await request('POST', '/api/depts', { name: '技术部', parentId: rootB._id })
 
     expect(status).toBe(201)
   })
@@ -155,10 +150,8 @@ describe('Dept CRUD API', () => {
   // ── GET /api/depts ──
 
   it('GET /api/depts lists flat departments', async () => {
-    const d1 = uuidv4()
-    const d2 = uuidv4()
-    await DeptModel.create({ _id: d1, name: 'A' })
-    await DeptModel.create({ _id: d2, name: 'B', parentId: d1 })
+    const d1 = await DeptModel.create({ name: 'A' })
+    await DeptModel.create({ name: 'B', parentId: d1._id })
 
     const { status, body } = await request('GET', '/api/depts')
 
@@ -169,8 +162,8 @@ describe('Dept CRUD API', () => {
   })
 
   it('GET /api/depts supports search', async () => {
-    await DeptModel.create({ _id: uuidv4(), name: '技术部' })
-    await DeptModel.create({ _id: uuidv4(), name: '市场部' })
+    await DeptModel.create({ name: '技术部' })
+    await DeptModel.create({ name: '市场部' })
 
     const { body } = await request('GET', '/api/depts?search=技术')
 
@@ -179,8 +172,8 @@ describe('Dept CRUD API', () => {
   })
 
   it('GET /api/depts supports status filter', async () => {
-    await DeptModel.create({ _id: uuidv4(), name: 'Active', status: 'active' })
-    await DeptModel.create({ _id: uuidv4(), name: 'Inactive', status: 'inactive' })
+    await DeptModel.create({ name: 'Active', status: 'active' })
+    await DeptModel.create({ name: 'Inactive', status: 'inactive' })
 
     const { body } = await request('GET', '/api/depts?status=active')
 
@@ -189,12 +182,11 @@ describe('Dept CRUD API', () => {
   })
 
   it('GET /api/depts supports parentId filter', async () => {
-    const rootId = uuidv4()
-    await DeptModel.create({ _id: rootId, name: 'Root' })
-    await DeptModel.create({ _id: uuidv4(), name: 'Child', parentId: rootId })
-    await DeptModel.create({ _id: uuidv4(), name: 'Other' })
+    const root = await DeptModel.create({ name: 'Root' })
+    await DeptModel.create({ name: 'Child', parentId: root._id })
+    await DeptModel.create({ name: 'Other' })
 
-    const { body } = await request('GET', `/api/depts?parentId=${rootId}`)
+    const { body } = await request('GET', `/api/depts?parentId=${root._id}`)
 
     expect(body.data.items).toHaveLength(1)
     expect(body.data.items[0].name).toBe('Child')
@@ -203,17 +195,11 @@ describe('Dept CRUD API', () => {
   // ── GET /api/depts?tree=true ──
 
   it('GET /api/depts?tree=true returns tree structure', async () => {
-    const rootId = uuidv4()
-    const techId = uuidv4()
-    const hrId = uuidv4()
-    const feId = uuidv4()
-    const beId = uuidv4()
-
-    await DeptModel.create({ _id: rootId, name: '总公司', sort: 0 })
-    await DeptModel.create({ _id: techId, name: '技术部', parentId: rootId, sort: 2 })
-    await DeptModel.create({ _id: hrId, name: '人事部', parentId: rootId, sort: 1 })
-    await DeptModel.create({ _id: feId, name: '前端组', parentId: techId, sort: 1 })
-    await DeptModel.create({ _id: beId, name: '后端组', parentId: techId, sort: 0 })
+    const root = await DeptModel.create({ name: '总公司', sort: 0 })
+    const tech = await DeptModel.create({ name: '技术部', parentId: root._id, sort: 2 })
+    await DeptModel.create({ name: '人事部', parentId: root._id, sort: 1 })
+    await DeptModel.create({ name: '前端组', parentId: tech._id, sort: 1 })
+    await DeptModel.create({ name: '后端组', parentId: tech._id, sort: 0 })
 
     const { status, body } = await request('GET', '/api/depts?tree=true')
 
@@ -233,10 +219,9 @@ describe('Dept CRUD API', () => {
   })
 
   it('GET /api/depts?tree=true with search filters before building tree', async () => {
-    const rootId = uuidv4()
-    await DeptModel.create({ _id: rootId, name: '总公司' })
-    await DeptModel.create({ _id: uuidv4(), name: '技术部', parentId: rootId })
-    await DeptModel.create({ _id: uuidv4(), name: '人事部', parentId: rootId })
+    const root = await DeptModel.create({ name: '总公司' })
+    await DeptModel.create({ name: '技术部', parentId: root._id })
+    await DeptModel.create({ name: '人事部', parentId: root._id })
 
     const { body } = await request('GET', '/api/depts?tree=true&search=技术')
 
@@ -247,10 +232,9 @@ describe('Dept CRUD API', () => {
   // ── GET /api/depts/:id ──
 
   it('GET /api/depts/:id returns a department', async () => {
-    const deptId = uuidv4()
-    await DeptModel.create({ _id: deptId, name: '测试部' })
+    const dept = await DeptModel.create({ name: '测试部' })
 
-    const { status, body } = await request('GET', `/api/depts/${deptId}`)
+    const { status, body } = await request('GET', `/api/depts/${dept._id}`)
 
     expect(status).toBe(200)
     expect(body.data.name).toBe('测试部')
@@ -272,10 +256,9 @@ describe('Dept CRUD API', () => {
   // ── PUT /api/depts/:id ──
 
   it('PUT /api/depts/:id updates a department', async () => {
-    const deptId = uuidv4()
-    await DeptModel.create({ _id: deptId, name: 'Old Name' })
+    const dept = await DeptModel.create({ name: 'Old Name' })
 
-    const { status, body } = await request('PUT', `/api/depts/${deptId}`, { name: 'New Name', leader: '李四' })
+    const { status, body } = await request('PUT', `/api/depts/${dept._id}`, { name: 'New Name', leader: '李四' })
 
     expect(status).toBe(200)
     expect(body.data.name).toBe('New Name')
@@ -283,14 +266,11 @@ describe('Dept CRUD API', () => {
   })
 
   it('PUT /api/depts/:id rejects duplicate name at same level', async () => {
-    const rootId = uuidv4()
-    const aId = uuidv4()
-    const bId = uuidv4()
-    await DeptModel.create({ _id: rootId, name: 'Root' })
-    await DeptModel.create({ _id: aId, name: 'A部', parentId: rootId })
-    await DeptModel.create({ _id: bId, name: 'B部', parentId: rootId })
+    const root = await DeptModel.create({ name: 'Root' })
+    await DeptModel.create({ name: 'A部', parentId: root._id })
+    const b = await DeptModel.create({ name: 'B部', parentId: root._id })
 
-    const { status, body } = await request('PUT', `/api/depts/${bId}`, { name: 'A部' })
+    const { status, body } = await request('PUT', `/api/depts/${b._id}`, { name: 'A部' })
 
     expect(status).toBe(409)
     expect(body.error.message).toContain('同名部门')
@@ -305,36 +285,30 @@ describe('Dept CRUD API', () => {
   // ── PATCH /api/depts/:id/move ──
 
   it('PATCH /api/depts/:id/move moves to new parent', async () => {
-    const rootId = uuidv4()
-    const aId = uuidv4()
-    const deptId = uuidv4()
-    await DeptModel.create({ _id: rootId, name: 'Root' })
-    await DeptModel.create({ _id: aId, name: 'A公司' })
-    await DeptModel.create({ _id: deptId, name: '技术部', parentId: rootId })
+    const root = await DeptModel.create({ name: 'Root' })
+    const a = await DeptModel.create({ name: 'A公司' })
+    const dept = await DeptModel.create({ name: '技术部', parentId: root._id })
 
-    const { status, body } = await request('PATCH', `/api/depts/${deptId}/move`, { parentId: aId })
+    const { status, body } = await request('PATCH', `/api/depts/${dept._id}/move`, { parentId: a._id })
 
     expect(status).toBe(200)
-    expect(body.data.parentId).toBe(aId)
+    expect(body.data.parentId).toBe(a._id)
   })
 
   it('PATCH /api/depts/:id/move moves to root', async () => {
-    const rootId = uuidv4()
-    const deptId = uuidv4()
-    await DeptModel.create({ _id: rootId, name: 'Root' })
-    await DeptModel.create({ _id: deptId, name: '技术部', parentId: rootId })
+    const root = await DeptModel.create({ name: 'Root' })
+    const dept = await DeptModel.create({ name: '技术部', parentId: root._id })
 
-    const { status, body } = await request('PATCH', `/api/depts/${deptId}/move`, { parentId: null })
+    const { status, body } = await request('PATCH', `/api/depts/${dept._id}/move`, { parentId: null })
 
     expect(status).toBe(200)
     expect(body.data.parentId).toBeNull()
   })
 
   it('PATCH /api/depts/:id/move rejects self-referencing', async () => {
-    const deptId = uuidv4()
-    await DeptModel.create({ _id: deptId, name: 'Self' })
+    const dept = await DeptModel.create({ name: 'Self' })
 
-    const { status, body } = await request('PATCH', `/api/depts/${deptId}/move`, { parentId: deptId })
+    const { status, body } = await request('PATCH', `/api/depts/${dept._id}/move`, { parentId: dept._id })
 
     expect(status).toBe(400)
     expect(body.error.message).toContain('under itself')
@@ -342,30 +316,23 @@ describe('Dept CRUD API', () => {
 
   it('PATCH /api/depts/:id/move detects cycle', async () => {
     // A -> B -> C, try to move A under C (would create cycle)
-    const aId = uuidv4()
-    const bId = uuidv4()
-    const cId = uuidv4()
-    await DeptModel.create({ _id: aId, name: 'A', parentId: null })
-    await DeptModel.create({ _id: bId, name: 'B', parentId: aId })
-    await DeptModel.create({ _id: cId, name: 'C', parentId: bId })
+    const a = await DeptModel.create({ name: 'A', parentId: null })
+    const b = await DeptModel.create({ name: 'B', parentId: a._id })
+    const c = await DeptModel.create({ name: 'C', parentId: b._id })
 
-    const { status, body } = await request('PATCH', `/api/depts/${aId}/move`, { parentId: cId })
+    const { status, body } = await request('PATCH', `/api/depts/${a._id}/move`, { parentId: c._id })
 
     expect(status).toBe(400)
     expect(body.error.message).toContain('cycle')
   })
 
   it('PATCH /api/depts/:id/move rejects duplicate name at target level', async () => {
-    const rootId = uuidv4()
-    const aId = uuidv4()
-    const techAId = uuidv4()
-    const techBId = uuidv4()
-    await DeptModel.create({ _id: rootId, name: 'Root' })
-    await DeptModel.create({ _id: aId, name: 'A公司' })
-    await DeptModel.create({ _id: techAId, name: '技术部', parentId: rootId })
-    await DeptModel.create({ _id: techBId, name: '技术部', parentId: aId })
+    const root = await DeptModel.create({ name: 'Root' })
+    const a = await DeptModel.create({ name: 'A公司' })
+    const techA = await DeptModel.create({ name: '技术部', parentId: root._id })
+    await DeptModel.create({ name: '技术部', parentId: a._id })
 
-    const { status, body } = await request('PATCH', `/api/depts/${techAId}/move`, { parentId: aId })
+    const { status, body } = await request('PATCH', `/api/depts/${techA._id}/move`, { parentId: a._id })
 
     expect(status).toBe(409)
     expect(body.error.message).toContain('同名部门')
@@ -374,34 +341,31 @@ describe('Dept CRUD API', () => {
   // ── DELETE /api/depts/:id ──
 
   it('DELETE /api/depts/:id deletes a leaf department', async () => {
-    const deptId = uuidv4()
-    await DeptModel.create({ _id: deptId, name: 'Delete Me' })
+    const dept = await DeptModel.create({ name: 'Delete Me' })
 
-    const { status, body } = await request('DELETE', `/api/depts/${deptId}`)
+    const { status, body } = await request('DELETE', `/api/depts/${dept._id}`)
 
     expect(status).toBe(200)
     expect(body.success).toBe(true)
     expect(body.data).toBeNull()
 
-    const found = await DeptModel.findById(deptId)
+    const found = await DeptModel.findById(dept._id)
     expect(found).toBeNull()
   })
 
   it('DELETE /api/depts/:id rejects if has children', async () => {
-    const parentId = uuidv4()
-    await DeptModel.create({ _id: parentId, name: 'Parent' })
-    await DeptModel.create({ _id: uuidv4(), name: 'Child', parentId })
+    const parent = await DeptModel.create({ name: 'Parent' })
+    await DeptModel.create({ name: 'Child', parentId: parent._id })
 
-    const { status, body } = await request('DELETE', `/api/depts/${parentId}`)
+    const { status, body } = await request('DELETE', `/api/depts/${parent._id}`)
 
     expect(status).toBe(400)
     expect(body.error.message).toContain('children')
   })
 
   it('DELETE /api/depts/:id rejects if has associated users', async () => {
-    const deptId = uuidv4()
-    await DeptModel.create({ _id: deptId, name: 'With Users' })
-    await UserModel.create({ _id: uuidv4(), username: 'testuser', password: 'pass123', displayName: 'Test User', deptId })
+    const dept = await DeptModel.create({ name: 'With Users' })
+    await UserModel.create({ username: 'testuser', password: 'pass123', displayName: 'Test User', deptId: dept._id })
 
     const { status, body } = await request('DELETE', `/api/depts/${deptId}`)
 

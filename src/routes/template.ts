@@ -1,9 +1,9 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { WidgetTemplateModel } from '../models/WidgetTemplate.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { createTemplateSchema, updateTemplateSchema } from '../schemas/templateSchemas.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -120,7 +120,6 @@ router.post('/', requireAuth, validate(createTemplateSchema), async (ctx) => {
   const user = ctx.state.user as { id?: string } | undefined
 
   const template = await WidgetTemplateModel.create({
-    _id: uuidv4(),
     name: name.trim(),
     description,
     category,
@@ -143,7 +142,7 @@ router.post('/', requireAuth, validate(createTemplateSchema), async (ctx) => {
 router.get('/:id', async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -168,7 +167,7 @@ router.put('/:id', requireAuth, validate(updateTemplateSchema), async (ctx) => {
   const { id } = ctx.params
   const body = ctx.request.body as Record<string, unknown>
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -197,7 +196,7 @@ router.put('/:id', requireAuth, validate(updateTemplateSchema), async (ctx) => {
 router.delete('/:id', requireAuth, async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -223,7 +222,7 @@ router.delete('/:id', requireAuth, async (ctx) => {
 router.post('/:id/apply', async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

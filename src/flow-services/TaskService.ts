@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid'
 import { TaskInstanceModel } from '../flow-models/TaskInstance.js'
 import { FlowInstanceModel } from '../flow-models/FlowInstance.js'
 import { ApprovalLogModel } from '../flow-models/ApprovalLog.js'
@@ -87,7 +86,6 @@ export class TaskService {
     await task.save()
 
     await ApprovalLogModel.create({
-      _id: uuidv4(),
       instanceId: task.instanceId,
       nodeId: task.nodeId,
       nodeName: task.nodeName,
@@ -112,7 +110,6 @@ export class TaskService {
     await task.save()
 
     await ApprovalLogModel.create({
-      _id: uuidv4(),
       instanceId: task.instanceId,
       nodeId: task.nodeId,
       nodeName: task.nodeName,
@@ -137,7 +134,6 @@ export class TaskService {
     await task.save()
 
     await ApprovalLogModel.create({
-      _id: uuidv4(),
       instanceId: task.instanceId,
       nodeId: task.nodeId,
       nodeName: task.nodeName,
@@ -162,7 +158,6 @@ export class TaskService {
     await task.save()
 
     await ApprovalLogModel.create({
-      _id: uuidv4(),
       instanceId: task.instanceId,
       nodeId: task.nodeId,
       nodeName: task.nodeName,

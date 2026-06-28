@@ -12,7 +12,6 @@
  */
 
 import { createHash } from 'node:crypto'
-import { v4 as uuidv4 } from 'uuid'
 import { FormSchemaModel } from '../../models/FormSchema.js'
 import { SchemaEmbeddingModel } from '../../models/SchemaEmbedding.js'
 import { embedText, embedBatch } from './embeddingService.js'
@@ -171,7 +170,6 @@ export async function indexSchema(schemaId: string): Promise<IndexResult> {
 
   // Create new embedding
   await SchemaEmbeddingModel.create({
-    _id: uuidv4(),
     schemaId,
     editId,
     name,

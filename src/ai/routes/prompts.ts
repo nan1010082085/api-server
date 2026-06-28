@@ -18,11 +18,11 @@
  */
 
 import Router from '@koa/router'
-import { v4 as uuidv4 } from 'uuid'
 import { authMiddleware } from '../../middleware/auth.js'
 import { validate } from '../../middleware/validate.js'
 import { PromptTemplateModel } from '../models/promptTemplate.js'
 import type { IPromptTemplate } from '../models/promptTemplate.js'
+import { PromptVersionModel } from '../models/promptVersion.js'
 import { promptOptimizer } from '../services/promptOptimizer.js'
 import { builtinPromptTemplates, renderTemplate } from '../config/promptTemplates.js'
 import {
@@ -113,7 +113,6 @@ router.post('/', authMiddleware(), validate(promptTemplateCreateSchema), async (
   }
 
   const template = await PromptTemplateModel.create({
-    _id: uuidv4(),
     name: body.name,
     description: body.description ?? '',
     category: body.category ?? 'custom',
@@ -351,6 +350,8 @@ router.post('/:id/test', authMiddleware(), validate(promptTestSchema), async (ct
 
 router.get('/:id/versions', authMiddleware(), async (ctx) => {
   const { id } = ctx.params
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
 
   const template = await PromptTemplateModel.findById(id).lean<IPromptTemplate | null>()
   if (!template) {
@@ -360,7 +361,10 @@ router.get('/:id/versions', authMiddleware(), async (ctx) => {
   }
 
   const promptId = `template-${id}`
-  const versions = await promptOptimizer.getVersionHistory(promptId)
+  const [versions, total] = await Promise.all([
+    PromptVersionModel.find({ promptId }).sort({ version: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean(),
+    PromptVersionModel.countDocuments({ promptId }),
+  ])
 
   ctx.body = {
     success: true,
@@ -379,6 +383,10 @@ router.get('/:id/versions', authMiddleware(), async (ctx) => {
         optimizationReason: v.optimizationReason,
         createdAt: v.createdAt,
       })),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
     },
   }
 })
@@ -431,7 +439,6 @@ router.post('/seed', authMiddleware(), async (ctx) => {
     }
 
     await PromptTemplateModel.create({
-      _id: uuidv4(),
       name: builtin.name,
       description: builtin.description,
       category: builtin.category,

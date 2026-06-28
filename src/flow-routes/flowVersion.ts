@@ -1,10 +1,10 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { FlowVersionModel } from '../flow-models/FlowVersion.js'
 import { FlowDefinitionModel } from '../flow-models/FlowDefinition.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { saveVersionSchema } from '../flow-schemas/flowSchemas.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -18,7 +18,7 @@ router.get('/', async (ctx) => {
   const pageSize = Math.min(100, Math.max(1, parseInt(pageSizeStr as string, 10) || 20))
   const skip = (page - 1) * pageSize
 
-  if (!uuidValidate(definitionId)) {
+  if (!mongoose.Types.ObjectId.isValid(definitionId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -47,7 +47,7 @@ router.post('/', requireAuth, validate(saveVersionSchema), async (ctx) => {
     metadata?: { viewport?: { x: number; y: number; zoom: number } }
   }
 
-  if (!uuidValidate(definitionId)) {
+  if (!mongoose.Types.ObjectId.isValid(definitionId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -65,7 +65,6 @@ router.post('/', requireAuth, validate(saveVersionSchema), async (ctx) => {
   const nextVersion = `v${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}`
 
   const version = await FlowVersionModel.create({
-    _id: uuidv4(),
     definitionId,
     version: nextVersion,
     graph,
@@ -83,7 +82,7 @@ router.post('/', requireAuth, validate(saveVersionSchema), async (ctx) => {
 router.get('/latest', async (ctx) => {
   const { definitionId } = ctx.params
 
-  if (!uuidValidate(definitionId)) {
+  if (!mongoose.Types.ObjectId.isValid(definitionId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -103,7 +102,7 @@ router.get('/latest', async (ctx) => {
 router.get('/:versionId', async (ctx) => {
   const { versionId } = ctx.params
 
-  if (!uuidValidate(versionId)) {
+  if (!mongoose.Types.ObjectId.isValid(versionId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

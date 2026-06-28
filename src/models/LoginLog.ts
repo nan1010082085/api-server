@@ -1,9 +1,7 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface ILoginLog {
-  _id: string
   tenantId: string
   username: string
   status: 'success' | 'fail'
@@ -16,7 +14,6 @@ export interface ILoginLog {
 
 const loginLogSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     username: { type: String, required: true, index: true },
     status: { type: String, enum: ['success', 'fail'], required: true },

@@ -12,13 +12,14 @@
     "test": "vitest run",
     "db:up": "docker compose -f docker-compose.yml up -d",
     "db:down": "docker compose -f docker-compose.yml down",
-    "db:seed": "tsx seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "db:fix-seed": "tsx scripts/fix-seed-data.ts",
+    "db:migrate-id": "tsx scripts/migrate-to-objectid.ts"
   },
   "dependencies": {
     "@koa/cors": "^5.0.0",
     "@koa/multer": "^4.0.0",
     "@koa/router": "^13.1.0",
-    "@langchain/community": "^1.1.29",
     "@langchain/core": "^1.1.48",
     "@langchain/langgraph": "^0.2.60",
     "@langchain/langgraph-checkpoint": "^1.0.4",

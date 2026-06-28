@@ -12,8 +12,25 @@ const router = new Router({ prefix: '/api/roles' })
 
 // GET /api/roles/permissions — 获取可用权限列表（按模块分组）
 router.get('/permissions', requireAuth, requirePermission('role:view'), async (ctx) => {
-  const permissions = await PermissionModel.find({}).sort({ module: 1, code: 1 })
-  ctx.body = { success: true, data: permissions.map(p => p.toJSON()) }
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 100))
+  const skip = (page - 1) * pageSize
+
+  const [permissions, total] = await Promise.all([
+    PermissionModel.find({}).sort({ module: 1, code: 1 }).skip(skip).limit(pageSize),
+    PermissionModel.countDocuments({}),
+  ])
+
+  ctx.body = {
+    success: true,
+    data: {
+      items: permissions.map(p => p.toJSON()),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  }
 })
 
 // GET /api/roles?q=xxx&page=1&pageSize=20 — 角色列表（分页+搜索）
@@ -142,10 +159,29 @@ router.get('/:id/users', requireAuth, requirePermission('role:view'), async (ctx
     return
   }
 
-  const users = await UserModel.find({ roles: ctx.params.id })
-    .select('username displayName roles')
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
+  const skip = (page - 1) * pageSize
+  const filter = { roles: ctx.params.id }
 
-  ctx.body = { success: true, data: users.map(u => u.toJSON()) }
+  const [users, total] = await Promise.all([
+    UserModel.find(filter)
+      .select('username displayName roles')
+      .skip(skip)
+      .limit(pageSize),
+    UserModel.countDocuments(filter),
+  ])
+
+  ctx.body = {
+    success: true,
+    data: {
+      items: users.map(u => u.toJSON()),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  }
 })
 
 export default router

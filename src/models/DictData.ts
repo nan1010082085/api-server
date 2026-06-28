@@ -1,9 +1,7 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IDictData {
-  _id: string
   tenantId: string
   dictTypeId: string
   label: string
@@ -17,7 +15,6 @@ export interface IDictData {
 
 const dictDataSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     dictTypeId: { type: String, required: true, index: true },
     label: { type: String, required: true },

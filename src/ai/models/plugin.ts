@@ -6,7 +6,6 @@
  */
 
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../../middleware/tenantPlugin.js'
 
 export interface IPluginTool {
@@ -16,7 +15,6 @@ export interface IPluginTool {
 }
 
 export interface IPlugin {
-  _id: string
   tenantId: string
   name: string
   description: string
@@ -46,7 +44,6 @@ const pluginToolSchema = new mongoose.Schema(
 
 const pluginSchema = new mongoose.Schema<IPlugin>(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     name: { type: String, required: true },
     description: { type: String, default: '' },

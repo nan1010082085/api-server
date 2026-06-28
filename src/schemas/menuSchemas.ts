@@ -16,6 +16,7 @@ export const createMenuSchema = z.object({
   schemaId: z.string().max(100).nullable().default(null),
   url: z.string().max(500, 'URL最多500个字符').default(''),
   app: z.string().max(50, '应用标识最多50个字符').default(''),
+  layout: z.enum(['with-menu', 'without-menu']).default('with-menu'),
 }).strict()
 
 export const updateMenuSchema = z.object({
@@ -34,6 +35,7 @@ export const updateMenuSchema = z.object({
   schemaId: z.string().max(100).nullable().optional(),
   url: z.string().max(500).optional(),
   app: z.string().max(50).optional(),
+  layout: z.enum(['with-menu', 'without-menu']).optional(),
 }).strict().refine((data) => Object.keys(data).length > 0, {
   message: 'At least one field is required.',
 })

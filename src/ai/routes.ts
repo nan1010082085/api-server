@@ -1347,7 +1347,6 @@ router.post('/publish', validate(publishRequestSchema), async (ctx) => {
     ].join('')
 
     const schema = await FormSchemaModel.create({
-      _id: uuidv4(),
       editId,
       version,
       name: `AI Generated ${now.toISOString()}`,
@@ -1358,7 +1357,6 @@ router.post('/publish', validate(publishRequestSchema), async (ctx) => {
 
     const publishId = uuidv4()
     await PublishedSchemaModel.create({
-      _id: uuidv4(),
       sourceId: editId,
       publishId,
       name: schema.name,
@@ -1388,7 +1386,6 @@ router.post('/publish', validate(publishRequestSchema), async (ctx) => {
     let definitionId = target?.flowId
     if (!definitionId) {
       const def = await FlowDefinitionModel.create({
-        _id: uuidv4(),
         name: `AI Generated Flow ${now.toISOString()}`,
         description: '由 AI 生成的流程',
         status: 'draft',
@@ -1402,7 +1399,6 @@ router.post('/publish', validate(publishRequestSchema), async (ctx) => {
     const nextVersion = `v${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}`
 
     const version = await FlowVersionModel.create({
-      _id: uuidv4(),
       definitionId,
       version: nextVersion,
       graph: flowGraph,
@@ -1436,20 +1432,33 @@ router.post('/publish', validate(publishRequestSchema), async (ctx) => {
 // ────────────────────────────────────────────
 
 router.get('/conversations', async (ctx) => {
-  const conversations = await listConversations()
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
+
+  const [conversations, total] = await Promise.all([
+    AIConversationModel.find().sort({ updatedAt: -1 }).skip((page - 1) * pageSize).limit(pageSize),
+    AIConversationModel.countDocuments(),
+  ])
+
   ctx.body = {
     success: true,
-    data: conversations.map((c) => ({
-      id: c._id,
-      title: c.messages.length > 0
-        ? c.messages[0].content.slice(0, 50)
-        : 'New conversation',
-      source: c.source,
-      activeAgent: c.activeAgent,
-      version: c.version,
-      createdAt: c.createdAt,
-      updatedAt: c.updatedAt,
-    })),
+    data: {
+      items: conversations.map((c) => ({
+        id: c._id,
+        title: c.messages.length > 0
+          ? c.messages[0].content.slice(0, 50)
+          : 'New conversation',
+        source: c.source,
+        activeAgent: c.activeAgent,
+        version: c.version,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+      })),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
   }
 })
 
@@ -2268,14 +2277,12 @@ router.post('/sync/schema/:schemaId/update-flows', async (ctx) => {
 
     if (changed) {
       const { FlowDefinitionModel } = await import('../flow-models/FlowDefinition.js')
-      const { v4: uuidv4 } = await import('uuid')
 
       const now = new Date()
       const pad = (n: number, len: number) => String(n).padStart(len, '0')
       const nextVersion = `v${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}`
 
       const newVersion = await FlowVersionModel.create({
-        _id: uuidv4(),
         definitionId: ver.definitionId,
         version: nextVersion,
         graph: {
@@ -2391,13 +2398,11 @@ router.post('/sync/bind', async (ctx) => {
     },
   }
 
-  const { v4: uuidv4 } = await import('uuid')
   const now = new Date()
   const pad = (n: number, len: number) => String(n).padStart(len, '0')
   const nextVersion = `v${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}`
 
   const newVersion = await FlowVersionModel.create({
-    _id: uuidv4(),
     definitionId: flowId,
     version: nextVersion,
     graph: {

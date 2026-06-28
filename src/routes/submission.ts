@@ -1,5 +1,4 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { FormSubmissionModel } from '../models/FormSubmission.js'
 import { FormSchemaModel } from '../models/FormSchema.js'
 import { authMiddleware } from '../middleware/auth.js'
@@ -19,6 +18,7 @@ import {
   type ExportFormat,
 } from '../services/exportService.js'
 import type { SubmissionStatus } from '../models/FormSubmission.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -32,7 +32,7 @@ router.post('/:schemaId', requireAuth, validate(createSubmissionSchema), async (
   const { schemaId } = ctx.params
   const { data, submitterId } = ctx.request.body as { data: Record<string, unknown>; submitterId?: string }
 
-  if (!uuidValidate(schemaId)) {
+  if (!mongoose.Types.ObjectId.isValid(schemaId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid schemaId UUID format.' } }
     return
@@ -49,7 +49,6 @@ router.post('/:schemaId', requireAuth, validate(createSubmissionSchema), async (
   const userId = (ctx.state.user as { id: string }).id
 
   const submission = await FormSubmissionModel.create({
-    _id: uuidv4(),
     schemaId,
     data,
     submitterId: submitterId ?? userId,
@@ -75,7 +74,7 @@ router.get('/:schemaId', requireAuth, async (ctx) => {
   const { schemaId } = ctx.params
   const { status, page: pageStr = '1', pageSize: pageSizeStr = '20' } = ctx.query
 
-  if (!uuidValidate(schemaId)) {
+  if (!mongoose.Types.ObjectId.isValid(schemaId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid schemaId UUID format.' } }
     return
@@ -116,7 +115,7 @@ router.get('/:schemaId/export', requireAuth, async (ctx) => {
   const { schemaId } = ctx.params
   const { status, format: formatParam } = ctx.query
 
-  if (!uuidValidate(schemaId)) {
+  if (!mongoose.Types.ObjectId.isValid(schemaId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid schemaId UUID format.' } }
     return
@@ -166,7 +165,7 @@ router.get('/:schemaId/export', requireAuth, async (ctx) => {
 router.get('/:schemaId/:id', requireAuth, async (ctx) => {
   const { schemaId, id } = ctx.params
 
-  if (!uuidValidate(schemaId) || !uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(schemaId) || !mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -190,7 +189,7 @@ router.patch('/:schemaId/:id/status', requireAuth, validate(updateSubmissionStat
   const { schemaId, id } = ctx.params
   const { status } = ctx.request.body as { status: SubmissionStatus }
 
-  if (!uuidValidate(schemaId) || !uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(schemaId) || !mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -218,7 +217,7 @@ router.patch('/:schemaId/:id/status', requireAuth, validate(updateSubmissionStat
 router.delete('/:schemaId/:id', requireAuth, async (ctx) => {
   const { schemaId, id } = ctx.params
 
-  if (!uuidValidate(schemaId) || !uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(schemaId) || !mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -243,7 +242,7 @@ router.post('/:schemaId/batch/delete', requireAuth, validate(batchDeleteSubmissi
   const { schemaId } = ctx.params
   const { ids } = ctx.request.body as { ids: string[] }
 
-  if (!uuidValidate(schemaId)) {
+  if (!mongoose.Types.ObjectId.isValid(schemaId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid schemaId UUID format.' } }
     return
@@ -266,7 +265,7 @@ router.post('/:schemaId/batch/status', requireAuth, validate(batchUpdateSubmissi
   const { schemaId } = ctx.params
   const { ids, status } = ctx.request.body as { ids: string[]; status: SubmissionStatus }
 
-  if (!uuidValidate(schemaId)) {
+  if (!mongoose.Types.ObjectId.isValid(schemaId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid schemaId UUID format.' } }
     return

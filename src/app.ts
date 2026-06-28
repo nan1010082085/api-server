@@ -51,7 +51,6 @@ import modelConfigRouter from './routes/modelConfig.js'
 import loginLogRouter from './routes/loginLog.js'
 import onlineUsersRouter from './routes/onlineUsers.js'
 import userImportExportRouter from './routes/userImportExport.js'
-import filesRouter from './routes/files.js'
 import { auditLogMiddleware } from './middleware/auditLog.js'
 import { connectRedis } from './config/redis.js'
 import { validateApiKey } from './ai/graph/agentBase.js'
@@ -103,7 +102,7 @@ app.use(bodyParser())
 
 app.use(cors({
   origin: (ctx) => {
-    const origins = process.env.CORS_ORIGINS || 'http://localhost:4000,http://localhost:5050,http://localhost:5100,http://localhost:5200,http://localhost:5300,http://localhost:5400,http://localhost:4173,http://127.0.0.1:4000,https://schema-form-platform.vercel.app'
+    const origins = process.env.CORS_ORIGINS || 'http://localhost:4000,http://localhost:5050,http://localhost:5051,http://localhost:5100,http://localhost:5200,http://localhost:5300,http://localhost:5400,http://localhost:4173,http://127.0.0.1:4000'
     if (origins === '*') return ctx.get('Origin')
     const allowed = origins.split(',').map((s) => s.trim())
     const requestOrigin = ctx.get('Origin')
@@ -219,7 +218,5 @@ app.use(onlineUsersRouter.routes())
 app.use(onlineUsersRouter.allowedMethods())
 app.use(userImportExportRouter.routes())
 app.use(userImportExportRouter.allowedMethods())
-app.use(filesRouter.routes())
-app.use(filesRouter.allowedMethods())
 
 export default app

@@ -18,7 +18,7 @@
 - **AI 引擎**: LangGraph (多 Agent 架构)
 - **实时通信**: Socket.IO
 - **缓存**: Redis (可选)
-- **部署**: 传统 HTTP Server / Vercel Serverless
+- **部署**: 传统 HTTP Server (自建服务器)
 
 ### 项目结构
 ```

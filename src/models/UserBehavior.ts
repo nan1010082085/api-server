@@ -2,7 +2,6 @@ import mongoose from 'mongoose'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IUserBehavior {
-  _id: string
   tenantId: string
   userId: string
   action: 'use_component' | 'set_property' | 'create_schema' | 'generate_ai'
@@ -13,7 +12,6 @@ export interface IUserBehavior {
 
 const userBehaviorSchema = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     userId: { type: String, required: true, index: true },
     action: {

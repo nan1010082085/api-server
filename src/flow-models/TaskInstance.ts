@@ -3,7 +3,6 @@ import type { TaskInstanceStatus } from '@schema-platform/flow-shared'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface ITaskInstance {
-  _id: string
   tenantId: string
   instanceId: string
   nodeId: string
@@ -31,7 +30,6 @@ export interface ITaskInstance {
 
 const taskInstanceSchema = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     instanceId: { type: String, required: true, index: true },
     nodeId: { type: String, required: true },

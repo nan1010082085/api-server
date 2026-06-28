@@ -1,11 +1,9 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export type CredentialType = 'api_key' | 'basic_auth' | 'bearer_token'
 
 export interface ICredential {
-  _id: string
   name: string
   type: CredentialType
   data: string  // encrypted JSON string
@@ -17,7 +15,6 @@ export interface ICredential {
 
 const credentialSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     name: { type: String, required: true, trim: true },
     type: {
       type: String,

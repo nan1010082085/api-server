@@ -1,5 +1,4 @@
 import Router from '@koa/router'
-import { validate as uuidValidate } from 'uuid'
 import { TaskInstanceModel } from '../flow-models/TaskInstance.js'
 import { authMiddleware, type JwtPayload } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
@@ -8,6 +7,7 @@ import { validate } from '../middleware/validate.js'
 import { completeTaskSchema, delegateTaskSchema, rejectToNodeSchema } from '../flow-schemas/instanceSchemas.js'
 import { flowEngine } from '../flow-services/FlowEngine.js'
 import { taskService } from '../flow-services/TaskService.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 const requireFlowApprove = requirePermission('flow:approve')
@@ -40,7 +40,7 @@ router.get('/my', requireAuth, dataScope, async (ctx) => {
 // GET /api/flow-tasks/:id
 router.get('/:id', requireAuth, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -59,7 +59,7 @@ router.get('/:id', requireAuth, async (ctx) => {
 // POST /api/flow-tasks/:id/claim
 router.post('/:id/claim', requireAuth, requireFlowApprove, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -78,7 +78,7 @@ router.post('/:id/complete', requireAuth, requireFlowApprove, validate(completeT
     outcome?: string
   }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -95,7 +95,7 @@ router.post('/:id/delegate', requireAuth, requireFlowApprove, validate(delegateT
   const { id } = ctx.params
   const { targetUserId } = ctx.request.body as { targetUserId: string }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -108,7 +108,7 @@ router.post('/:id/delegate', requireAuth, requireFlowApprove, validate(delegateT
 // GET /api/flow-tasks/:id/upstream-data
 router.get('/:id/upstream-data', requireAuth, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -121,7 +121,7 @@ router.get('/:id/upstream-data', requireAuth, async (ctx) => {
 // GET /api/flow-tasks/:id/reject-targets
 router.get('/:id/reject-targets', requireAuth, async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -139,7 +139,7 @@ router.post('/:id/reject-to-node', requireAuth, requireFlowApprove, validate(rej
     comment?: string
   }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

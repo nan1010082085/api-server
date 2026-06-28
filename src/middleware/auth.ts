@@ -62,7 +62,24 @@ export function authMiddleware(options?: { required?: boolean }): Middleware {
           }
         } catch { /* token invalid, use dev fallback */ }
       }
-      ctx.state.user = { id: 'dev', username: 'dev', roles: [], tenantId: '000000', deptId: null }
+      // Dev fallback: try to use the admin user from database
+      try {
+        const { UserModel } = await import('../models/User.js')
+        const adminUser = await UserModel.findOne({ username: 'admin' }).lean() as Record<string, unknown> | null
+        if (adminUser) {
+          ctx.state.user = {
+            id: (adminUser._id as { toString(): string }).toString(),
+            username: adminUser.username as string,
+            roles: (adminUser.roles as string[]) || [],
+            tenantId: (adminUser.tenantId as string) || '000000',
+            deptId: (adminUser.deptId as string) || null,
+          }
+        } else {
+          ctx.state.user = { id: 'dev', username: 'dev', roles: [], tenantId: '000000', deptId: null }
+        }
+      } catch {
+        ctx.state.user = { id: 'dev', username: 'dev', roles: [], tenantId: '000000', deptId: null }
+      }
       syncTenantFromUser(ctx)
       await next()
       return

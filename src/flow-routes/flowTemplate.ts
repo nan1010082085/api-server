@@ -1,5 +1,5 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
+import { v4 as uuidv4 } from 'uuid'
 import { FlowTemplateModel } from '../flow-models/FlowTemplate.js'
 import { FlowDefinitionModel } from '../flow-models/FlowDefinition.js'
 import { FlowVersionModel } from '../flow-models/FlowVersion.js'
@@ -11,6 +11,7 @@ import {
   applyFlowTemplateSchema,
 } from '../flow-schemas/flowTemplateSchemas.js'
 import { BpmnElementType } from '@schema-platform/flow-shared'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -323,7 +324,6 @@ router.post('/', requireAuth, validate(createFlowTemplateSchema), async (ctx) =>
   const user = ctx.state.user as { id?: string } | undefined
 
   const template = await FlowTemplateModel.create({
-    _id: uuidv4(),
     name: name.trim(),
     description: description ?? '',
     category: category ?? 'other',
@@ -357,7 +357,6 @@ router.post('/seed', requireAuth, async (ctx) => {
       continue
     }
     await FlowTemplateModel.create({
-      _id: uuidv4(),
       ...tpl,
       isBuiltin: true,
       createdBy: 'system',
@@ -375,7 +374,7 @@ router.post('/seed', requireAuth, async (ctx) => {
 router.get('/:id', async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -400,7 +399,7 @@ router.put('/:id', requireAuth, validate(updateFlowTemplateSchema), async (ctx) 
   const { id } = ctx.params
   const body = ctx.request.body as Record<string, unknown>
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -429,7 +428,7 @@ router.put('/:id', requireAuth, validate(updateFlowTemplateSchema), async (ctx) 
 router.delete('/:id', requireAuth, async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -465,7 +464,7 @@ router.post('/:id/apply', requireAuth, validate(applyFlowTemplateSchema), async 
     description?: string
   }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -479,8 +478,6 @@ router.post('/:id/apply', requireAuth, validate(applyFlowTemplateSchema), async 
   }
 
   const userId = (ctx.state.user as { id: string }).id
-  const definitionId = uuidv4()
-  const versionId = uuidv4()
 
   // Regenerate node and edge IDs to avoid collisions
   const idMap = new Map<string, string>()
@@ -501,7 +498,6 @@ router.post('/:id/apply', requireAuth, validate(applyFlowTemplateSchema), async 
   const nextVersion = `v${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}`
 
   const definition = await FlowDefinitionModel.create({
-    _id: definitionId,
     name: name ?? template.name,
     description: description ?? template.description,
     category: template.category,
@@ -511,8 +507,7 @@ router.post('/:id/apply', requireAuth, validate(applyFlowTemplateSchema), async 
   })
 
   const version = await FlowVersionModel.create({
-    _id: versionId,
-    definitionId,
+    definitionId: definition._id,
     version: nextVersion,
     graph: { nodes, edges },
     metadata: null,
@@ -542,7 +537,7 @@ router.post('/from-flow/:definitionId', requireAuth, async (ctx) => {
     thumbnail?: string
   }
 
-  if (!uuidValidate(definitionId)) {
+  if (!mongoose.Types.ObjectId.isValid(definitionId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -566,7 +561,6 @@ router.post('/from-flow/:definitionId', requireAuth, async (ctx) => {
   const user = ctx.state.user as { id?: string } | undefined
 
   const template = await FlowTemplateModel.create({
-    _id: uuidv4(),
     name: name ?? definition.name,
     description: description ?? definition.description,
     category: category ?? definition.category ?? 'other',

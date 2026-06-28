@@ -2,7 +2,6 @@ import mongoose from 'mongoose'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IPublishedSchema {
-  _id: string
   tenantId: string
   sourceId: string
   name: string
@@ -18,7 +17,6 @@ export interface IPublishedSchema {
 
 const publishedSchemaDef = new mongoose.Schema(
   {
-    _id: { type: String, required: true },
     tenantId: { type: String, default: '000000', index: true },
     sourceId: { type: String, required: true, unique: true, index: true },
     name: { type: String, required: true },

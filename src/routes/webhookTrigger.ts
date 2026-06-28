@@ -1,9 +1,9 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import Router from '@koa/router'
-import { validate as uuidValidate } from 'uuid'
 import { WebhookModel } from '../models/Webhook.js'
 import { flowEngine } from '../flow-services/FlowEngine.js'
 import { eventBus } from '../services/eventBus.js'
+import mongoose from 'mongoose'
 
 const router = new Router({ prefix: '/api/webhooks' })
 
@@ -24,7 +24,7 @@ const router = new Router({ prefix: '/api/webhooks' })
 router.post('/:webhookId/trigger', async (ctx) => {
   const { webhookId } = ctx.params
 
-  if (!uuidValidate(webhookId)) {
+  if (!mongoose.Types.ObjectId.isValid(webhookId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid webhook ID format.' } }
     return
@@ -137,7 +137,7 @@ router.post('/:webhookId/trigger', async (ctx) => {
 router.get('/:webhookId/trigger', async (ctx) => {
   const { webhookId } = ctx.params
 
-  if (!uuidValidate(webhookId)) {
+  if (!mongoose.Types.ObjectId.isValid(webhookId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid webhook ID format.' } }
     return

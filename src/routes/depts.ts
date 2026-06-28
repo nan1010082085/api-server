@@ -1,5 +1,4 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { DeptModel } from '../models/Dept.js'
 import { UserModel } from '../models/User.js'
 import { authMiddleware } from '../middleware/auth.js'
@@ -7,6 +6,7 @@ import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createDeptSchema, updateDeptSchema, moveDeptSchema } from '../schemas/deptSchemas.js'
 import { getCurrentTenantId } from '../middleware/tenantContext.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 const router = new Router({ prefix: '/api/depts' })
@@ -71,19 +71,30 @@ router.get('/', requireAuth, requirePermission('dept:view'), async (ctx) => {
     filter.parentId = parentId === 'null' ? null : parentId
   }
 
-  const depts = await DeptModel.find(filter).sort({ sort: 1, createdAt: -1 })
-
   if (tree === 'true') {
+    const depts = await DeptModel.find(filter).sort({ sort: 1, createdAt: -1 })
     const items = depts.map((d) => d.toJSON())
     ctx.body = { success: true, data: buildTree(items) }
     return
   }
 
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
+  const skip = (page - 1) * pageSize
+
+  const [depts, total] = await Promise.all([
+    DeptModel.find(filter).sort({ sort: 1, createdAt: -1 }).skip(skip).limit(pageSize),
+    DeptModel.countDocuments(filter),
+  ])
+
   ctx.body = {
     success: true,
     data: {
       items: depts.map((d) => d.toJSON()),
-      total: depts.length,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
     },
   }
 })
@@ -94,7 +105,7 @@ router.get('/', requireAuth, requirePermission('dept:view'), async (ctx) => {
 router.get('/:id', requireAuth, requirePermission('dept:view'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -125,7 +136,7 @@ router.post('/', requireAuth, requirePermission('dept:create'), validate(createD
 
   // Validate parentId exists if not null
   if (parentId) {
-    if (!uuidValidate(parentId)) {
+    if (!mongoose.Types.ObjectId.isValid(parentId)) {
       ctx.status = 400
       ctx.body = { success: false, error: { message: 'Invalid parent department UUID.' } }
       return
@@ -153,7 +164,6 @@ router.post('/', requireAuth, requirePermission('dept:create'), validate(createD
   }
 
   const dept = await DeptModel.create({
-    _id: uuidv4(),
     name,
     parentId: parentId ?? null,
     sort,
@@ -172,7 +182,7 @@ router.post('/', requireAuth, requirePermission('dept:create'), validate(createD
 router.put('/:id', requireAuth, requirePermission('dept:edit'), validate(updateDeptSchema), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -224,7 +234,7 @@ router.patch('/:id/move', requireAuth, requirePermission('dept:edit'), validate(
   const { id } = ctx.params
   const { parentId } = ctx.request.body as { parentId: string | null }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -246,7 +256,7 @@ router.patch('/:id/move', requireAuth, requirePermission('dept:edit'), validate(
 
   // Validate parentId exists if not null
   if (parentId) {
-    if (!uuidValidate(parentId)) {
+    if (!mongoose.Types.ObjectId.isValid(parentId)) {
       ctx.status = 400
       ctx.body = { success: false, error: { message: 'Invalid parent department UUID.' } }
       return
@@ -303,7 +313,7 @@ router.patch('/:id/move', requireAuth, requirePermission('dept:edit'), validate(
 router.delete('/:id', requireAuth, requirePermission('dept:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

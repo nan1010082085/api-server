@@ -1,8 +1,7 @@
 /**
  * File processing service — OCR and text extraction.
  *
- * All processing happens in memory (no filesystem writes),
- * making it compatible with serverless environments like Vercel.
+ * All processing happens in memory (no filesystem writes).
  */
 
 import { PDFParse } from 'pdf-parse'

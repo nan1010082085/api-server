@@ -1,8 +1,6 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 
 export interface IAuthorizationCode {
-  _id: string
   code: string
   clientId: string
   userId: string
@@ -16,13 +14,12 @@ export interface IAuthorizationCode {
 
 const authorizationCodeSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
-    code: { type: String, required: true, unique: true, index: true },
+    code: { type: String, required: true, unique: true },
     clientId: { type: String, required: true, index: true },
     userId: { type: String, required: true, index: true },
     redirectUri: { type: String, required: true },
     scopes: { type: [String], default: [] },
-    expiresAt: { type: Date, required: true, index: true },
+    expiresAt: { type: Date, required: true },
     used: { type: Boolean, default: false },
   },
   {

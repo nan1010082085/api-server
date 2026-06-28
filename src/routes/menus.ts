@@ -1,11 +1,11 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { MenuModel } from '../models/Menu.js'
 import { RoleModel } from '../models/Role.js'
 import { authMiddleware, type JwtPayload } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createMenuSchema, updateMenuSchema } from '../schemas/menuSchemas.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 const router = new Router({ prefix: '/api/menus' })
@@ -29,8 +29,10 @@ interface MenuTreeNode {
   schemaId: string | null
   url: string
   app: string
+  layout: string
+  target: string
+  microAppId: string | null
   children: MenuTreeNode[]
-  [key: string]: unknown
 }
 
 /**
@@ -42,7 +44,8 @@ function buildTree(menus: Record<string, unknown>[]): MenuTreeNode[] {
   const roots: MenuTreeNode[] = []
 
   for (const menu of menus) {
-    map.set(menu.id as string, { ...(menu as MenuTreeNode), children: [] })
+    const node: MenuTreeNode = { ...(menu as unknown as MenuTreeNode), children: [] }
+    map.set(node.id, node)
   }
 
   for (const menu of menus) {
@@ -88,19 +91,30 @@ router.get('/', requireAuth, requirePermission('menu:view'), async (ctx) => {
     filter.parentId = parentId === 'null' ? null : parentId
   }
 
-  const menus = await MenuModel.find(filter).sort({ sort: 1, createdAt: -1 })
-
   if (tree === 'true') {
+    const menus = await MenuModel.find(filter).sort({ sort: 1, createdAt: -1 })
     const items = menus.map((m) => m.toJSON())
     ctx.body = { success: true, data: buildTree(items) }
     return
   }
 
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
+  const skip = (page - 1) * pageSize
+
+  const [menus, total] = await Promise.all([
+    MenuModel.find(filter).sort({ sort: 1, createdAt: -1 }).skip(skip).limit(pageSize),
+    MenuModel.countDocuments(filter),
+  ])
+
   ctx.body = {
     success: true,
     data: {
       items: menus.map((m) => m.toJSON()),
-      total: menus.length,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
     },
   }
 })
@@ -130,7 +144,9 @@ router.get('/route', requireAuth, async (ctx) => {
 
   // 获取目标用户的角色和权限
   const { UserModel } = await import('../models/User.js')
-  const targetUser = await UserModel.findById(targetUserId)
+  const targetUser = mongoose.Types.ObjectId.isValid(targetUserId)
+    ? await UserModel.findById(targetUserId)
+    : null
 
   // 用户不存在时（如 dev fallback 无对应记录），返回全部 active 菜单，跳过权限过滤
   let userPermissions: Set<string> | null = null
@@ -184,7 +200,7 @@ router.get('/route', requireAuth, async (ctx) => {
 router.get('/:id', requireAuth, requirePermission('menu:view'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -221,11 +237,12 @@ router.post('/', requireAuth, requirePermission('menu:create'), validate(createM
     schemaId: string | null
     url: string
     app: string
+    layout: 'with-menu' | 'without-menu'
   }
 
   // Validate parentId exists if not null
   if (body.parentId) {
-    if (!uuidValidate(body.parentId)) {
+    if (!mongoose.Types.ObjectId.isValid(body.parentId)) {
       ctx.status = 400
       ctx.body = { success: false, error: { message: 'Invalid parent menu UUID.' } }
       return
@@ -239,7 +256,6 @@ router.post('/', requireAuth, requirePermission('menu:create'), validate(createM
   }
 
   const menu = await MenuModel.create({
-    _id: uuidv4(),
     name: body.name,
     parentId: body.parentId ?? null,
     path: body.path,
@@ -255,6 +271,7 @@ router.post('/', requireAuth, requirePermission('menu:create'), validate(createM
     schemaId: body.schemaId ?? null,
     url: body.url ?? '',
     app: body.app ?? '',
+    layout: body.layout ?? 'with-menu',
   })
 
   ctx.status = 201
@@ -267,7 +284,7 @@ router.post('/', requireAuth, requirePermission('menu:create'), validate(createM
 router.put('/:id', requireAuth, requirePermission('menu:edit'), validate(updateMenuSchema), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -285,7 +302,7 @@ router.put('/:id', requireAuth, requirePermission('menu:edit'), validate(updateM
   // If parentId is being changed, validate it
   if (body.parentId !== undefined && body.parentId !== null) {
     const newParentId = body.parentId as string
-    if (!uuidValidate(newParentId)) {
+    if (!mongoose.Types.ObjectId.isValid(newParentId)) {
       ctx.status = 400
       ctx.body = { success: false, error: { message: 'Invalid parent menu UUID.' } }
       return
@@ -332,6 +349,7 @@ router.put('/:id', requireAuth, requirePermission('menu:edit'), validate(updateM
   if (body.schemaId !== undefined) update.schemaId = body.schemaId
   if (body.url !== undefined) update.url = body.url
   if (body.app !== undefined) update.app = body.app
+  if (body.layout !== undefined) update.layout = body.layout
 
   const menu = await MenuModel.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: true })
 
@@ -345,7 +363,7 @@ router.put('/:id', requireAuth, requirePermission('menu:edit'), validate(updateM
 router.delete('/:id', requireAuth, requirePermission('menu:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

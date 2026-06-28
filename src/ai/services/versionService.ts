@@ -4,7 +4,6 @@
  * 提供版本的 CRUD 操作，支持自动版本号递增。
  */
 
-import { v4 as uuidv4 } from 'uuid'
 import { AIVersionModel, type IAIVersion } from '../models/version.js'
 
 /**
@@ -26,7 +25,6 @@ export async function createVersion(params: {
   const nextVersion = ((maxVersionDoc?.version as number) ?? 0) + 1
 
   return AIVersionModel.create({
-    _id: uuidv4(),
     conversationId: params.conversationId,
     messageId: params.messageId,
     type: params.type,

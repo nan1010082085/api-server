@@ -1,9 +1,7 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface IMenu {
-  _id: string
   tenantId: string
   parentId: string | null
   name: string
@@ -24,13 +22,14 @@ export interface IMenu {
   url: string
   /** 所属应用：shell=主应用菜单, admin=系统管理, 空字符串=通用 */
   app: string
+  /** 容器布局：with-menu=带菜单容器(ClassicSidebarLayout), without-menu=独立全屏(StandaloneLayout) */
+  layout: 'with-menu' | 'without-menu'
   createdAt: Date
   updatedAt: Date
 }
 
 const menuSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     parentId: { type: String, default: null, index: true },
     name: { type: String, required: true },
@@ -47,6 +46,7 @@ const menuSchema = new mongoose.Schema(
     schemaId: { type: String, default: null },
     url: { type: String, default: '' },
     app: { type: String, default: '', index: true },
+    layout: { type: String, enum: ['with-menu', 'without-menu'], default: 'with-menu' },
   },
   {
     timestamps: true,

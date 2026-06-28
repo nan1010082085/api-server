@@ -19,7 +19,7 @@ import { registerChatHandlers } from './ai/chatStreamHandler.js'
 let io: Server | null = null
 
 export function initSocket(httpServer: HttpServer): Server {
-  const origins = process.env.CORS_ORIGINS || 'http://localhost:4000,http://localhost:5051,http://localhost:5100,http://localhost:5200,http://localhost:5300,http://localhost:5400,http://127.0.0.1:4000,https://schema-form-platform.vercel.app'
+  const origins = process.env.CORS_ORIGINS || 'http://localhost:4000,http://localhost:5050,http://localhost:5051,http://localhost:5100,http://localhost:5200,http://localhost:5300,http://localhost:5400,http://localhost:4173,http://127.0.0.1:4000'
 
   io = new Server(httpServer, {
     path: '/ws',
@@ -73,7 +73,9 @@ export function initSocket(httpServer: HttpServer): Server {
     })
 
     // 用户身份注册（加入个人房间以接收通知）
-    socket.on('identify', (userId: string) => {
+    // 兼容客户端发送 { userId } 对象或直接发送字符串
+    socket.on('identify', (data: string | { userId: string }) => {
+      const userId = typeof data === 'string' ? data : data?.userId
       if (userId) {
         socket.join(`user:${userId}`)
         console.log(`[socket] ${socket.id} identified as user: ${userId}`)

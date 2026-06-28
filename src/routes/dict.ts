@@ -1,5 +1,5 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
+import mongoose from 'mongoose'
 import { DictTypeModel } from '../models/DictType.js'
 import { DictDataModel } from '../models/DictData.js'
 import { authMiddleware } from '../middleware/auth.js'
@@ -64,7 +64,7 @@ router.get('/types', requireAuth, requirePermission('dict:view'), async (ctx) =>
 // GET /api/dict/types/:id — 获取单个字典类型
 router.get('/types/:id', requireAuth, requirePermission('dict:view'), async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -92,7 +92,6 @@ router.post('/types', requireAuth, requirePermission('dict:create'), validate(cr
   }
 
   const dictType = await DictTypeModel.create({
-    _id: uuidv4(),
     name: body.name,
     code: body.code,
     status: body.status ?? 'active',
@@ -108,7 +107,7 @@ router.put('/types/:id', requireAuth, requirePermission('dict:edit'), validate(u
   const { id } = ctx.params
   const body = ctx.request.body as { name?: string; code?: string; status?: string; remark?: string }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -143,7 +142,7 @@ router.put('/types/:id', requireAuth, requirePermission('dict:edit'), validate(u
 router.delete('/types/:id', requireAuth, requirePermission('dict:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -177,7 +176,7 @@ router.get('/data', requireAuth, requirePermission('dict:view'), async (ctx) => 
 
   const filter: Record<string, unknown> = {}
   if (dictTypeId) {
-    if (!uuidValidate(dictTypeId)) {
+    if (!mongoose.Types.ObjectId.isValid(dictTypeId)) {
       ctx.status = 400
       ctx.body = { success: false, error: { message: 'Invalid dictTypeId UUID.' } }
       return
@@ -215,19 +214,48 @@ router.get('/data', requireAuth, requirePermission('dict:view'), async (ctx) => 
 })
 
 // GET /api/dict/data/by-type/:code — 按字典类型编码获取数据项（兼容旧接口，返回启用项）
+// 支持可选分页：传入 page/pageSize 时返回分页格式，否则返回向后兼容的数组格式
 router.get('/data/by-type/:code', async (ctx) => {
   const { code } = ctx.params
 
   const dictType = await DictTypeModel.findOne({ code, status: 'active' })
   if (!dictType) {
-    ctx.body = { success: true, data: [] }
+    if (ctx.query.page || ctx.query.pageSize) {
+      ctx.body = { success: true, data: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 } }
+    } else {
+      ctx.body = { success: true, data: [] }
+    }
     return
   }
 
-  const items = await DictDataModel.find({
-    dictTypeId: dictType._id,
-    status: 'active',
-  }).sort({ sort: 1, createdAt: -1 })
+  const filter = { dictTypeId: dictType._id, status: 'active' }
+
+  // 如果传入分页参数，返回分页格式
+  if (ctx.query.page || ctx.query.pageSize) {
+    const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
+    const skip = (page - 1) * pageSize
+
+    const [docs, total] = await Promise.all([
+      DictDataModel.find(filter).sort({ sort: 1, createdAt: -1 }).skip(skip).limit(pageSize),
+      DictDataModel.countDocuments(filter),
+    ])
+
+    ctx.body = {
+      success: true,
+      data: {
+        items: docs.map((d) => ({ label: d.label, value: d.value })),
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    }
+    return
+  }
+
+  // 无分页参数：向后兼容返回数组格式
+  const items = await DictDataModel.find(filter).sort({ sort: 1, createdAt: -1 })
 
   ctx.body = {
     success: true,
@@ -238,7 +266,7 @@ router.get('/data/by-type/:code', async (ctx) => {
 // GET /api/dict/data/:id — 获取单个字典数据
 router.get('/data/:id', requireAuth, requirePermission('dict:view'), async (ctx) => {
   const { id } = ctx.params
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -282,7 +310,6 @@ router.post('/data', requireAuth, requirePermission('dict:create'), validate(cre
   }
 
   const dictData = await DictDataModel.create({
-    _id: uuidv4(),
     dictTypeId: body.dictTypeId,
     label: body.label,
     value: body.value,
@@ -306,7 +333,7 @@ router.put('/data/:id', requireAuth, requirePermission('dict:edit'), validate(up
     remark?: string
   }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -342,7 +369,7 @@ router.put('/data/:id', requireAuth, requirePermission('dict:edit'), validate(up
 router.delete('/data/:id', requireAuth, requirePermission('dict:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

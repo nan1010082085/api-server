@@ -1,5 +1,5 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
+import { v4 as uuidv4 } from 'uuid'
 import { FormSchemaModel } from '../models/FormSchema.js'
 import { PublishedSchemaModel } from '../models/PublishedSchema.js'
 import { authMiddleware } from '../middleware/auth.js'
@@ -7,6 +7,7 @@ import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createSchemaSchema, updateSchemaSchema, importSchemaSchema } from '../schemas/schemaSchemas.js'
 import { eventBus } from '../services/eventBus.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -95,7 +96,7 @@ function regenerateIds(nodes: WidgetNode[]): void {
  * Check if a string is a valid UUID.
  */
 function isUUID(str: string): boolean {
-  return uuidValidate(str)
+  return mongoose.Types.ObjectId.isValid(str)
 }
 
 // ────────────────────────────────────────────
@@ -168,7 +169,6 @@ router.post('/', requireAuth, requirePermission('schema:create'), validate(creat
   const userId = (ctx.state.user as { id: string }).id
 
   const schema = await FormSchemaModel.create({
-    _id: uuidv4(),
     editId: uuidv4(),
     version,
     name: name.trim(),
@@ -230,7 +230,6 @@ router.post('/import', requireAuth, requirePermission('schema:create'), validate
   const userId = (ctx.state.user as { id: string }).id
 
   const schema = await FormSchemaModel.create({
-    _id: uuidv4(),
     editId,
     version,
     name: name.trim(),
@@ -249,18 +248,33 @@ router.post('/import', requireAuth, requirePermission('schema:create'), validate
 // Lists all published schemas (no auth required).
 // ────────────────────────────────────────────
 router.get('/published', requireAuth, async (ctx) => {
-  const items = await PublishedSchemaModel.find({}, { json: 0 }).sort({ updatedAt: -1 })
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
+  const skip = (page - 1) * pageSize
+
+  const [publishedDocs, total] = await Promise.all([
+    PublishedSchemaModel.find({}, { json: 0 }).sort({ updatedAt: -1 }).skip(skip).limit(pageSize),
+    PublishedSchemaModel.countDocuments({}),
+  ])
+
+  const items = publishedDocs.map((item) => ({
+    id: item._id,
+    name: item.name,
+    type: item.type,
+    publishId: item.publishId,
+    version: item.version,
+    updatedAt: item.updatedAt,
+  }))
 
   ctx.body = {
     success: true,
-    data: items.map((item) => ({
-      id: item._id,
-      name: item.name,
-      type: item.type,
-      publishId: item.publishId,
-      version: item.version,
-      updatedAt: item.updatedAt,
-    })),
+    data: {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
   }
 })
 
@@ -271,7 +285,7 @@ router.get('/published', requireAuth, async (ctx) => {
 router.get('/published/:sourceId', requireAuth, async (ctx) => {
   const { sourceId } = ctx.params
 
-  if (!uuidValidate(sourceId)) {
+  if (!mongoose.Types.ObjectId.isValid(sourceId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -452,7 +466,7 @@ router.delete('/:param/versions/:version', requireAuth, requirePermission('schem
 router.get('/:id', requireAuth, async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -481,7 +495,7 @@ router.put('/:id', requireAuth, requirePermission('schema:edit'), validate(updat
     name?: string; json?: unknown; status?: string; type?: string; thumbnail?: string
   }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -570,7 +584,7 @@ router.post('/:id/publish', requireAuth, requirePermission('schema:publish'), as
   const { id } = ctx.params
   const { version: bodyVersion } = ctx.request.body as { version?: string }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -613,7 +627,6 @@ router.post('/:id/publish', requireAuth, requirePermission('schema:publish'), as
         publishedAt: now,
       },
       $setOnInsert: {
-        _id: uuidv4(),
         sourceId: draft.editId,
         tenantId: draft.tenantId,
       },
@@ -633,7 +646,7 @@ router.post('/:id/publish', requireAuth, requirePermission('schema:publish'), as
 router.delete('/:id', requireAuth, requirePermission('schema:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

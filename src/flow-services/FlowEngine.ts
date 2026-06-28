@@ -63,7 +63,6 @@ export class FlowEngine {
     outcome?: string
   }): Promise<void> {
     await ApprovalLogModel.create({
-      _id: uuidv4(),
       ...params,
     })
   }
@@ -231,7 +230,6 @@ export class FlowEngine {
     const model = parseBpmnGraph(version.graph)
 
     const instance = await FlowInstanceModel.create({
-      _id: uuidv4(),
       definitionId,
       versionId: version._id,
       version: version.version,
@@ -362,7 +360,6 @@ export class FlowEngine {
               if (!existingTask) {
                 token.state = 'waiting'
                 await TaskInstanceModel.create({
-                  _id: uuidv4(),
                   instanceId: instance._id,
                   nodeId: token.nodeId,
                   nodeName: node.config.label,
@@ -422,7 +419,6 @@ export class FlowEngine {
               token.state = 'waiting'
               for (let i = 0; i < assignees.length; i++) {
                 await TaskInstanceModel.create({
-                  _id: uuidv4(),
                   instanceId: instance._id,
                   nodeId: token.nodeId,
                   nodeName: node.config.label,
@@ -545,7 +541,6 @@ export class FlowEngine {
               const fireAt = parseTimerValue(timerType, timerValue)
 
               await TimerJobModel.create({
-                _id: uuidv4(),
                 instanceId: instance._id,
                 tokenId: token.tokenId,
                 nodeId: token.nodeId,
@@ -743,7 +738,6 @@ export class FlowEngine {
                 // No message yet — create pending task and subscribe for real-time delivery
                 token.state = 'waiting'
                 await TaskInstanceModel.create({
-                  _id: uuidv4(),
                   instanceId: instance._id,
                   nodeId: token.nodeId,
                   nodeName: node.config.label,
@@ -767,7 +761,6 @@ export class FlowEngine {
             if (!existingTask) {
               token.state = 'waiting'
               await TaskInstanceModel.create({
-                _id: uuidv4(),
                 instanceId: instance._id,
                 nodeId: token.nodeId,
                 nodeName: node.config.label,

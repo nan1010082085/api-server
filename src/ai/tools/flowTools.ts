@@ -127,22 +127,21 @@ export const saveAndBindSchemaTool = tool(
   async ({ widgets, schemaName, flowId, nodeId }): Promise<string> => {
     const { v4: uuidv4 } = await import('uuid')
     const editId = uuidv4()
-    const schemaId = uuidv4()
     const now = new Date()
     const version = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0'), String(now.getHours()).padStart(2, '0'), String(now.getMinutes()).padStart(2, '0'), String(now.getSeconds()).padStart(2, '0')].join('')
     const name = schemaName || `AI Generated ${now.toISOString()}`
 
-    const schema = await FormSchemaModel.create({ _id: schemaId, editId, version, name, type: 'form', status: 'draft', json: widgets })
+    const schema = await FormSchemaModel.create({ editId, version, name, type: 'form', status: 'draft', json: widgets })
     const { PublishedSchemaModel } = await import('../../models/PublishedSchema.js')
     const publishId = uuidv4()
-    await PublishedSchemaModel.create({ _id: uuidv4(), sourceId: editId, publishId, name: schema.name, type: schema.type, json: schema.json, version: schema.version, publishedAt: now })
+    await PublishedSchemaModel.create({ sourceId: editId, publishId, name: schema.name, type: schema.type, json: schema.json, version: schema.version, publishedAt: now })
 
     let bindingResult: Record<string, unknown> | undefined
-    if (flowId && nodeId) bindingResult = await bindSchemaToFlowNode(flowId, nodeId, schemaId, publishId, version)
+    if (flowId && nodeId) bindingResult = await bindSchemaToFlowNode(flowId, nodeId, schema._id, publishId, version)
 
     return JSON.stringify({
       success: true,
-      data: { schemaId, editId, publishId, name, version, binding: bindingResult },
+      data: { schemaId: schema._id, editId, publishId, name, version, binding: bindingResult },
       summary: flowId && nodeId ? `已创建并绑定 Schema "${name}"` : `已创建 Schema "${name}"`,
     } satisfies ToolResult)
   },
@@ -266,11 +265,10 @@ export const updateFlowTool = tool(
     if (!confirmed) return JSON.stringify({ success: false, error: '用户取消操作' } satisfies ToolResult)
 
     if (flowId) {
-      const { v4: uuidv4 } = await import('uuid')
       const now = new Date()
       const pad = (n: number, len: number) => String(n).padStart(len, '0')
       const nextVersion = `v${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}`
-      const newVersion = await FlowVersionModel.create({ _id: uuidv4(), definitionId: flowId, version: nextVersion, graph: flowGraph })
+      const newVersion = await FlowVersionModel.create({ definitionId: flowId, version: nextVersion, graph: flowGraph })
       await FlowDefinitionModel.findByIdAndUpdate(flowId, { currentVersionId: newVersion._id })
     }
 
@@ -314,12 +312,11 @@ async function bindSchemaToFlowNode(
   const updatedNodes = [...nodes]
   updatedNodes[nodeIndex] = { ...updatedNodes[nodeIndex], data: { ...nodeData, formSchemaId: schemaId, formPublishId: publishId, formVersion: version, formMode: nodeData.formMode ?? 'edit' } }
 
-  const { v4: uuidv4 } = await import('uuid')
   const now = new Date()
   const pad = (n: number, len: number) => String(n).padStart(len, '0')
   const nextVersion = `v${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}`
 
-  const newVersion = await FlowVersionModel.create({ _id: uuidv4(), definitionId: flowId, version: nextVersion, graph: { nodes: updatedNodes, edges: (graph.edges as unknown[]) ?? [] } })
+  const newVersion = await FlowVersionModel.create({ definitionId: flowId, version: nextVersion, graph: { nodes: updatedNodes, edges: (graph.edges as unknown[]) ?? [] } })
   await FlowDefinitionModel.findByIdAndUpdate(flowId, { currentVersionId: newVersion._id })
 
   return { flowId, nodeId, schemaId, publishId, flowVersionId: newVersion._id, flowVersion: nextVersion }

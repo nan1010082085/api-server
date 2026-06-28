@@ -1,6 +1,5 @@
 import mongoose from 'mongoose'
 import bcrypt from 'bcryptjs'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 const SALT_ROUNDS = 10
@@ -8,7 +7,6 @@ const SALT_ROUNDS = 10
 export type UserStatus = 'active' | 'inactive' | 'disabled'
 
 export interface IUser {
-  _id: string
   username: string
   password: string
   displayName: string
@@ -26,7 +24,6 @@ export interface IUser {
 
 const userSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     username: { type: String, required: true },
     password: { type: String, required: true },
     displayName: { type: String, required: true },

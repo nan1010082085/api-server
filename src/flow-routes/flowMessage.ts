@@ -71,8 +71,19 @@ router.post('/complete', requireAuth, validate(completeMessageSchema), async (ct
 // GET /api/flow-messages/pending/:channel — get pending messages for a channel
 router.get('/pending/:channel', requireAuth, async (ctx) => {
   const { channel } = ctx.params
-  const messages = await messageQueue.getPendingMessages(channel)
-  ctx.body = { success: true, data: messages }
+  const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
+  const filter = { channel, status: 'pending' as const }
+
+  const [items, total] = await Promise.all([
+    FlowMessageModel.find(filter).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize),
+    FlowMessageModel.countDocuments(filter),
+  ])
+
+  ctx.body = {
+    success: true,
+    data: { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+  }
 })
 
 // GET /api/flow-messages/history — get message history with pagination

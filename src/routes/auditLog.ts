@@ -1,8 +1,8 @@
 import Router from '@koa/router'
-import { validate as uuidValidate } from 'uuid'
 import { AuditLogModel } from '../models/AuditLog.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 const router = new Router({ prefix: '/api/audit-logs' })
@@ -75,7 +75,7 @@ router.get('/', requireAuth, requirePermission('audit:view'), async (ctx) => {
 router.get('/:id', requireAuth, requirePermission('audit:view'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

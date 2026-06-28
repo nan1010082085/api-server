@@ -1,5 +1,4 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { PostModel } from '../models/Post.js'
 import { UserModel } from '../models/User.js'
 import { authMiddleware } from '../middleware/auth.js'
@@ -7,6 +6,7 @@ import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createPostSchema, updatePostSchema } from '../schemas/postSchemas.js'
 import { getCurrentTenantId } from '../middleware/tenantContext.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 const router = new Router({ prefix: '/api/posts' })
@@ -66,7 +66,7 @@ router.get('/all', requireAuth, requirePermission('post:view'), async (ctx) => {
 router.get('/:id', requireAuth, requirePermission('post:view'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -117,7 +117,6 @@ router.post('/', requireAuth, requirePermission('post:create'), validate(createP
   }
 
   const post = await PostModel.create({
-    _id: uuidv4(),
     postCode,
     postName,
     sort,
@@ -135,7 +134,7 @@ router.post('/', requireAuth, requirePermission('post:create'), validate(createP
 router.put('/:id', requireAuth, requirePermission('post:edit'), validate(updatePostSchema), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -195,7 +194,7 @@ router.put('/:id', requireAuth, requirePermission('post:edit'), validate(updateP
 router.delete('/:id', requireAuth, requirePermission('post:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

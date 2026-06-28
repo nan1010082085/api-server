@@ -1,7 +1,7 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { FormSchemaModel } from '../models/FormSchema.js'
 import { PublishedSchemaModel } from '../models/PublishedSchema.js'
+import mongoose from 'mongoose'
 
 const router = new Router({ prefix: '/api/mock' })
 
@@ -66,7 +66,7 @@ function walkWidgetTree(nodes: WidgetNode[], result: Record<string, unknown>): v
 router.get('/:schemaId', async (ctx) => {
   const { schemaId } = ctx.params
 
-  if (!uuidValidate(schemaId)) {
+  if (!mongoose.Types.ObjectId.isValid(schemaId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return

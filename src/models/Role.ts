@@ -1,11 +1,9 @@
 import mongoose from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export type DataScope = 'all' | 'dept' | 'self' | 'custom'
 
 export interface IRole {
-  _id: string
   tenantId: string
   name: string
   description?: string
@@ -18,7 +16,6 @@ export interface IRole {
 
 const roleSchema = new mongoose.Schema(
   {
-    _id: { type: String, default: uuidv4 },
     tenantId: { type: String, default: '000000', index: true },
     name: { type: String, required: true, unique: true },
     description: { type: String },

@@ -119,6 +119,8 @@ router.get('/avg-duration', requireAuth, requireFlowMonitor, async (ctx) => {
 
 // GET /api/flow-monitor/node-stats — 各节点的完成次数和平均耗时
 router.get('/node-stats', requireAuth, requireFlowMonitor, async (ctx) => {
+  const limit = Math.min(200, Math.max(1, parseInt(ctx.query.limit as string) || 50))
+
   const stats = await TaskInstanceModel.aggregate([
     { $match: { status: 'completed' } },
     {
@@ -137,6 +139,7 @@ router.get('/node-stats', requireAuth, requireFlowMonitor, async (ctx) => {
       },
     },
     { $sort: { count: -1 } },
+    { $limit: limit },
     {
       $project: {
         _id: 0,

@@ -1,11 +1,11 @@
 import Router from '@koa/router'
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid'
 import { ModelConfigModel } from '../models/ModelConfig.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createModelConfigSchema, updateModelConfigSchema, testModelConfigSchema } from '../schemas/modelConfigSchemas.js'
 import { clearLLMCache } from '../ai/services/llmCache.js'
+import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -72,7 +72,6 @@ router.post('/', requireAuth, requirePermission('model_config:create'), validate
   }
 
   const config = await ModelConfigModel.create({
-    _id: uuidv4(),
     name: name.trim(),
     provider,
     model: model.trim(),
@@ -95,7 +94,7 @@ router.post('/', requireAuth, requirePermission('model_config:create'), validate
 router.get('/:id', requireAuth, async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -120,7 +119,7 @@ router.put('/:id', requireAuth, requirePermission('model_config:edit'), validate
   const { id } = ctx.params
   const body = ctx.request.body as Record<string, unknown>
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -165,7 +164,7 @@ router.put('/:id', requireAuth, requirePermission('model_config:edit'), validate
 router.delete('/:id', requireAuth, requirePermission('model_config:delete'), async (ctx) => {
   const { id } = ctx.params
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
@@ -194,7 +193,7 @@ router.post('/:id/test', requireAuth, validate(testModelConfigSchema), async (ct
   const { id } = ctx.params
   const { message } = ctx.request.body as { message?: string }
 
-  if (!uuidValidate(id)) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
     return
