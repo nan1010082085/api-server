@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken'
 import { JWT_SECRET } from '../config/jwt.js'
 import { tenantStorage } from './tenantContext.js'
 import { cacheExists } from '../utils/cache.js'
+import { SSOSessionModel } from '../models/SSOSession.js'
+import { UserModel } from '../models/User.js'
 
 export interface JwtPayload {
   id: string
@@ -35,6 +37,37 @@ function syncTenantFromUser(ctx: { state: Record<string, unknown> }): void {
 async function isTokenBlacklisted(jti?: string): Promise<boolean> {
   if (!jti) return false
   return cacheExists(`token:blacklist:${jti}`)
+}
+
+/**
+ * Try to resolve user from SSO session cookie.
+ * Used as fallback when Authorization header is missing (e.g., micro-apps loaded via qiankun).
+ */
+async function resolveUserFromSSOSession(ctx: { cookies: { get: (name: string) => string | undefined } }): Promise<JwtPayload | null> {
+  const sessionToken = ctx.cookies.get('sso_session')
+  if (!sessionToken) return null
+
+  try {
+    const session = await SSOSessionModel.findOne({
+      sessionToken,
+      expiresAt: { $gt: new Date() },
+    })
+    if (!session) return null
+
+    const user = await UserModel.findById(session.userId).lean() as Record<string, unknown> | null
+    if (!user || user.status !== 'active') return null
+
+    return {
+      id: (user._id as { toString(): string }).toString(),
+      username: user.username as string,
+      roles: (user.roles as string[]) || [],
+      tenantId: (user.tenantId as string) || '000000',
+      deptId: (user.deptId as string) || null,
+      tokenType: 'access',
+    }
+  } catch {
+    return null
+  }
 }
 
 export function authMiddleware(options?: { required?: boolean }): Middleware {
@@ -86,6 +119,15 @@ export function authMiddleware(options?: { required?: boolean }): Middleware {
     }
     const authHeader = ctx.get('Authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      // No Authorization header — try SSO session cookie as fallback
+      // This enables SSO for micro-apps (editor/flow/ai) loaded via qiankun
+      const ssoUser = await resolveUserFromSSOSession(ctx)
+      if (ssoUser) {
+        ctx.state.user = ssoUser
+        syncTenantFromUser(ctx)
+        await next()
+        return
+      }
       if (required) {
         ctx.status = 401
         ctx.body = { success: false, error: { message: 'Authentication required.' } }

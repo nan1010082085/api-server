@@ -86,7 +86,6 @@ const messageSchema = new mongoose.Schema<AIConversationMessage>(
 
 const aiConversationSchema = new mongoose.Schema<IAIConversation>(
   {
-    _id: { type: String, required: true },
     source: { type: String, enum: ['editor', 'flow', 'page', 'standalone'], required: true },
     schemaId: { type: String },
     flowId: { type: String },
@@ -100,7 +99,7 @@ const aiConversationSchema = new mongoose.Schema<IAIConversation>(
     timestamps: true,
     toJSON: {
       transform(_doc: unknown, ret: Record<string, unknown>) {
-        ret.id = ret._id
+        ret.id = String(ret._id)
         delete ret._id
         delete ret.__v
       },

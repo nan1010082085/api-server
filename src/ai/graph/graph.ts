@@ -137,17 +137,12 @@ async function routerNode(
     return {}
   }
 
-  // 自动模式：关键词快速匹配 + LLM 兜底
+  // v2: 所有 standalone 请求都经过 requirementAnalyzer，router 只做初步标记
   const lower = (state.messages[state.messages.length - 1]?.content as string ?? '').toLowerCase()
   const isFlow = /流程|审批|节点|bpmn|workflow|开始|结束/.test(lower)
   const isPage = /列表|统计|详情|仪表盘|dashboard|搜索列表|数据表格/.test(lower)
   const isForm = /表单|表|输入|填写|编辑/.test(lower)
   const isGeneral = /你好|你是谁|能做什么|帮助|介绍/.test(lower)
-
-  if (isGeneral) {
-    console.log(`[router] 关键词匹配 -> general`)
-    return { session: { ...state.session, currentAgent: 'general' }, task: { ...state.task, type: 'general' }, tools: { ...state.tools, needsTool: false } }
-  }
 
   // 多意图检测：同时包含页面相关和表单/流程相关关键词时，创建 chain
   if (isPage && (isForm || isFlow)) {
@@ -174,54 +169,14 @@ async function routerNode(
     return { session: { ...state.session, currentAgent: 'page' }, task: { ...state.task, type: 'generate_simple', chain: [{ agent: 'page', description: '生成业务页面', status: 'pending' }], currentStepIndex: 0 }, tools: { ...state.tools, needsTool: true } }
   }
 
-  // 关键词无法匹配，使用 LLM 分析（thinker）
-  console.log(`[router] 关键词无法匹配，执行 LLM 分析...`)
-  try {
-    const lastHumanMessage = [...state.messages].reverse().find((m) => m.constructor.name === 'HumanMessage')
-    const userContent = lastHumanMessage
-      ? (typeof lastHumanMessage.content === 'string' ? lastHumanMessage.content : JSON.stringify(lastHumanMessage.content))
-      : ''
-
-    const model = await getLLM({ model: getModelForTask('analyze'), temperature: 0, maxTokens: 4096, jsonMode: true })
-    const stream = await model.stream([
-      new SystemMessage(ROUTER_SYSTEM_PROMPT),
-      new HumanMessage(userContent),
-    ])
-
-    let raw = ''
-    for await (const chunk of stream) {
-      const content = typeof chunk.content === 'string' ? chunk.content : ''
-      if (content) raw += content
-    }
-
-    const jsonMatch = raw.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as { target: string; steps?: Array<{ agent: string; description: string }> }
-
-      if (parsed.target === 'chain' && Array.isArray(parsed.steps) && parsed.steps.length > 0) {
-        const chain = parsed.steps.map((step) => ({ agent: step.agent as 'editor' | 'flow' | 'page', description: step.description, status: 'pending' as const }))
-        console.log(`[router] LLM 链式任务: ${chain.length} 步`)
-        return { session: { ...state.session, currentAgent: chain[0].agent }, task: { ...state.task, type: 'generate_simple', chain, currentStepIndex: 0 }, tools: { ...state.tools, needsTool: true } }
-      }
-
-      if (parsed.target === 'general') {
-        console.log(`[router] LLM 路由到 general`)
-        return { session: { ...state.session, currentAgent: 'general' }, task: { ...state.task, type: 'general' }, tools: { ...state.tools, needsTool: false } }
-      }
-      for (const target of ['flow', 'page'] as const) {
-        if (parsed.target === target) {
-          console.log(`[router] LLM 路由到 ${target}`)
-          return { session: { ...state.session, currentAgent: target }, task: { ...state.task, type: 'generate_simple', chain: [{ agent: target, description: `生成${target}`, status: 'pending' }], currentStepIndex: 0 }, tools: { ...state.tools, needsTool: true } }
-        }
-      }
-    }
-
-    console.log(`[router] LLM 默认路由到 editor`)
-    return { session: { ...state.session, currentAgent: 'editor' }, task: { ...state.task, type: 'generate_simple', chain: [{ agent: 'editor', description: '生成表单', status: 'pending' }], currentStepIndex: 0 }, tools: { ...state.tools, needsTool: true } }
-  } catch (err) {
-    console.warn(`[router] LLM 分析失败，降级到 editor`)
+  if (isForm) {
+    console.log(`[router] 关键词匹配 -> editor`)
     return { session: { ...state.session, currentAgent: 'editor' }, task: { ...state.task, type: 'generate_simple', chain: [{ agent: 'editor', description: '生成表单', status: 'pending' }], currentStepIndex: 0 }, tools: { ...state.tools, needsTool: true } }
   }
+
+  // general 或无法匹配：交给 requirementAnalyzer 做深度分析
+  console.log(`[router] 交给 requirementAnalyzer 深度分析`)
+  return { session: { ...state.session, currentAgent: 'general' }, task: { ...state.task, type: 'general' }, tools: { ...state.tools, needsTool: false } }
 }
 
 // ────────────────────────────────────────────

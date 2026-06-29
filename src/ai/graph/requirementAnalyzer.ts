@@ -5,6 +5,7 @@
  * 分析意图、提取实体、评估完整性、生成确认问题。
  *
  * 支持工具调用：搜索流程、获取流程详情等，以便获取上下文信息。
+ * 所有请求都会先进行 RAG 检索，获取相关上下文。
  */
 
 import { SystemMessage, HumanMessage, AIMessage, ToolMessage } from '@langchain/core/messages'
@@ -15,6 +16,9 @@ import { callLLMWithFallback } from './agentErrorHandler.js'
 import { logger } from '../../utils/logger.js'
 import { allTools } from '../tools/allTools.js'
 import type { AgentStateAnnotation, RequirementAnalysis } from './state.js'
+
+// RAG 检索工具名称
+const RAG_TOOL_NAME = 'rag_search'
 
 // ────────────────────────────────────────────
 // System Prompt
@@ -242,6 +246,27 @@ export async function requirementAnalyzerNode(
     source: state.context.source,
   })
 
+  // ── 第一步：RAG 检索，获取相关上下文 ──
+  let ragContext = ''
+  try {
+    const ragTool = allTools.find(t => t.name === RAG_TOOL_NAME)
+    if (ragTool) {
+      const ragResult = await (ragTool as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> }).invoke({
+        query: userContent,
+        limit: 5,
+      })
+      if (ragResult && typeof ragResult === 'string' && ragResult.length > 0) {
+        ragContext = ragResult
+        logger.info({
+          msg: '[requirementAnalyzer] RAG search completed',
+          resultLength: ragContext.length,
+        })
+      }
+    }
+  } catch (err) {
+    logger.warn({ msg: '[requirementAnalyzer] RAG search failed, continuing without context', error: err })
+  }
+
   // 所有模式都进行需求分析（包括显式模式）
   // 显式模式会将用户选择的 Agent 作为上下文传入 LLM
   try {
@@ -254,6 +279,11 @@ export async function requirementAnalyzerNode(
 
     // 构建上下文信息
     let contextInfo = userContent
+
+    // 添加 RAG 检索结果
+    if (ragContext) {
+      contextInfo += `\n\n[RAG 检索结果]\n${ragContext}`
+    }
 
     // 显式模式：告知 LLM 用户已选择的 Agent
     if (state.context.source !== 'standalone') {

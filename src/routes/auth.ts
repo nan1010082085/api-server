@@ -347,7 +347,6 @@ router.post('/register', async (ctx) => {
 
   // 创建用户（自动分配普通用户角色）
   const user = await UserModel.create({
-    _id: crypto.randomUUID(),
     username,
     password,
     displayName: displayName || username,
