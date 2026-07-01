@@ -7,7 +7,7 @@
 
 import { SystemMessage, HumanMessage } from '@langchain/core/messages'
 import { getLLM } from '../services/llmCache.js'
-import { getModelForTask } from './agentBase.js'
+import { getModelForTask, resolveUserModel } from './agentBase.js'
 import { logger } from '../../utils/logger.js'
 import type { AgentStateAnnotation, TaskPlan, TaskPlanStep } from './state.js'
 
@@ -310,7 +310,7 @@ ${JSON.stringify(userConfirmations, null, 2)}`
     }
 
     const model = await getLLM({
-      model: getModelForTask('analyze'),
+      model: resolveUserModel(state.interaction.preferences, getModelForTask('analyze')),
       temperature: 0,
       maxTokens: 4096,
       jsonMode: true,

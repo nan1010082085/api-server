@@ -12,13 +12,9 @@
 import { getLLM } from '../services/llmCache.js'
 import { HumanMessage, SystemMessage, AIMessage, AIMessageChunk } from '@langchain/core/messages'
 import { buildFlowSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
-import { getMetadata } from '../tools/toolHandlers.js'
-import { flowTools } from '../tools/flowTools.js'
-import { collaborationTools } from '../tools/collaborationTools.js'
-import { searchSchemasTool } from '../tools/schemaTools.js'
-import { getSchemaDetailTool } from '../tools/editorTools.js'
-import { ragSearchTool } from '../tools/ragTools.js'
-import { truncateMessagesForLangGraph } from './agentBase.js'
+import { getMetadata } from '../services/metadataService.js'
+import { getToolsByNames } from '../tools/registry.js'
+import { truncateMessagesForLangGraph, resolveUserModel, getModelForTask, formatPreferencesForPrompt } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { buildContextInjection, type AgentContextPayload } from './contextCarrier.js'
 import { retrieveRagContext } from './ragContextRetriever.js'
@@ -97,10 +93,8 @@ function buildContextMessage(state: typeof AgentStateAnnotation.State): string {
   }
 
   // Inject user preferences
-  if (state.interaction.preferences && Object.keys(state.interaction.preferences).length > 0) {
-    const prefs = Object.entries(state.interaction.preferences)
-      .map(([k, v]) => `- ${k}: ${v}`)
-      .join('\n')
+  const prefs = formatPreferencesForPrompt(state.interaction.preferences)
+  if (prefs) {
     prompt += `\n\n--- 用户偏好 ---\n${prefs}`
   }
 
@@ -152,7 +146,17 @@ export async function flowAgentNode(
   const systemPrompt = await getFlowSystemPrompt()
   const userContent = buildContextMessage(state) + ragContext.context
 
-  const model = (await getLLM({ temperature: 0.7, maxTokens: 8192 })).bindTools([...flowTools, ...collaborationTools, searchSchemasTool, getSchemaDetailTool, ragSearchTool])
+  const flowToolNames = [
+    'flow__search', 'flow__get_detail', 'flow__get_node_schema', 'flow__search_users',
+    'flow__validate', 'schema__search', 'schema__get_detail', 'rag__search',
+    'update_flow', 'generate_schema', 'save_and_bind_schema', 'bind_schema_to_flow_node',
+    'request_collaboration',
+  ]
+  const model = (await getLLM({
+    model: resolveUserModel(state.interaction.preferences, getModelForTask('generate_complex')),
+    temperature: 0.7,
+    maxTokens: 8192,
+  })).bindTools(getToolsByNames(flowToolNames))
 
   // 截断历史消息以避免 token 超限
   const truncatedHistory = truncateMessagesForLangGraph(state.messages)

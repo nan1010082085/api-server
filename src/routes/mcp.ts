@@ -1,5 +1,5 @@
 /**
- * MCP routes — SSE transport for Schema, Flow, and Widget MCP servers.
+ * MCP routes — SSE transport for Schema, Flow, Widget, RAG, and Industry MCP servers.
  *
  * Each MCP server exposes:
  *   GET  /api/mcp/{domain}/sse       — establish SSE stream (long-lived)
@@ -11,6 +11,8 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
 import { createSchemaServer } from '../ai/mcp/schemaServer.js'
 import { createFlowServer } from '../ai/mcp/flowServer.js'
 import { createWidgetServer } from '../ai/mcp/widgetServer.js'
+import { createRagServer } from '../ai/mcp/ragServer.js'
+import { createIndustryServer } from '../ai/mcp/industryServer.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 const router = new Router({ prefix: '/api/mcp' })
@@ -23,6 +25,8 @@ const serverFactories: Record<string, () => McpServer> = {
   schema: createSchemaServer,
   flow: createFlowServer,
   widget: createWidgetServer,
+  rag: createRagServer,
+  industry: createIndustryServer,
 }
 
 // ── SSE connection endpoint ──

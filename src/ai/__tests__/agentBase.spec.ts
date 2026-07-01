@@ -17,6 +17,8 @@ import {
   validateApiKey,
   truncateMessages,
   estimateTokens,
+  resolveUserModel,
+  formatPreferencesForPrompt,
 } from '../graph/agentBase.js'
 import type { AIConversationState } from '../graph/state.js'
 
@@ -179,6 +181,30 @@ describe('validateApiKey', () => {
   it('throws when key is too short', () => {
     process.env.DEEPSEEK_API_KEY = 'short'
     expect(() => validateApiKey()).toThrow('too short')
+  })
+})
+
+describe('resolveUserModel', () => {
+  it('returns user-selected model when valid', () => {
+    expect(resolveUserModel({ llmModel: 'deepseek-v4-pro' }, 'deepseek-v4-flash')).toBe('deepseek-v4-pro')
+  })
+
+  it('falls back when model is missing or invalid', () => {
+    expect(resolveUserModel({}, 'deepseek-v4-flash')).toBe('deepseek-v4-flash')
+    expect(resolveUserModel({ llmModel: 'unknown-model' }, 'deepseek-v4-flash')).toBe('deepseek-v4-flash')
+  })
+})
+
+describe('formatPreferencesForPrompt', () => {
+  it('formats user-facing preferences and excludes llmModel', () => {
+    const result = formatPreferencesForPrompt({
+      replyLanguage: 'zh-CN',
+      replyStyle: 'detailed',
+      codeComment: 'yes',
+      llmModel: 'deepseek-v4-pro',
+    })
+    expect(result).toContain('replyLanguage: zh-CN')
+    expect(result).not.toContain('llmModel')
   })
 })
 

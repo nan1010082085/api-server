@@ -21,12 +21,13 @@ import type {
 export class DeepSeekProvider implements LLMProvider {
   readonly name = 'deepseek'
   readonly models = [
+    'deepseek-v4-flash',
     'deepseek-v4-pro',
     'deepseek-v4',
     'deepseek-r1',
     'deepseek-v3',
   ]
-  readonly defaultModel = 'deepseek-v4-pro'
+  readonly defaultModel = 'deepseek-v4-flash'
   readonly costPer1kPromptTokens = 0.0002
   readonly costPer1kCompletionTokens = 0.0008
   readonly qualityScore = 85

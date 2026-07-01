@@ -314,3 +314,77 @@ describe('Widget MCP Server', () => {
     expect(parsed.data.errors.some((e: { message: string }) => e.message.includes('容器'))).toBe(true)
   })
 })
+
+// ── RAG MCP Server ──
+
+describe('RAG MCP Server', () => {
+  let client: Client
+  let server: McpServer
+  let clientTransport: InMemoryTransport
+  let serverTransport: InMemoryTransport
+
+  beforeEach(async () => {
+    const { createRagServer } = await import('../mcp/ragServer.js')
+    ;({ client, server, clientTransport, serverTransport } = await setupClientServer(createRagServer))
+  })
+
+  afterEach(async () => {
+    await cleanup({ client, server, clientTransport, serverTransport })
+  })
+
+  it('should register rag__search tool', async () => {
+    const { tools } = await client.listTools()
+    expect(tools.map((t) => t.name)).toEqual(['rag__search'])
+  })
+
+  it('rag__search should be invokable (returns result or API error)', async () => {
+    const result = await client.callTool({
+      name: 'rag__search',
+      arguments: { query: '用户注册表单', limit: 3 },
+    })
+    const content = result.content as Array<{ type: string; text: string }>
+    expect(content[0].text).toBeDefined()
+    // 无 Embedding API Key 时可能返回错误文本，有 Key 时返回 JSON
+    try {
+      const parsed = JSON.parse(content[0].text)
+      expect(parsed).toHaveProperty('success')
+    } catch {
+      expect(content[0].text.length).toBeGreaterThan(0)
+    }
+  })
+})
+
+// ── Industry MCP Server ──
+
+describe('Industry MCP Server', () => {
+  let client: Client
+  let server: McpServer
+  let clientTransport: InMemoryTransport
+  let serverTransport: InMemoryTransport
+
+  beforeEach(async () => {
+    const { createIndustryServer } = await import('../mcp/industryServer.js')
+    ;({ client, server, clientTransport, serverTransport } = await setupClientServer(createIndustryServer))
+  })
+
+  afterEach(async () => {
+    await cleanup({ client, server, clientTransport, serverTransport })
+  })
+
+  it('should register industry tools', async () => {
+    const { tools } = await client.listTools()
+    const names = tools.map((t) => t.name).sort()
+    expect(names).toEqual(['industry__search_templates', 'industry__validate_form'])
+  })
+
+  it('industry__search_templates should return templates list', async () => {
+    const result = await client.callTool({
+      name: 'industry__search_templates',
+      arguments: { keyword: '病历', industry: 'medical' },
+    })
+    const content = result.content as Array<{ type: string; text: string }>
+    const parsed = JSON.parse(content[0].text)
+    expect(parsed.success).toBe(true)
+    expect(parsed.data).toHaveProperty('templates')
+  })
+})

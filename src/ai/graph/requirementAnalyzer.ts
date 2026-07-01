@@ -11,14 +11,15 @@
 import { SystemMessage, HumanMessage, AIMessage, ToolMessage } from '@langchain/core/messages'
 import { ToolNode } from '@langchain/langgraph/prebuilt'
 import { getLLM } from '../services/llmCache.js'
-import { getModelForTask } from './agentBase.js'
+import { getModelForTask, resolveUserModel } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { logger } from '../../utils/logger.js'
-import { allTools } from '../tools/allTools.js'
+import { getAllToolsSync, getToolSync, getToolsByNames, ensureToolsReady } from '../tools/registry.js'
+import { REQUIREMENT_ANALYZER_TOOLS_PROMPT } from '@schema-platform/ai-shared/toolNames'
 import type { AgentStateAnnotation, RequirementAnalysis } from './state.js'
 
-// RAG 检索工具名称
-const RAG_TOOL_NAME = 'rag_search'
+// RAG 检索工具名称（MCP 工具名）
+const RAG_TOOL_NAME = 'rag__search'
 
 // ────────────────────────────────────────────
 // System Prompt
@@ -75,10 +76,7 @@ const REQUIREMENT_ANALYZER_PROMPT = `你是一个需求分析专家，专门分�
 3. 基于实际数据进行分析
 
 可用的工具：
-- search_flows: 搜索流程列表
-- get_flow_detail: 获取流程详情
-- search_schemas: 搜索表单列表
-- get_schema_detail: 获取表单详情
+${REQUIREMENT_ANALYZER_TOOLS_PROMPT}
 
 ## 输出格式
 
@@ -159,7 +157,7 @@ const REQUIREMENT_ANALYZER_PROMPT = `你是一个需求分析专家，专门分�
 // 工具节点
 // ────────────────────────────────────────────
 
-const toolNode = new ToolNode(allTools)
+const toolNode = new ToolNode(getAllToolsSync())
 
 // ────────────────────────────────────────────
 // Helper functions
@@ -249,7 +247,7 @@ export async function requirementAnalyzerNode(
   // ── 第一步：RAG 检索，获取相关上下文 ──
   let ragContext = ''
   try {
-    const ragTool = allTools.find(t => t.name === RAG_TOOL_NAME)
+    const ragTool = getToolSync(RAG_TOOL_NAME)
     if (ragTool) {
       const ragResult = await (ragTool as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> }).invoke({
         query: userContent,
@@ -271,7 +269,7 @@ export async function requirementAnalyzerNode(
   // 显式模式会将用户选择的 Agent 作为上下文传入 LLM
   try {
     const model = await getLLM({
-      model: getModelForTask('analyze'),
+      model: resolveUserModel(state.interaction.preferences, getModelForTask('analyze')),
       temperature: 0,
       maxTokens: 4096,
       jsonMode: true,
@@ -320,7 +318,7 @@ export async function requirementAnalyzerNode(
       const toolResults: Array<{ toolCallId: string; name: string; content: string }> = []
       for (const toolCall of firstResponse.tool_calls) {
         try {
-          const tool = allTools.find(t => t.name === toolCall.name)
+          const tool = getToolSync(toolCall.name)
           if (tool) {
             // 使用类型断言处理工具调用
             const toolFn = tool as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> }

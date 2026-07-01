@@ -33,7 +33,7 @@ describe('extractAgentContext', () => {
     expect(extractAgentContext(state as any)).toBeNull()
   })
 
-  it('extracts schema summary from validate_schema tool call', () => {
+  it('extracts schema summary from schema__validate_widgets tool call', () => {
     const widgets = [
       { id: 'form_1', type: 'form', field: 'mainForm', children: [
         { id: 'input_1', type: 'input', field: 'userName' },
@@ -44,7 +44,7 @@ describe('extractAgentContext', () => {
       content: '已生成表单',
       tool_calls: [{
         id: 'tc-1',
-        name: 'validate_schema',
+        name: 'schema__validate_widgets',
         args: { widgetsJson: JSON.stringify(widgets) },
       }],
     })
@@ -66,7 +66,7 @@ describe('extractAgentContext', () => {
     expect(context!.schemaSummary!.topFields).toContain('status')
   })
 
-  it('extracts flow summary from validate_flow tool call', () => {
+  it('extracts flow summary from flow__validate tool call', () => {
     const flow = {
       nodes: [
         { id: 'n1', data: { bpmnType: 'startEvent', label: '开始' } },
@@ -85,7 +85,7 @@ describe('extractAgentContext', () => {
       content: '已生成流程',
       tool_calls: [{
         id: 'tc-1',
-        name: 'validate_flow',
+        name: 'flow__validate',
         args: { flow },
       }],
     })
@@ -112,8 +112,8 @@ describe('extractAgentContext', () => {
       session: { currentAgent: 'editor' },
       tools: {
         results: [
-          { name: 'search_schemas', result: { success: true, data: { total: 5 } } },
-          { name: 'search_flows', result: { error: '连接超时' } },
+          { name: 'schema__search', result: { success: true, data: { total: 5 } } },
+          { name: 'flow__search', result: { error: '连接超时' } },
         ],
       },
     })
@@ -121,9 +121,9 @@ describe('extractAgentContext', () => {
     const context = extractAgentContext(state as any)
     expect(context).not.toBeNull()
     expect(context!.toolResults).toHaveLength(2)
-    expect(context!.toolResults![0].toolName).toBe('search_schemas')
+    expect(context!.toolResults![0].toolName).toBe('schema__search')
     expect(context!.toolResults![0].success).toBe(true)
-    expect(context!.toolResults![1].toolName).toBe('search_flows')
+    expect(context!.toolResults![1].toolName).toBe('flow__search')
     expect(context!.toolResults![1].success).toBe(false)
     expect(context!.summary).toContain('1 个工具执行失败')
   })
@@ -192,14 +192,14 @@ describe('buildContextInjection', () => {
       sourceAgent: 'editor',
       summary: '已生成表单。',
       toolResults: [
-        { toolName: 'search_schemas', success: true, summary: '找到 5 个结果' },
-        { toolName: 'validate_schema', success: false, summary: '校验失败' },
+        { toolName: 'schema__search', success: true, summary: '找到 5 个结果' },
+        { toolName: 'schema__validate_widgets', success: false, summary: '校验失败' },
       ],
     }
 
     const injection = buildContextInjection(context)
-    expect(injection).toContain('search_schemas(成功)')
-    expect(injection).toContain('validate_schema(失败)')
+    expect(injection).toContain('schema__search(成功)')
+    expect(injection).toContain('schema__validate_widgets(失败)')
   })
 
   it('truncates long widget type lists', () => {

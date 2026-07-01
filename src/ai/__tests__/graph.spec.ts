@@ -148,7 +148,7 @@ describe('afterAgent', () => {
   it('returns allTools when agent has tool_calls', () => {
     const aiMessage = new AIMessage({
       content: '',
-      tool_calls: [{ id: 'tc-1', name: 'search_schemas', args: { keyword: 'test' } }],
+      tool_calls: [{ id: 'tc-1', name: 'schema__search', args: { keyword: 'test' } }],
     })
     const state = makeState({
       messages: [new HumanMessage('test'), aiMessage],
@@ -357,8 +357,8 @@ describe('tool error handling', () => {
     const aiMessage = new AIMessage({
       content: '',
       tool_calls: [
-        { id: 'tc-1', name: 'rag_search', args: { query: 'user form' } },
-        { id: 'tc-2', name: 'search_schemas', args: { keyword: 'test' } },
+        { id: 'tc-1', name: 'rag__search', args: { query: 'user form' } },
+        { id: 'tc-2', name: 'schema__search', args: { keyword: 'test' } },
       ],
     })
     const state = makeState({
@@ -371,8 +371,8 @@ describe('tool error handling', () => {
     expect(lastMsg).toBeInstanceOf(AIMessage)
     const tc = (lastMsg as AIMessage).tool_calls
     expect(tc).toHaveLength(2)
-    expect(tc![0].name).toBe('rag_search')
-    expect(tc![1].name).toBe('search_schemas')
+    expect(tc![0].name).toBe('rag__search')
+    expect(tc![1].name).toBe('schema__search')
   })
 
   it('logger.error is called with ai:thinker:error on tool failure', () => {
@@ -383,7 +383,7 @@ describe('tool error handling', () => {
 
       logger.error({
         msg: 'ai:thinker:error',
-        toolName: 'rag_search',
+        toolName: 'rag__search',
         toolInput: { query: 'test' },
         error: 'MongoDB connection lost',
         conversationId: 'conv-1',
@@ -393,7 +393,7 @@ describe('tool error handling', () => {
       expect(spy).toHaveBeenCalledTimes(1)
       const logged = JSON.parse(spy.mock.calls[0][0] as string)
       expect(logged.msg).toBe('ai:thinker:error')
-      expect(logged.toolName).toBe('rag_search')
+      expect(logged.toolName).toBe('rag__search')
       expect(logged.toolInput).toEqual({ query: 'test' })
       expect(logged.error).toBe('MongoDB connection lost')
       expect(logged.conversationId).toBe('conv-1')
@@ -409,15 +409,15 @@ describe('tool error handling', () => {
     // can associate the error with the correct tool card.
     const toolCallId = 'call-abc-123'
     const toolMessage = new ToolMessage({
-      content: JSON.stringify({ success: false, error: 'tool rag_search failed', recoverable: true }),
+      content: JSON.stringify({ success: false, error: 'tool rag__search failed', recoverable: true }),
       tool_call_id: toolCallId,
-      name: 'rag_search',
+      name: 'rag__search',
     })
 
     expect(toolMessage.tool_call_id).toBe(toolCallId)
     const parsed = JSON.parse(toolMessage.content as string)
     expect(parsed.success).toBe(false)
-    expect(parsed.error).toContain('rag_search')
+    expect(parsed.error).toContain('rag__search')
     expect(parsed.recoverable).toBe(true)
   })
 })

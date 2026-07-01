@@ -101,7 +101,7 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
     providerName: 'deepseek',
     apiKey,
     baseURL: 'https://api.deepseek.com',
-    model: opts.model ?? 'deepseek-v4-pro',
+    model: opts.model ?? 'deepseek-v4-flash',
     temperature: opts.temperature ?? 0.7,
     maxTokens: opts.maxTokens ?? 8192,
   }

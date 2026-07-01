@@ -188,6 +188,56 @@ export async function searchUsers(params: {
 // FlowGraph 校验
 // ────────────────────────────────────────────
 
+// ────────────────────────────────────────────
+// 流程节点表单 Schema 查询
+// ────────────────────────────────────────────
+
+export async function getFlowNodeSchema(flowId: string, nodeId: string): Promise<{
+  success: boolean
+  data?: Record<string, unknown>
+  summary?: string
+  error?: string
+}> {
+  const { FlowVersionModel } = await import('../../flow-models/FlowVersion.js')
+  const { FormSchemaModel } = await import('../../models/FormSchema.js')
+
+  const version = await FlowVersionModel.findOne({ definitionId: flowId })
+    .sort({ version: -1 }).lean() as Record<string, unknown> | null
+
+  if (!version?.graph) {
+    return { success: false, error: `Flow ${flowId} has no version` }
+  }
+
+  const nodes = ((version.graph as Record<string, unknown>).nodes ?? []) as Array<Record<string, unknown>>
+  const node = nodes.find((n) => n.id === nodeId)
+  if (!node) {
+    return { success: false, error: `Node ${nodeId} not found in flow ${flowId}` }
+  }
+
+  const data = node.data as Record<string, unknown> | undefined
+  const formSchemaId = data?.formSchemaId as string | undefined
+
+  if (!formSchemaId) {
+    return { success: true, data: { nodeId, hasSchema: false }, summary: `节点 ${nodeId} 未绑定表单` }
+  }
+
+  const schema = await FormSchemaModel.findById(formSchemaId)
+    .select('_id name type version json').lean() as Record<string, unknown> | null
+
+  return {
+    success: true,
+    data: {
+      nodeId, hasSchema: true, formSchemaId,
+      formPublishId: data?.formPublishId, formVersion: data?.formVersion, formMode: data?.formMode,
+      schemaName: schema?.name, schemaType: schema?.type,
+      widgetCount: Array.isArray(schema?.json) ? (schema.json as unknown[]).length : 0,
+    },
+    summary: schema
+      ? `节点 ${nodeId} 绑定了表单 "${schema.name}"（${formSchemaId}）`
+      : `节点 ${nodeId} 引用了 Schema ${formSchemaId}，但该 Schema 已不存在`,
+  }
+}
+
 export function validateFlowGraph(flow: { nodes: Record<string, unknown>[]; edges: Record<string, unknown>[] }): ValidationResult {
   const errors: string[] = []
   const nodeIds = new Set(flow.nodes.map((n) => n.id))

@@ -1,7 +1,8 @@
 /**
- * Flow Agent tools — LangGraph StructuredTool format.
+ * Flow Agent 专有工具 — LangGraph StructuredTool format.
  *
- * 使用共享 toolHandlers 层，与 MCP 工具共用同一份业务逻辑。
+ * 仅保留依赖图状态的工具（HITL interrupt、复合写入、LLM 调用）。
+ * 读取/校验类工具已迁入 MCP Server（flow__*、schema__*），通过 registry 获取。
  */
 
 import { tool } from '@langchain/core/tools'
@@ -11,64 +12,13 @@ import { FlowVersionModel } from '../../flow-models/FlowVersion.js'
 import { FormSchemaModel } from '../../models/FormSchema.js'
 import { generateSchemaFromPrompt } from './schemaGenerator.js'
 import { adaptFlowGraph, type PartialFlowGraph } from '../services/flowAdapter.js'
-import {
-  handleFlowSearch,
-  handleFlowGetDetail,
-  handleFlowValidate,
-  handleFlowSearchUsers,
-  handleFlowGetNodeSchema,
-} from './toolHandlers.js'
+import { validateFlowGraph } from '../services/flowService.js'
 import { z } from 'zod'
 import type { ToolResult } from './types.js'
 
 // ────────────────────────────────────────────
-// LangGraph tools（复用 toolHandlers）
+// Generate Schema Tool（LLM 调用）
 // ────────────────────────────────────────────
-
-export const searchFlowsTool = tool(
-  async ({ keyword, status, category, limit }): Promise<string> => {
-    const result = await handleFlowSearch({ keyword, status, category, limit })
-    return JSON.stringify(result)
-  },
-  {
-    name: 'search_flows',
-    description: `搜索已有的流程定义。参数：keyword — 按名称/描述模糊搜索；status — 按状态筛选；category — 按分类筛选；limit — 返回数量上限。`,
-    schema: z.object({
-      keyword: z.string().optional().describe('按名称/描述模糊搜索'),
-      status: z.enum(['draft', 'published', 'archived']).optional().describe('按状态筛选'),
-      category: z.string().optional().describe('按分类筛选'),
-      limit: z.number().optional().default(10).describe('返回数量上限'),
-    }),
-  },
-)
-
-export const getFlowDetailTool = tool(
-  async ({ flowId }): Promise<string> => {
-    const result = await handleFlowGetDetail(flowId)
-    return JSON.stringify(result)
-  },
-  {
-    name: 'get_flow_detail',
-    description: `获取流程定义详情，包括完整 FlowGraph。参数：flowId — 流程定义的 _id。`,
-    schema: z.object({ flowId: z.string().describe('流程定义的 _id') }),
-  },
-)
-
-export const searchUsersTool = tool(
-  async ({ keyword, role, limit }): Promise<string> => {
-    const result = await handleFlowSearchUsers({ keyword, role, limit })
-    return JSON.stringify(result)
-  },
-  {
-    name: 'search_users',
-    description: `搜索用户列表，用于设置审批节点的指派人。参数：keyword — 按用户名/显示名模糊搜索；role — 按角色 ID 筛选；limit — 返回数量上限。`,
-    schema: z.object({
-      keyword: z.string().optional().describe('按用户名/显示名模糊搜索'),
-      role: z.string().optional().describe('按角色 ID 筛选'),
-      limit: z.number().optional().default(20).describe('返回数量上限'),
-    }),
-  },
-)
 
 export const generateSchemaTool = tool(
   async ({ description }): Promise<string> => {
@@ -87,40 +37,8 @@ export const generateSchemaTool = tool(
   },
 )
 
-export const validateFlowTool = tool(
-  async ({ flow }): Promise<string> => {
-    const result = await handleFlowValidate(flow as { nodes: Record<string, unknown>[]; edges: Record<string, unknown>[] })
-    return JSON.stringify(result)
-  },
-  {
-    name: 'validate_flow',
-    description: `校验 FlowGraph 的结构正确性。参数：flow — 包含 nodes 和 edges 数组的 FlowGraph 对象。`,
-    schema: z.object({
-      flow: z.object({
-        nodes: z.array(z.record(z.unknown())).describe('流程节点数组'),
-        edges: z.array(z.record(z.unknown())).describe('流程边数组'),
-      }).describe('要校验的 FlowGraph'),
-    }),
-  },
-)
-
-export const getFlowNodeSchemaTool = tool(
-  async ({ flowId, nodeId }): Promise<string> => {
-    const result = await handleFlowGetNodeSchema(flowId, nodeId)
-    return JSON.stringify(result)
-  },
-  {
-    name: 'get_flow_node_schema',
-    description: `获取流程节点绑定的表单 Schema 信息。参数：flowId — 流程定义 ID；nodeId — 节点 ID。`,
-    schema: z.object({
-      flowId: z.string().describe('流程定义 ID'),
-      nodeId: z.string().describe('节点 ID'),
-    }),
-  },
-)
-
 // ────────────────────────────────────────────
-// 保留的独有工具（HITL + 持久化逻辑）
+// 复合写入工具
 // ────────────────────────────────────────────
 
 export const saveAndBindSchemaTool = tool(
@@ -182,7 +100,7 @@ export const bindSchemaToFlowNodeTool = tool(
 )
 
 // ────────────────────────────────────────────
-// Flow Diff + Update（保留 HITL 逻辑）
+// Flow Diff + Update（HITL 逻辑）
 // ────────────────────────────────────────────
 
 interface FlowDiffEntry {
@@ -241,8 +159,8 @@ export const updateFlowTool = tool(
     const adapted = adaptFlowGraph(flow as unknown as PartialFlowGraph)
     const flowGraph = adapted as unknown as { nodes: Record<string, unknown>[]; edges: Record<string, unknown>[] }
 
-    const validationResult = await handleFlowValidate(flowGraph)
-    if (!validationResult.success) return JSON.stringify({ success: false, error: `流程校验失败` } satisfies ToolResult)
+    const validationResult = validateFlowGraph(flowGraph)
+    if (!validationResult.valid) return JSON.stringify({ success: false, error: `流程校验失败` } satisfies ToolResult)
 
     let diff: FlowDiff | null = null
     if (flowId) {
@@ -285,10 +203,15 @@ export const updateFlowTool = tool(
   },
 )
 
-export const flowTools = [
-  searchFlowsTool, getFlowDetailTool, searchUsersTool, generateSchemaTool,
-  validateFlowTool, saveAndBindSchemaTool, bindSchemaToFlowNodeTool,
-  getFlowNodeSchemaTool, updateFlowTool,
+// ────────────────────────────────────────────
+// Flow 专有工具集合
+// ────────────────────────────────────────────
+
+export const flowOnlyTools = [
+  generateSchemaTool,
+  saveAndBindSchemaTool,
+  bindSchemaToFlowNodeTool,
+  updateFlowTool,
 ]
 
 // ────────────────────────────────────────────

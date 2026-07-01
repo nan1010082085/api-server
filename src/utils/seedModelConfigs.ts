@@ -13,9 +13,9 @@ interface SeedModelConfig {
 
 const seedConfigs: SeedModelConfig[] = [
   {
-    name: 'DeepSeek V3',
+    name: 'DeepSeek V4 Flash',
     provider: 'deepseek',
-    model: 'deepseek-chat',
+    model: 'deepseek-v4-flash',
     apiKeyPlain: '',
     baseUrl: 'https://api.deepseek.com',
     parameters: { temperature: 0.7, maxTokens: 4096, topP: 1 },

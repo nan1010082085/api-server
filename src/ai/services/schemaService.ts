@@ -8,6 +8,7 @@
 import { FormSchemaModel } from '../../models/FormSchema.js'
 import { PublishedSchemaModel } from '../../models/PublishedSchema.js'
 import { escapeRegex } from '../graph/agentBase.js'
+import { extractTokens, extractTokensFromSchema, jaccardSimilarity } from './metadataService.js'
 
 // ────────────────────────────────────────────
 // 类型定义
@@ -218,6 +219,90 @@ async function getWidgetTypeSets(): Promise<{ VALID_TYPES: Set<string>; CONTAINE
     cachedContainerTypes = new Set(metadata.widgets.filter((w) => w.canHaveChildren).map((w) => w.type))
   }
   return { VALID_TYPES: cachedWidgetTypes!, CONTAINER_TYPES: cachedContainerTypes! }
+}
+
+// ────────────────────────────────────────────
+// 模糊搜索（Jaccard 相似度）
+// ────────────────────────────────────────────
+
+import { extractTokens, extractTokensFromSchema, jaccardSimilarity } from '../tools/toolHandlers.js'
+
+export async function fuzzySearchSchemas(query: string, limit = 5): Promise<{
+  success: boolean
+  data: { total: number; schemas: Array<{ id: string; name: string; type: string; status: string; score: number }> }
+  summary: string
+}> {
+  const allSchemas = await FormSchemaModel.find()
+    .select('_id name type status version json createdAt updatedAt')
+    .sort({ updatedAt: -1 })
+    .limit(100)
+    .lean() as Record<string, unknown>[]
+
+  const queryTokens = extractTokens(query)
+  const scored = allSchemas.map((s) => {
+    const nameTokens = extractTokens(String(s.name ?? ''))
+    const jsonTokens = extractTokensFromSchema(s.json)
+    const allTokens = new Set([...nameTokens, ...jsonTokens])
+    const score = jaccardSimilarity(queryTokens, allTokens)
+    return { schema: s, score }
+  }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score).slice(0, limit)
+
+  const mapped = scored.map((r) => ({
+    id: r.schema._id as string,
+    name: r.schema.name as string,
+    type: r.schema.type as string,
+    status: r.schema.status as string,
+    score: Math.round(r.score * 100),
+  }))
+
+  const summary = mapped.length === 0
+    ? `没有找到与"${query}"相关的 Schema`
+    : `找到 ${mapped.length} 个相关 Schema：${mapped.slice(0, 3).map((s) => `${s.name}（匹配度 ${s.score}%）`).join('、')}`
+
+  return { success: true, data: { total: mapped.length, schemas: mapped }, summary }
+}
+
+// ────────────────────────────────────────────
+// 流程引用查找
+// ────────────────────────────────────────────
+
+export async function findFlowReferences(schemaId: string): Promise<{
+  success: boolean
+  data: { total: number; references: Array<{ flowId: string; flowName: string; nodeId: string; nodeLabel: string; bpmnType: string }> }
+  summary: string
+}> {
+  const { FlowVersionModel } = await import('../../flow-models/FlowVersion.js')
+  const { FlowDefinitionModel } = await import('../../flow-models/FlowDefinition.js')
+
+  const versions = await FlowVersionModel.find({ 'graph.nodes.data.formSchemaId': schemaId })
+    .select('_id definitionId version graph.nodes').lean()
+
+  const refs: Array<{ flowId: string; flowName: string; nodeId: string; nodeLabel: string; bpmnType: string }> = []
+  for (const ver of versions) {
+    const verData = ver as unknown as Record<string, unknown>
+    const graph = verData.graph as Record<string, unknown> | undefined
+    const definitionId = verData.definitionId as string
+    const def = await FlowDefinitionModel.findById(definitionId).select('_id name').lean() as Record<string, unknown> | null
+    const nodes = (graph?.nodes ?? []) as Array<Record<string, unknown>>
+    for (const node of nodes) {
+      const data = node.data as Record<string, unknown> | undefined
+      if (data?.formSchemaId === schemaId) {
+        refs.push({
+          flowId: definitionId,
+          flowName: (def?.name as string) ?? 'Unknown',
+          nodeId: node.id as string,
+          nodeLabel: (data.label as string) ?? (node.id as string),
+          bpmnType: (data.bpmnType as string) ?? 'unknown',
+        })
+      }
+    }
+  }
+
+  const summary = refs.length === 0
+    ? '没有流程节点引用此 Schema'
+    : `找到 ${refs.length} 个流程节点引用此 Schema：${refs.slice(0, 3).map((r) => `${r.flowName}/${r.nodeLabel}`).join('、')}${refs.length > 3 ? '等' : ''}`
+
+  return { success: true, data: { total: refs.length, references: refs }, summary }
 }
 
 export async function validateWidgetSchema(widgets: Record<string, unknown>[]): Promise<ValidationResult> {

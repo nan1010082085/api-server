@@ -1,122 +1,20 @@
 /**
- * Editor Agent tools — LangGraph StructuredTool format.
+ * Editor Agent 专有工具 — LangGraph StructuredTool format.
  *
- * 使用共享 toolHandlers 层，与 MCP 工具共用同一份业务逻辑。
+ * 仅保留依赖图状态的工具（HITL interrupt、Schema diff）。
+ * 读取/校验类工具已迁入 MCP Server（schema__*、widget__*），通过 registry 获取。
  */
 
 import { tool } from '@langchain/core/tools'
 import { interrupt } from '@langchain/langgraph'
 import { FormSchemaModel } from '../../models/FormSchema.js'
 import { adaptWidgets, type PartialWidget } from '../services/schemaAdapter.js'
-import {
-  getMetadata,
-  handleSchemaGetDetail,
-  handleSchemaSearchPublished,
-  handleSchemaValidate,
-  handleSchemaFuzzySearch,
-  handleSchemaFindFlowReferences,
-  handleWidgetQuery,
-} from './toolHandlers.js'
+import { getMetadata } from '../services/metadataService.js'
 import { z } from 'zod'
 import type { ToolResult } from './types.js'
 
 // ────────────────────────────────────────────
-// LangGraph tools（复用 toolHandlers）
-// ────────────────────────────────────────────
-
-export const getSchemaDetailTool = tool(
-  async ({ schemaId }): Promise<string> => {
-    const result = await handleSchemaGetDetail(schemaId)
-    return JSON.stringify(result)
-  },
-  {
-    name: 'get_schema_detail',
-    description: `获取指定 Schema 的完整 JSON 内容。参数：schemaId — Schema 的 _id。`,
-    schema: z.object({ schemaId: z.string().describe('Schema 的 _id') }),
-  },
-)
-
-export const searchPublishedSchemasTool = tool(
-  async ({ keyword, limit }): Promise<string> => {
-    const result = await handleSchemaSearchPublished({ keyword, limit })
-    return JSON.stringify(result)
-  },
-  {
-    name: 'search_published_schemas',
-    description: `搜索已发布的 Schema 版本。参数：keyword — 按名称模糊搜索；limit — 返回数量上限。`,
-    schema: z.object({
-      keyword: z.string().optional().describe('按名称模糊搜索'),
-      limit: z.number().optional().default(10).describe('返回数量上限'),
-    }),
-  },
-)
-
-export const getWidgetCatalogueTool = tool(
-  async ({ category }): Promise<string> => {
-    const result = handleWidgetQuery(category)
-    return JSON.stringify(result)
-  },
-  {
-    name: 'get_widget_catalogue',
-    description: `获取 Widget 组件目录。参数：category — 组件分类，不传返回全部。`,
-    schema: z.object({
-      category: z.enum(['container', 'layout', 'form', 'static', 'action', 'table', 'business', 'chart'])
-        .optional().describe('按组件分类筛选'),
-    }),
-  },
-)
-
-export const searchWidgetsByKeywordTool = tool(
-  async ({ query, limit }): Promise<string> => {
-    const result = await handleSchemaFuzzySearch(query, limit)
-    return JSON.stringify(result)
-  },
-  {
-    name: 'fuzzy_search_schemas',
-    description: `基于关键词模糊搜索已有 Schema（Jaccard 相似度）。参数：query — 关键词描述；limit — 返回数量上限。`,
-    schema: z.object({
-      query: z.string().describe('关键词描述'),
-      limit: z.number().optional().default(5).describe('返回数量上限'),
-    }),
-  },
-)
-
-export const validateSchemaTool = tool(
-  async ({ widgetsJson }): Promise<string> => {
-    let widgets: Record<string, unknown>[]
-    try {
-      const parsed = JSON.parse(widgetsJson)
-      if (!Array.isArray(parsed)) {
-        return JSON.stringify({ success: false, error: 'widgetsJson 解析结果不是数组' } satisfies ToolResult)
-      }
-      widgets = parsed as Record<string, unknown>[]
-    } catch {
-      return JSON.stringify({ success: false, error: 'widgetsJson JSON 解析失败' } satisfies ToolResult)
-    }
-    const result = await handleSchemaValidate(widgets)
-    return JSON.stringify(result)
-  },
-  {
-    name: 'validate_schema',
-    description: `校验 Widget Schema JSON 的结构正确性。参数：widgetsJson — Widget 数组的 JSON 字符串。`,
-    schema: z.object({ widgetsJson: z.string().describe('Widget 数组的 JSON 字符串') }),
-  },
-)
-
-export const findFlowReferencesTool = tool(
-  async ({ schemaId }): Promise<string> => {
-    const result = await handleSchemaFindFlowReferences(schemaId)
-    return JSON.stringify(result)
-  },
-  {
-    name: 'find_flow_references',
-    description: `查找引用了指定 Schema 的所有流程节点。参数：schemaId — Schema 的 _id。`,
-    schema: z.object({ schemaId: z.string().describe('Schema 的 _id') }),
-  },
-)
-
-// ────────────────────────────────────────────
-// Schema Diff（保留，update_schema 需要）
+// Schema Diff（update_schema 需要）
 // ────────────────────────────────────────────
 
 interface SchemaDiffEntry {
@@ -191,7 +89,7 @@ export function computeSchemaDiff(
 }
 
 // ────────────────────────────────────────────
-// Update Schema Tool（保留 HITL + diff 逻辑）
+// Update Schema Tool（HITL + diff 逻辑）
 // ────────────────────────────────────────────
 
 export const updateSchemaTool = tool(
@@ -282,12 +180,8 @@ export const updateSchemaTool = tool(
   },
 )
 
-export const editorTools = [
-  getSchemaDetailTool,
-  searchPublishedSchemasTool,
-  getWidgetCatalogueTool,
-  searchWidgetsByKeywordTool,
-  validateSchemaTool,
-  findFlowReferencesTool,
-  updateSchemaTool,
-]
+// ────────────────────────────────────────────
+// Editor 专有工具集合
+// ────────────────────────────────────────────
+
+export const editorOnlyTools = [updateSchemaTool]

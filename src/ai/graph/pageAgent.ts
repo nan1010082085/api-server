@@ -12,12 +12,9 @@
 import { getLLM } from '../services/llmCache.js'
 import { HumanMessage, SystemMessage, AIMessage, AIMessageChunk } from '@langchain/core/messages'
 import { buildPageSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
-import { getMetadata } from '../tools/toolHandlers.js'
-import { editorTools } from '../tools/editorTools.js'
-import { generateSchemaTool } from '../tools/flowTools.js'
-import { collaborationTools } from '../tools/collaborationTools.js'
-import { ragSearchTool } from '../tools/ragTools.js'
-import { truncateMessagesForLangGraph } from './agentBase.js'
+import { getMetadata } from '../services/metadataService.js'
+import { getToolsByNames } from '../tools/registry.js'
+import { truncateMessagesForLangGraph, resolveUserModel, getModelForTask, formatPreferencesForPrompt } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { buildContextInjection, type AgentContextPayload } from './contextCarrier.js'
 import { retrieveRagContext } from './ragContextRetriever.js'
@@ -87,10 +84,8 @@ function buildContextMessage(state: typeof AgentStateAnnotation.State): string {
   }
 
   // Inject user preferences
-  if (state.interaction.preferences && Object.keys(state.interaction.preferences).length > 0) {
-    const prefs = Object.entries(state.interaction.preferences)
-      .map(([k, v]) => `- ${k}: ${v}`)
-      .join('\n')
+  const prefs = formatPreferencesForPrompt(state.interaction.preferences)
+  if (prefs) {
     prompt += `\n\n--- 用户偏好 ---\n${prefs}`
   }
 
@@ -98,7 +93,7 @@ function buildContextMessage(state: typeof AgentStateAnnotation.State): string {
   if (state.context.turnCount > 1) {
     prompt += `\n\n这是第 ${state.context.turnCount} 轮对话，请基于之前的对话上下文理解和修改。`
     if (state.context.currentSchema && state.context.currentSchema.length > 0) {
-      prompt += `\n\n【重要】当前已有 Schema，用户可能要求修改。请使用 update_schema 工具提交修改结果，而不是 validate_schema。`
+      prompt += `\n\n【重要】当前已有 Schema，用户可能要求修改。请使用 update_schema 工具提交修改结果，而不是 schema__validate_widgets。`
       prompt += `\n修改时请保持未变更部分不变，只修改用户要求变更的部分。在 description 字段中简要说明本次修改内容。`
     }
   }
@@ -142,7 +137,16 @@ export async function pageAgentNode(
   const systemPrompt = await getPageSystemPrompt()
   const userContent = buildContextMessage(state) + ragContext.context
 
-  const model = (await getLLM({ temperature: 0.7, maxTokens: 8192 })).bindTools([...editorTools, generateSchemaTool, ...collaborationTools, ragSearchTool])
+  const pageToolNames = [
+    'schema__search', 'schema__get_detail', 'schema__search_published',
+    'schema__fuzzy_search', 'schema__validate_widgets', 'widget__query', 'rag__search',
+    'update_schema', 'generate_schema', 'request_collaboration',
+  ]
+  const model = (await getLLM({
+    model: resolveUserModel(state.interaction.preferences, getModelForTask('generate_complex')),
+    temperature: 0.7,
+    maxTokens: 8192,
+  })).bindTools(getToolsByNames(pageToolNames))
 
   // 截断历史消息以避免 token 超限
   const truncatedHistory = truncateMessagesForLangGraph(state.messages)

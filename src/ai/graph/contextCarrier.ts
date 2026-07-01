@@ -12,6 +12,7 @@
  * 3. 下游 Agent 的 buildContextMessage 中注入 context 摘要
  */
 
+import { normalizeToolName, isSchemaWidgetValidateTool, isFlowWriteOrValidateTool } from '@schema-platform/ai-shared/toolNames'
 import type { AIMessage, TaskStep } from './state.js'
 
 // ────────────────────────────────────────────
@@ -83,7 +84,7 @@ export function extractAgentContext(
       const toolCalls = (msg as unknown as { tool_calls?: Array<{ name: string; args: Record<string, unknown> }> }).tool_calls
       if (toolCalls) {
         for (const tc of toolCalls) {
-          if (tc.name === 'validate_schema' || tc.name === 'update_schema') {
+          if (isSchemaWidgetValidateTool(tc.name)) {
             const widgetsJson = tc.args?.widgetsJson as string | undefined
             if (widgetsJson) {
               try {
@@ -94,7 +95,7 @@ export function extractAgentContext(
               } catch { /* JSON parse failed, skip */ }
             }
           }
-          if (tc.name === 'validate_flow' || tc.name === 'update_flow') {
+          if (isFlowWriteOrValidateTool(tc.name)) {
             const flow = tc.args?.flow as Record<string, unknown> | undefined
             if (flow) {
               const flowSummary = extractFlowSummary(flow)
@@ -117,7 +118,7 @@ export function extractAgentContext(
   // Extract tool results
   if (state.tools.results.length > 0) {
     payload.toolResults = state.tools.results.map((r) => ({
-      toolName: r.name,
+      toolName: normalizeToolName(r.name),
       success: !r.result || typeof r.result !== 'object' || !('error' in (r.result as Record<string, unknown>)),
       summary: summarizeToolResult(r.name, r.result),
     }))
@@ -237,14 +238,18 @@ function summarizeToolResult(toolName: string, result: unknown): string {
   if (r.success === false) return '执行失败'
   if (r.message) return String(r.message).slice(0, 100)
 
-  // Tool-specific summaries
-  if (toolName === 'search_schemas' || toolName === 'search_published_schemas') {
+  const normalized = normalizeToolName(toolName)
+  if (normalized === 'schema__search' || normalized === 'schema__search_published') {
     const data = r.data as Record<string, unknown> | undefined
     return `找到 ${data?.total ?? 0} 个结果`
   }
-  if (toolName === 'search_flows') {
+  if (normalized === 'flow__search') {
     const data = r.data as Record<string, unknown> | undefined
     return `找到 ${data?.total ?? 0} 个流程`
+  }
+  if (normalized === 'rag__search') {
+    const data = r.data as Record<string, unknown> | undefined
+    return `找到 ${data?.total ?? 0} 个语义相关 Schema`
   }
 
   return '执行成功'

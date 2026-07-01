@@ -285,8 +285,8 @@ const interruptedThreads = new Map<string, InterruptedThread>()
 // Tool names that produce structured payloads
 // ────────────────────────────────────────────
 
-const SCHEMA_TOOLS = new Set(['validate_schema'])
-const FLOW_TOOLS = new Set(['validate_flow'])
+const SCHEMA_TOOLS = new Set(['schema__validate_widgets'])
+const FLOW_TOOLS = new Set(['flow__validate'])
 const UPDATE_SCHEMA_TOOL = 'update_schema'
 const UPDATE_FLOW_TOOL = 'update_flow'
 const GENERATE_SCHEMA_TOOL = 'generate_schema'
@@ -704,11 +704,10 @@ router.post('/chat', validate(chatRequestSchema), async (ctx) => {
           }
 
           // Capture schema/flow payloads from validation tool arguments
-          if (SCHEMA_TOOLS.has(toolName) && toolArgs.widgetsJson) {
-            let parsedWidgets: unknown
-            try { parsedWidgets = JSON.parse(toolArgs.widgetsJson as string) } catch { parsedWidgets = null }
-            if (parsedWidgets) {
-              pendingPayloads.set(event.run_id as string, parsedWidgets as Record<string, unknown>[])
+          if (SCHEMA_TOOLS.has(toolName)) {
+            const widgets = toolArgs.widgets as Record<string, unknown>[] | undefined
+            if (widgets) {
+              pendingPayloads.set(event.run_id as string, widgets)
             }
           }
           if (FLOW_TOOLS.has(toolName) && toolArgs.flow) {

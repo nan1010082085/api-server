@@ -212,13 +212,13 @@ describe('POST /api/ai/chat', () => {
         { event: 'on_chain_start', name: 'editor' },
         {
           event: 'on_tool_start',
-          name: 'search_schemas',
+          name: 'schema__search',
           data: { input: { keyword: '用户' } },
           run_id: 'tc-1',
         },
         {
           event: 'on_tool_end',
-          name: 'search_schemas',
+          name: 'schema__search',
           data: { output: { success: true, data: { total: 1 } } },
           run_id: 'tc-1',
         },
@@ -240,7 +240,7 @@ describe('POST /api/ai/chat', () => {
     expect(res.text).toContain('"type":"tool_call"')
     expect(res.text).toContain('"phase":"calling"')
     expect(res.text).toContain('"phase":"result"')
-    expect(res.text).toContain('"name":"search_schemas"')
+    expect(res.text).toContain('"name":"schema__search"')
     expect(res.text).toContain('"type":"done"')
   })
 
@@ -302,7 +302,7 @@ describe('POST /api/ai/chat', () => {
     expect(res.text).toContain('"agent":"editor"')
   })
 
-  it('emits schema event from validate_schema tool', async () => {
+  it('emits schema event from schema__validate_widgets tool', async () => {
     const mockConvo = { _id: 'conv-6', messages: [] }
     vi.mocked(convoService.createConversation).mockResolvedValue(mockConvo as any)
     vi.mocked(convoService.appendMessage).mockResolvedValue(null)
@@ -312,13 +312,13 @@ describe('POST /api/ai/chat', () => {
         { event: 'on_chain_start', name: 'editor' },
         {
           event: 'on_tool_start',
-          name: 'validate_schema',
+          name: 'schema__validate_widgets',
           data: { input: { widgetsJson: JSON.stringify([{ id: '1', type: 'input' }]) } },
           run_id: 'tc-s1',
         },
         {
           event: 'on_tool_end',
-          name: 'validate_schema',
+          name: 'schema__validate_widgets',
           data: { output: { success: true, data: { valid: true, errors: [] } } },
           run_id: 'tc-s1',
         },
@@ -464,13 +464,13 @@ describe('Tool error handling', () => {
         { event: 'on_chain_start', name: 'editor' },
         {
           event: 'on_tool_start',
-          name: 'validate_schema',
+          name: 'schema__validate_widgets',
           data: { input: { widgetsJson: 'invalid json' } },
           run_id: 'tc-err-1',
         },
         {
           event: 'on_tool_end',
-          name: 'validate_schema',
+          name: 'schema__validate_widgets',
           data: { output: { error: 'JSON 解析失败: Unexpected token' } },
           run_id: 'tc-err-1',
         },
@@ -486,7 +486,7 @@ describe('Tool error handling', () => {
     expect(res.status).toBe(200)
     expect(res.sse).toBe(true)
     expect(res.text).toContain('"type":"tool_error"')
-    expect(res.text).toContain('"toolName":"validate_schema"')
+    expect(res.text).toContain('"toolName":"schema__validate_widgets"')
     expect(res.text).toContain('"runId":"tc-err-1"')
     expect(res.text).toContain('JSON 解析失败')
     expect(res.text).toContain('"type":"done"')
@@ -502,13 +502,13 @@ describe('Tool error handling', () => {
         { event: 'on_chain_start', name: 'flow' },
         {
           event: 'on_tool_start',
-          name: 'search_schemas',
+          name: 'schema__search',
           data: { input: { keyword: 'test' } },
           run_id: 'tc-err-2',
         },
         {
           event: 'on_tool_end',
-          name: 'search_schemas',
+          name: 'schema__search',
           data: { error: 'Database connection timeout', output: null },
           run_id: 'tc-err-2',
         },
@@ -524,7 +524,7 @@ describe('Tool error handling', () => {
     expect(res.status).toBe(200)
     expect(res.sse).toBe(true)
     expect(res.text).toContain('"type":"tool_error"')
-    expect(res.text).toContain('"toolName":"search_schemas"')
+    expect(res.text).toContain('"toolName":"schema__search"')
     expect(res.text).toContain('Database connection timeout')
     expect(res.text).toContain('"type":"done"')
   })
@@ -576,13 +576,13 @@ describe('Tool error handling', () => {
         { event: 'on_chain_start', name: 'editor' },
         {
           event: 'on_tool_start',
-          name: 'search_schemas',
+          name: 'schema__search',
           data: { input: { keyword: '用户' } },
           run_id: 'tc-ok-1',
         },
         {
           event: 'on_tool_end',
-          name: 'search_schemas',
+          name: 'schema__search',
           data: { output: { success: true, data: { total: 5 } } },
           run_id: 'tc-ok-1',
         },

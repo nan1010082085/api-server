@@ -49,7 +49,7 @@ export async function generateSchemaFromPrompt(description: string): Promise<Gen
   // 调用 LLM 生成（非流式，单轮）
   const completion = await withRetry(() =>
     openai.chat.completions.create({
-      model: 'deepseek-v4-pro',
+      model: 'deepseek-v4-flash',
       messages,
       temperature: 0.7,
       max_tokens: 8192,

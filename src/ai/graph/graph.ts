@@ -20,23 +20,24 @@ import { AgentStateAnnotation } from './state.js'
 import { editorAgentNode } from './editorAgent.js'
 import { flowAgentNode } from './flowAgent.js'
 import { pageAgentNode } from './pageAgent.js'
-import { allTools } from '../tools/allTools.js'
+import { getAllToolsSync, getToolsByNames } from '../tools/registry.js'
 import { checkpointer } from './checkpointer.js'
 import { getLLM } from '../services/llmCache.js'
-import { getModelForTask } from './agentBase.js'
+import { getModelForTask, resolveUserModel } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { extractAgentContext } from './contextCarrier.js'
 import { getMetadata } from '../tools/toolHandlers.js'
 import { ROUTER_SYSTEM_PROMPT } from '@schema-platform/ai-shared/promptBuilder'
 import { logger } from '../../utils/logger.js'
 import { requirementAnalyzerNode, routeAfterRequirementAnalyzer } from './requirementAnalyzer.js'
+import { requirementConfirmNode } from './requirementConfirm.js'
 import { taskPlannerNode, routeAfterTaskPlanner } from './taskPlanner.js'
 
 // ────────────────────────────────────────────
 // Tool nodes（带错误兜底）
 // ────────────────────────────────────────────
 
-const allToolNode = new ToolNode(allTools)
+const allToolNode = new ToolNode(getAllToolsSync())
 
 /**
  * 从 state 消息中提取最近一条 AIMessage 的 tool_calls 信息。
@@ -126,15 +127,25 @@ async function allToolNodeWithErrorHandling(
 async function routerNode(
   state: typeof AgentStateAnnotation.State,
 ): Promise<Partial<typeof AgentStateAnnotation.State>> {
+  // 全局节点执行计数与死循环防护
+  const nextCount = state.session.nodeExecutionCount + 1
+  if (nextCount >= state.session.maxNodeExecutions) {
+    console.error(`[router] 全局节点执行上限 ${state.session.maxNodeExecutions}，强制结束`)
+    return {
+      session: { ...state.session, nodeExecutionCount: nextCount },
+      error: { message: '执行超限，已自动停止', recoverable: false },
+    }
+  }
+
   if (state.context.source === 'editor' || state.context.source === 'flow' || state.context.source === 'page') {
     const agent = state.context.source
     console.log(`[router] 显式模式 source=${agent}, 直接路由到 agentSelector`)
-    return { session: { ...state.session, currentAgent: agent }, task: { ...state.task, type: 'generate_simple' }, tools: { ...state.tools, needsTool: true } }
+    return { session: { ...state.session, currentAgent: agent, nodeExecutionCount: nextCount }, task: { ...state.task, type: 'generate_simple' }, tools: { ...state.tools, needsTool: true } }
   }
 
   if (state.task.chain.length > 0) {
     console.log(`[router] 任务链进行中 step=${state.task.currentStepIndex}/${state.task.chain.length}, 路由到 taskChain`)
-    return {}
+    return { session: { ...state.session, nodeExecutionCount: nextCount } }
   }
 
   // v2: 所有 standalone 请求都经过 requirementAnalyzer，router 只做初步标记
@@ -325,7 +336,11 @@ function buildGeneralSystemPrompt(): string {
 async function generalAgentNode(
   state: typeof AgentStateAnnotation.State,
 ): Promise<Partial<typeof AgentStateAnnotation.State>> {
-  const model = await getLLM({ model: getModelForTask('analyze'), temperature: 0.7, maxTokens: 2048 })
+  const model = await getLLM({
+    model: resolveUserModel(state.interaction.preferences, getModelForTask('analyze')),
+    temperature: 0.7,
+    maxTokens: 2048,
+  })
   const systemPrompt = buildGeneralSystemPrompt()
 
   const lastUserMessage = [...state.messages]
@@ -393,7 +408,11 @@ async function summarizerNode(
     .map((step) => `✅ ${step.agent} 专家：${step.description}`)
     .join('\n')
 
-  const model = await getLLM({ model: getModelForTask('analyze'), temperature: 0.7, maxTokens: 2048 })
+  const model = await getLLM({
+    model: resolveUserModel(state.interaction.preferences, getModelForTask('analyze')),
+    temperature: 0.7,
+    maxTokens: 2048,
+  })
 
   const prompt = `${SUMMARIZER_SYSTEM_PROMPT}
 
@@ -512,6 +531,16 @@ export function afterAgent(
 async function afterToolsNode(
   state: typeof AgentStateAnnotation.State,
 ): Promise<Partial<typeof AgentStateAnnotation.State>> {
+  // 全局节点执行计数递增（工具循环每次 +1）
+  const nextNodeCount = state.session.nodeExecutionCount + 1
+  if (nextNodeCount >= state.session.maxNodeExecutions) {
+    console.warn(`[afterTools] 全局节点执行上限 ${state.session.maxNodeExecutions}，强制结束`)
+    return {
+      session: { ...state.session, nodeExecutionCount: nextNodeCount },
+      error: { message: '执行超限，已自动停止', recoverable: false },
+    }
+  }
+
   for (let i = state.messages.length - 1; i >= 0; i--) {
     const msg = state.messages[i]
     if (msg instanceof AIMessage && msg.tool_calls && msg.tool_calls.length > 0) {
@@ -533,6 +562,7 @@ async function afterToolsNode(
           }
 
           return {
+            session: { ...state.session, nodeExecutionCount: nextNodeCount },
             tools: { ...state.tools, toolIterationCount: state.tools.toolIterationCount + 1 },
             task: { ...state.task, chain: updatedChain },
             interaction: {
@@ -563,6 +593,7 @@ async function afterToolsNode(
   }
 
   return {
+    session: { ...state.session, nodeExecutionCount: nextNodeCount },
     tools: { ...state.tools, toolIterationCount: state.tools.toolIterationCount + 1 },
     task: updatedChain.length > 0 ? { ...state.task, chain: updatedChain } : state.task,
   }
@@ -618,6 +649,7 @@ const builder = new StateGraph(AgentStateAnnotation)
 
   // v2 新增节点
   .addNode('requirementAnalyzer', requirementAnalyzerNode)
+  .addNode('requirementConfirm', requirementConfirmNode)
   .addNode('taskPlanner', taskPlannerNode)
 
   // 边的连接
@@ -638,6 +670,7 @@ const builder = new StateGraph(AgentStateAnnotation)
 
   // requirementAnalyzer 之后
   .addConditionalEdges('requirementAnalyzer', routeAfterRequirementAnalyzer)
+  .addEdge('requirementConfirm', 'taskPlanner')
 
   // taskPlanner 之后
   .addConditionalEdges('taskPlanner', routeAfterTaskPlanner)

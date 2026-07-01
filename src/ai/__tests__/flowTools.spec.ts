@@ -1,230 +1,57 @@
 /**
- * @vitest-environment node
+ * Flow Tools tests.
+ *
+ * 读取/校验类工具（search_flows、get_flow_detail、search_users、validate_flow、
+ * search_schemas）已迁入 MCP Server，由 mcp.spec.ts 覆盖。
+ * 此文件测试 LangGraph 专有工具集合（flowOnlyTools）和 flowService 校验逻辑。
  */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock all model dependencies
 vi.mock('../../flow-models/FlowDefinition.js', () => ({
-  FlowDefinitionModel: {
-    find: vi.fn(),
-    findById: vi.fn(),
-  },
+  FlowDefinitionModel: { find: vi.fn(), findById: vi.fn() },
 }))
-
 vi.mock('../../flow-models/FlowVersion.js', () => ({
-  FlowVersionModel: {
-    findById: vi.fn(),
-  },
+  FlowVersionModel: { findById: vi.fn() },
 }))
-
 vi.mock('../../models/FormSchema.js', () => ({
-  FormSchemaModel: {
-    find: vi.fn(),
-  },
+  FormSchemaModel: { find: vi.fn() },
 }))
-
 vi.mock('../../models/User.js', () => ({
-  UserModel: {
-    find: vi.fn(),
-  },
+  UserModel: { find: vi.fn() },
 }))
 
-import {
-  flowTools,
-  searchFlowsTool,
-  getFlowDetailTool,
-  searchUsersTool,
-  validateFlowTool,
-} from '../tools/flowTools.js'
+import { flowOnlyTools } from '../tools/flowTools.js'
 import { validateFlowGraph } from '../services/flowService.js'
-import { searchSchemasTool } from '../tools/schemaTools.js'
-import { FlowDefinitionModel } from '../../flow-models/FlowDefinition.js'
-import { FlowVersionModel } from '../../flow-models/FlowVersion.js'
-import { FormSchemaModel } from '../../models/FormSchema.js'
-import { UserModel } from '../../models/User.js'
 
 beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('flowTools', () => {
-  it('defines 9 tools', () => {
-    expect(flowTools).toHaveLength(9)
+describe('flowOnlyTools (LangGraph 专有)', () => {
+  it('defines 4 tools', () => {
+    expect(flowOnlyTools).toHaveLength(4)
   })
 
   it('has correct tool names', () => {
-    const names = flowTools.map((t) => t.name)
+    const names = flowOnlyTools.map((t) => t.name)
     expect(names).toEqual([
-      'search_flows',
-      'get_flow_detail',
-      'search_users',
       'generate_schema',
-      'validate_flow',
       'save_and_bind_schema',
       'bind_schema_to_flow_node',
-      'get_flow_node_schema',
       'update_flow',
     ])
   })
-})
 
-describe('tool.invoke()', () => {
-  describe('search_flows', () => {
-    it('searches with keyword', async () => {
-      const mockFlows = [{ _id: 'f1', name: '审批流程', description: 'test', status: 'draft' }]
-      vi.mocked(FlowDefinitionModel.find).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          sort: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({
-              lean: vi.fn().mockResolvedValue(mockFlows),
-            }),
-          }),
-        }),
-      } as any)
-
-      const result = await searchFlowsTool.invoke({ keyword: '审批' })
-      const parsed = typeof result === 'string' ? JSON.parse(result) : result
-      expect(parsed.success).toBe(true)
-      expect(parsed.data).toHaveProperty('total', 1)
-      expect(FlowDefinitionModel.find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          $or: expect.arrayContaining([
-            expect.objectContaining({ name: expect.objectContaining({ $options: 'i' }) }),
-          ]),
-        }),
-      )
-    })
-
-    it('searches with status filter', async () => {
-      vi.mocked(FlowDefinitionModel.find).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          sort: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({
-              lean: vi.fn().mockResolvedValue([]),
-            }),
-          }),
-        }),
-      } as any)
-
-      const result = await searchFlowsTool.invoke({ status: 'published' })
-      const parsed = typeof result === 'string' ? JSON.parse(result) : result
-      expect(parsed.success).toBe(true)
-      expect(FlowDefinitionModel.find).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'published' }),
-      )
-    })
-  })
-
-  describe('get_flow_detail', () => {
-    it('returns flow detail with graph', async () => {
-      const mockDefinition = {
-        _id: 'f1',
-        name: '审批流程',
-        description: 'test',
-        status: 'draft',
-        currentVersionId: 'v1',
-        createdBy: 'admin',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }
-      const mockVersion = {
-        _id: 'v1',
-        graph: { nodes: [{ id: 'n1' }], edges: [] },
-      }
-
-      vi.mocked(FlowDefinitionModel.findById).mockReturnValue({
-        lean: vi.fn().mockResolvedValue(mockDefinition),
-      } as any)
-      vi.mocked(FlowVersionModel.findById).mockReturnValue({
-        lean: vi.fn().mockResolvedValue(mockVersion),
-      } as any)
-
-      const result = await getFlowDetailTool.invoke({ flowId: 'f1' })
-      const parsed = typeof result === 'string' ? JSON.parse(result) : result
-      expect(parsed.success).toBe(true)
-      expect(parsed.data).toHaveProperty('graph')
-    })
-
-    it('returns error when flow not found', async () => {
-      vi.mocked(FlowDefinitionModel.findById).mockReturnValue({
-        lean: vi.fn().mockResolvedValue(null),
-      } as any)
-
-      const result = await getFlowDetailTool.invoke({ flowId: 'nonexistent' })
-      const parsed = typeof result === 'string' ? JSON.parse(result) : result
-      expect(parsed.success).toBe(false)
-      expect(parsed.error).toContain('不存在')
-    })
-  })
-
-  describe('search_users', () => {
-    it('searches users by keyword', async () => {
-      const mockUsers = [{ _id: 'u1', username: 'admin', displayName: '管理员', roles: ['admin'] }]
-      vi.mocked(UserModel.find).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          sort: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({
-              lean: vi.fn().mockResolvedValue(mockUsers),
-            }),
-          }),
-        }),
-      } as any)
-
-      const result = await searchUsersTool.invoke({ keyword: 'admin' })
-      const parsed = typeof result === 'string' ? JSON.parse(result) : result
-      expect(parsed.success).toBe(true)
-      expect(parsed.data).toHaveProperty('total', 1)
-    })
-  })
-
-  describe('search_schemas (via schemaTools)', () => {
-    it('searches schemas by keyword', async () => {
-      const mockSchemas = [{ _id: 's1', name: '用户表单', type: 'form', status: 'draft', version: '1' }]
-      vi.mocked(FormSchemaModel.find).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          sort: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({
-              lean: vi.fn().mockResolvedValue(mockSchemas),
-            }),
-          }),
-        }),
-      } as any)
-
-      const result = await searchSchemasTool.invoke({ keyword: '用户', source: 'flow' })
-      const parsed = typeof result === 'string' ? JSON.parse(result) : result
-      expect(parsed.success).toBe(true)
-      expect(parsed.data).toHaveProperty('total', 1)
-    })
-  })
-
-  describe('validate_flow', () => {
-    it('validates a correct flow', async () => {
-      const result = await validateFlowTool.invoke({
-        flow: {
-          nodes: [
-            { id: 'n1', data: { bpmnType: 'startEvent' } },
-            { id: 'n2', data: { bpmnType: 'endEvent' } },
-          ],
-          edges: [],
-        },
-      })
-      expect(result).toBeDefined()
-    })
-
-    it('returns validation errors for flow with issues', async () => {
-      const result = await validateFlowTool.invoke({
-        flow: {
-          nodes: [{ id: 'n1', data: { bpmnType: 'userTask', label: '审批' } }],
-          edges: [],
-        },
-      })
-      const parsed = typeof result === 'string' ? JSON.parse(result) : result
-      expect(parsed.success).toBe(true)
-      expect(parsed.data.valid).toBe(false)
-      expect(parsed.data.errors.length).toBeGreaterThan(0)
-    })
+  it('all tools have non-empty descriptions', () => {
+    for (const t of flowOnlyTools) {
+      expect(t.description.length).toBeGreaterThan(0)
+    }
   })
 })
+
+// 读取/校验类工具的 invoke 测试已迁至 mcp.spec.ts（通过 InMemoryTransport 测试 MCP 工具）
+// search_schemas (schemaTools) 已删除，由 MCP schema__search 覆盖
 
 describe('validateFlowGraph', () => {
   it('returns valid for valid flow', () => {

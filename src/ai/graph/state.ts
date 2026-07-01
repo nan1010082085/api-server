@@ -246,9 +246,13 @@ export const AgentStateAnnotation = Annotation.Root({
     id: string
     conversationId: string
     currentAgent: ActiveAgent
+    /** 全局节点执行计数，用于死循环防护 */
+    nodeExecutionCount: number
+    /** 全局节点执行上限，超过强制结束 */
+    maxNodeExecutions: number
   }>({
     reducer: (_, next) => next,
-    default: () => ({ id: '', conversationId: '', currentAgent: 'router' as ActiveAgent }),
+    default: () => ({ id: '', conversationId: '', currentAgent: 'router' as ActiveAgent, nodeExecutionCount: 0, maxNodeExecutions: 25 }),
   }),
 
   // ── Group 2: Task ──

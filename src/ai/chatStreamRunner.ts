@@ -25,12 +25,38 @@ import { PromptVersionModel } from './models/promptVersion.js'
 import type { AIMessage } from './graph/state.js'
 import { logger } from '../utils/logger.js'
 
+/** 高频增量事件不打日志，仅记录流式会话中的关键节点 */
+const KEY_STREAM_EVENT_TYPES = new Set([
+  'requirement_analysis_start',
+  'requirement_analysis_complete',
+  'task_plan_start',
+  'task_plan_complete',
+  'agent_switch',
+  'chain_step',
+  'tool_call_start',
+  'tool_call_end',
+  'tool_error',
+  'update_schema',
+  'update_flow',
+  'schema_complete',
+  'schema_diff',
+  'schema_bound',
+  'flow_complete',
+  'flow_diff',
+  'version_created',
+  'interrupt',
+  'done',
+  'error',
+])
+
 // ────────────────────────────────────────────
 // Tool names that produce structured payloads
 // ────────────────────────────────────────────
 
-const SCHEMA_TOOLS = new Set(['validate_schema'])
-const FLOW_TOOLS = new Set(['validate_flow'])
+// MCP 工具名（读取/校验类，通过 registry 桥接）
+const SCHEMA_TOOLS = new Set(['schema__validate_widgets'])
+const FLOW_TOOLS = new Set(['flow__validate'])
+// LangGraph 专有工具名（HITL/写入/协作/LLM）
 const UPDATE_SCHEMA_TOOL = 'update_schema'
 const UPDATE_FLOW_TOOL = 'update_flow'
 const GENERATE_SCHEMA_TOOL = 'generate_schema'
@@ -247,8 +273,11 @@ async function runChatStream(
   function sendEvent(event: Record<string, unknown>) {
     if (signal.aborted) return
     eventCount++
-    const elapsed = Date.now() - graphStartTime
-    logger.info({ msg: `[WS:chat] #${eventCount} +${elapsed}ms`, type: event.type as string })
+    const type = event.type as string
+    if (KEY_STREAM_EVENT_TYPES.has(type)) {
+      const elapsed = Date.now() - graphStartTime
+      logger.info({ msg: `[WS:chat] +${elapsed}ms`, type, eventCount })
+    }
     send(event)
   }
 
@@ -457,10 +486,10 @@ async function runChatStream(
             }
           }
 
-          if (SCHEMA_TOOLS.has(toolName) && toolArgs.widgetsJson) {
-            let parsedWidgets: unknown
-            try { parsedWidgets = JSON.parse(toolArgs.widgetsJson as string) } catch { parsedWidgets = null }
-            if (parsedWidgets) pendingPayloads.set(event.run_id as string, parsedWidgets as Record<string, unknown>[])
+          if (SCHEMA_TOOLS.has(toolName)) {
+            // MCP schema__validate_widgets 参数是 widgets 数组（已解析）
+            const widgets = toolArgs.widgets as Record<string, unknown>[] | undefined
+            if (widgets) pendingPayloads.set(event.run_id as string, widgets)
           }
           if (FLOW_TOOLS.has(toolName) && toolArgs.flow) {
             pendingPayloads.set(event.run_id as string, toolArgs.flow as Record<string, unknown>)
@@ -673,19 +702,38 @@ async function runChatStream(
       return
     }
 
-    // HITL interrupt
+    // HITL interrupt — 暂停当前轮次，发送 done 让前端结束 executeStream 等待
     if (isGraphInterrupt(err)) {
       const interruptValue = err.interrupts?.[0]?.value as Record<string, unknown> | undefined
       interruptedThreads.set(threadId, {
         conversationId: convo._id, threadId, interruptValue, timestamp: new Date(),
       })
+
+      // 持久化当前进度（含思考过程），避免刷新后丢失
+      if (accumulatedContent || accumulatedThinking || toolCallRegistry.length > 0) {
+        const assistantMessage: ConversationMessage = {
+          role: 'assistant',
+          content: accumulatedContent,
+          timestamp: new Date(),
+        }
+        if (accumulatedThinking) assistantMessage.thinking = accumulatedThinking
+        if (toolCallRegistry.length > 0) {
+          assistantMessage.toolCalls = toolCallRegistry.map((tc) => ({
+            name: tc.name, arguments: tc.arguments, result: tc.result,
+          }))
+        }
+        await appendMessage(convo._id, assistantMessage)
+      }
+
       sendEvent({
         type: 'interrupt', threadId,
         interruptType: interruptValue?.type ?? 'unknown',
         message: interruptValue?.message ?? '操作需要确认',
         data: interruptValue?.data,
       })
+      sendEvent({ type: 'done', conversationId: convo._id, interrupted: true })
       doneSent = true
+      onDone(convo._id)
       return
     }
 
@@ -718,7 +766,7 @@ async function runChatStream(
 
 export function executeResumeStream(
   threadId: string,
-  confirmed: boolean,
+  resumeValue: unknown,
   send: (event: Record<string, unknown>) => void,
   onDone: () => void,
 ): StreamHandle {
@@ -728,7 +776,7 @@ export function executeResumeStream(
   const promise = (async () => {
     try {
       const config = { configurable: { thread_id: threadId } }
-      const command = new Command({ resume: confirmed })
+      const command = new Command({ resume: resumeValue })
       let doneSent = false
 
       const eventStream = graph.streamEvents(command, {
@@ -790,6 +838,8 @@ export function executeResumeStream(
           message: interruptValue?.message ?? '操作需要确认',
           data: interruptValue?.data,
         })
+        send({ type: 'done', conversationId: threadId, interrupted: true })
+        doneSent = true
         return
       }
 

@@ -1,3 +1,6 @@
 export { createSchemaServer } from './schemaServer.js'
 export { createFlowServer } from './flowServer.js'
 export { createWidgetServer } from './widgetServer.js'
+export { createRagServer } from './ragServer.js'
+export { createIndustryServer } from './industryServer.js'
+export { initMcpBridge } from './bridge.js'

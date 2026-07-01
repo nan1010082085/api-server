@@ -92,7 +92,7 @@ export function formatRagContext(results: SearchResult[]): string {
     '',
     ...lines,
     '',
-    '如果用户需求与某个参考 Schema 相似，可以借鉴其结构和字段设计。如需查看完整 Schema，请使用 get_schema_detail 工具。',
+    '如果用户需求与某个参考 Schema 相似，可以借鉴其结构和字段设计。如需查看完整 Schema，请使用 schema__get_detail 工具。',
   ].join('\n')
 }
 

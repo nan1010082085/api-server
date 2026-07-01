@@ -64,7 +64,7 @@ describe('formatRagContext', () => {
     expect(context).toContain('85%')
     expect(context).toContain('input, select, table')
     expect(context).toContain('userName, phone, email')
-    expect(context).toContain('get_schema_detail')
+    expect(context).toContain('schema__get_detail')
   })
 
   it('formats multiple results with correct numbering', () => {

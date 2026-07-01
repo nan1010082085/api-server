@@ -95,10 +95,10 @@ export function getModelForTask(taskType: TaskType): string {
     // Provider-specific model mapping
     const providerDefaults: Record<string, Record<TaskType, string>> = {
       deepseek: {
-        router: 'deepseek-chat',
-        generate_simple: 'deepseek-v4-pro',
-        generate_complex: 'deepseek-v4-pro',
-        analyze: 'deepseek-chat',
+        router: 'deepseek-v4-flash',
+        generate_simple: 'deepseek-v4-flash',
+        generate_complex: 'deepseek-v4-flash',
+        analyze: 'deepseek-v4-flash',
       },
       openai: {
         router: 'gpt-4o-mini',
@@ -120,13 +120,93 @@ export function getModelForTask(taskType: TaskType): string {
   } catch {
     // LLMManager not available — use hardcoded DeepSeek defaults
     const fallbackMap: Record<TaskType, string> = {
-      router: 'deepseek-chat',
-      generate_simple: 'deepseek-v4-pro',
-      generate_complex: 'deepseek-v4-pro',
-      analyze: 'deepseek-chat',
+      router: 'deepseek-v4-flash',
+      generate_simple: 'deepseek-v4-flash',
+      generate_complex: 'deepseek-v4-flash',
+      analyze: 'deepseek-v4-flash',
     }
-    return fallbackMap[taskType] ?? 'deepseek-v4-pro'
+    return fallbackMap[taskType] ?? 'deepseek-v4-flash'
   }
+}
+
+export const USER_SELECTABLE_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'] as const
+export type UserSelectableModel = typeof USER_SELECTABLE_MODELS[number]
+
+/**
+ * 从 LLM 响应中提取 JSON 对象。
+ *
+ * 优先匹配 ```json ... ``` 代码块，降级匹配第一个完整 JSON 对象（非贪婪）。
+ * 用于 requirementAnalyzer / taskPlanner 等需要解析 LLM JSON 输出的节点，
+ * 加固对代码块包裹和混杂文本的容错。
+ */
+export function extractJsonFromResponse(raw: string): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'string') return null
+
+  // 优先匹配 ```json ... ``` 代码块
+  const codeBlockMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/)
+  if (codeBlockMatch) {
+    try {
+      const parsed = JSON.parse(codeBlockMatch[1].trim())
+      if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>
+    } catch { /* fallthrough */ }
+  }
+
+  // 降级：匹配第一个完整 JSON 对象（平衡花括号，非贪婪）
+  const start = raw.indexOf('{')
+  if (start === -1) return null
+
+  let depth = 0
+  let inString = false
+  let escape = false
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i]
+    if (escape) { escape = false; continue }
+    if (ch === '\\' && inString) { escape = true; continue }
+    if (ch === '"' && !escape) { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) {
+        const candidate = raw.slice(start, i + 1)
+        try {
+          const parsed = JSON.parse(candidate)
+          if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>
+        } catch { /* keep scanning */ }
+        return null
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Resolve the LLM model from user chat preferences.
+ * Falls back to task-based default when preference is missing or invalid.
+ */
+export function resolveUserModel(
+  preferences: Record<string, unknown> | undefined,
+  fallback: string,
+): string {
+  const model = preferences?.llmModel
+  if (typeof model === 'string' && (USER_SELECTABLE_MODELS as readonly string[]).includes(model)) {
+    return model
+  }
+  return fallback
+}
+
+/** 将用户偏好格式化为提示词片段（排除 llmModel 等系统字段） */
+export function formatPreferencesForPrompt(
+  preferences: Record<string, unknown> | undefined,
+): string | null {
+  if (!preferences) return null
+
+  const lines = Object.entries(preferences)
+    .filter(([key]) => key !== 'llmModel')
+    .map(([key, value]) => `- ${key}: ${value}`)
+
+  return lines.length > 0 ? lines.join('\n') : null
 }
 
 /**
@@ -220,7 +300,7 @@ const DEFAULT_HISTORY_TOKEN_BUDGET = 4000
 /**
  * Token budget for LangGraph agent nodes.
  *
- * DeepSeek v4-pro has 128K context window. We allocate:
+ * DeepSeek v4-flash has 128K context window. We allocate:
  * - ~8K for system prompt
  * - ~2K for the new user message
  * - ~60K for conversation history
@@ -370,7 +450,7 @@ function findSafeCutoffPointForLangGraph<T extends { constructor: Function }>(
  * Truncate messages for LangGraph agent nodes.
  *
  * Uses a larger token budget (60K) than the non-graph path since
- * DeepSeek v4-pro has 128K context. The strategy is:
+ * DeepSeek v4-flash has 128K context. The strategy is:
  *
  * 1. If total tokens fit within budget, return all messages unchanged
  * 2. Always keep the last MIN_KEEP_MESSAGES messages (recent tool call results are critical)

@@ -375,7 +375,7 @@ async function generateSummaryFromMessages(
 
   try {
     const model = new ChatOpenAI({
-      model: 'deepseek-v4-pro',
+      model: 'deepseek-v4-flash',
       apiKey,
       configuration: { baseURL: 'https://api.deepseek.com' },
       temperature: 0.3,

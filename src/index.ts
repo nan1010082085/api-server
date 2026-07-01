@@ -21,9 +21,16 @@ async function start() {
     console.log(`[server] Schema API running at http://localhost:${PORT}`)
     console.log(`[server] Health check: http://localhost:${PORT}/api/health`)
 
-    // SSE 流式输出超时配置
-    server.keepAliveTimeout = 300_000  // 5 分钟
-    server.headersTimeout = 310_000    // 比 keepAliveTimeout 略大
+    server.keepAliveTimeout = 300_000
+    server.headersTimeout = 310_000
+  })
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[server] 端口 ${PORT} 已被占用，请先停止旧进程：lsof -ti:${PORT} | xargs kill`)
+      process.exit(1)
+    }
+    throw err
   })
 
   let shuttingDown = false

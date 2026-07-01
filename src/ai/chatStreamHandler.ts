@@ -14,6 +14,7 @@ import {
   type ChatRequest,
   type StreamHandle,
 } from './chatStreamRunner.js'
+import { ensureToolsReady } from './tools/registry.js'
 import { logger } from '../utils/logger.js'
 
 /** 每个 socket 的活跃流，用于断连时清理 */
@@ -27,8 +28,17 @@ export function registerChatHandlers(socket: Socket, _io: Server): void {
   const socketId = socket.id
 
   // ── chat:send — 发送消息，启动流式响应 ──
-  socket.on('chat:send', (data: ChatRequest) => {
+  socket.on('chat:send', async (data: ChatRequest) => {
     logger.info({ msg: `[WS:chat] chat:send from ${socketId}`, conversationId: data.conversationId ?? 'new' })
+
+    try {
+      await ensureToolsReady()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error({ msg: '[WS:chat] tools registry not ready', error: message })
+      socket.emit('chat:error', { error: 'AI 工具初始化失败，请稍后重试' })
+      return
+    }
 
     // 取消该 socket 上的活跃流
     const existing = activeStreams.get(socketId)
@@ -72,8 +82,9 @@ export function registerChatHandlers(socket: Socket, _io: Server): void {
   })
 
   // ── chat:resume — HITL 恢复 ──
-  socket.on('chat:resume', (data: { threadId: string; confirmed: boolean }) => {
-    logger.info({ msg: `[WS:chat] chat:resume from ${socketId}`, threadId: data.threadId, confirmed: data.confirmed })
+  socket.on('chat:resume', (data: { threadId: string; confirmed?: boolean; resumeValue?: unknown }) => {
+    const resumeValue = data.resumeValue ?? data.confirmed ?? false
+    logger.info({ msg: `[WS:chat] chat:resume from ${socketId}`, threadId: data.threadId, resumeValue })
 
     const interrupted = getInterruptedThread(data.threadId)
     if (!interrupted) {
@@ -90,7 +101,7 @@ export function registerChatHandlers(socket: Socket, _io: Server): void {
 
     const handle = executeResumeStream(
       data.threadId,
-      data.confirmed,
+      resumeValue,
       (event) => {
         if (socket.connected) {
           socket.emit('chat:event', { threadId: data.threadId, ...event })

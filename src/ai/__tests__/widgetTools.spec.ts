@@ -134,7 +134,7 @@ vi.mock('../tools/toolHandlers.js', async (importOriginal) => {
   }
 })
 
-import { queryWidgets, validateSchema, queryWidgetsTool, validateWidgetSchemaTool } from '../tools/widgetTools.js'
+import { queryWidgets, validateSchema } from '../tools/widgetTools.js'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -243,12 +243,13 @@ describe('validateSchema (utility)', () => {
     expect(result.errors.some((e) => e.message.includes('children'))).toBe(true)
   })
 
-  it('validates nested structure recursively', async () => {
+  it('rejects nested container inside container (nesting violation)', async () => {
     const nested = makeContainer([
       makeContainer([makeWidget()]),
     ])
     const result = await validateSchema([nested])
-    expect(result.valid).toBe(true)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.message.includes('嵌套'))).toBe(true)
   })
 
   it('reports error for missing type (stops early)', async () => {
@@ -268,45 +269,6 @@ describe('validateSchema (utility)', () => {
   })
 })
 
-describe('queryWidgetsTool (LangGraph tool)', () => {
-  it('invokes with no arguments and returns all widgets', async () => {
-    const result = await queryWidgetsTool.invoke({})
-    const parsed = typeof result === 'string' ? JSON.parse(result) : result
-    expect(parsed.data.total).toBeGreaterThan(30)
-  })
+// queryWidgetsTool / validateWidgetSchemaTool 已迁入 MCP Server（widget__query / widget__validate），
+// 由 mcp.spec.ts 通过 InMemoryTransport 覆盖测试。
 
-  it('invokes with category filter', async () => {
-    const result = await queryWidgetsTool.invoke({ category: 'form' })
-    const parsed = typeof result === 'string' ? JSON.parse(result) : result
-    expect(parsed.data.total).toBeGreaterThan(0)
-    expect(parsed.data.widgets.every((w: { group: string }) => w.group === 'form')).toBe(true)
-  })
-})
-
-describe('validateWidgetSchemaTool (LangGraph tool)', () => {
-  it('invokes with valid schema', async () => {
-    const widget = {
-      id: '550e8400-e29b-41d4-a716-446655440000',
-      type: 'input',
-      position: { x: 0, y: 0, w: 12, h: 2 },
-    }
-    const container = {
-      id: '550e8400-e29b-41d4-a716-446655440001',
-      type: 'form',
-      position: { x: 0, y: 0, w: 24, h: 10 },
-      children: [widget],
-    }
-    const result = await validateWidgetSchemaTool.invoke({ widgets: [container] })
-    const parsed = typeof result === 'string' ? JSON.parse(result) : result
-    expect(parsed.data.valid).toBe(true)
-  })
-
-  it('invokes with invalid schema and returns errors', async () => {
-    const result = await validateWidgetSchemaTool.invoke({
-      widgets: [{ id: '550e8400-e29b-41d4-a716-446655440000', position: { x: 0, y: 0, w: 1, h: 1 } }],
-    })
-    const parsed = typeof result === 'string' ? JSON.parse(result) : result
-    expect(parsed.data.valid).toBe(false)
-    expect(parsed.data.errors.length).toBeGreaterThan(0)
-  })
-})
