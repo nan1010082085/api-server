@@ -23,6 +23,7 @@ export interface EnrichedSubmission {
   flowStatus: string | null
   flowStatusLabel: string | null
   currentTaskName: string | null
+  viewerTaskId: string | null
 }
 
 type SubmissionDoc = IFormSubmission & { _id: unknown; toJSON?: () => Record<string, unknown> }
@@ -32,7 +33,10 @@ function toPlainSubmission(doc: SubmissionDoc): Record<string, unknown> {
   return doc as unknown as Record<string, unknown>
 }
 
-export async function enrichSubmission(doc: SubmissionDoc): Promise<EnrichedSubmission> {
+export async function enrichSubmission(
+  doc: SubmissionDoc,
+  viewerId?: string | null,
+): Promise<EnrichedSubmission> {
   const plain = toPlainSubmission(doc)
   const submitterId = (plain.submitterId as string | null) ?? null
   const flowInstanceId = (plain.flowInstanceId as string | null) ?? null
@@ -54,6 +58,7 @@ export async function enrichSubmission(doc: SubmissionDoc): Promise<EnrichedSubm
   let flowStatus: string | null = null
   let flowStatusLabel: string | null = null
   let currentTaskName: string | null = null
+  let viewerTaskId: string | null = null
 
   if (flowInstanceId) {
     const flow = await FlowInstanceModel.findById(flowInstanceId).select('status').lean()
@@ -61,14 +66,23 @@ export async function enrichSubmission(doc: SubmissionDoc): Promise<EnrichedSubm
       flowStatus = flow.status
       flowStatusLabel = FLOW_STATUS_LABELS[flow.status] ?? flow.status
     }
-    const task = await TaskInstanceModel.findOne({
+    const taskFilter: Record<string, unknown> = {
       instanceId: flowInstanceId,
       status: { $in: ['pending', 'claimed'] },
-    })
+    }
+    if (viewerId) {
+      taskFilter.$or = [{ assignee: viewerId }, { assignee: null }, { assignee: { $exists: false } }]
+    }
+    const task = await TaskInstanceModel.findOne(taskFilter)
       .sort({ createdAt: -1 })
-      .select('nodeName')
+      .select('nodeName _id assignee')
       .lean()
     currentTaskName = task?.nodeName ?? null
+    if (task && viewerId && (task.assignee === viewerId || !task.assignee)) {
+      viewerTaskId = String(task._id)
+    } else if (task && !viewerId) {
+      viewerTaskId = String(task._id)
+    }
   }
 
   return {
@@ -85,11 +99,34 @@ export async function enrichSubmission(doc: SubmissionDoc): Promise<EnrichedSubm
     flowStatus,
     flowStatusLabel,
     currentTaskName,
+    viewerTaskId,
   }
 }
 
-export async function enrichSubmissions(docs: SubmissionDoc[]): Promise<EnrichedSubmission[]> {
-  return Promise.all(docs.map((doc) => enrichSubmission(doc)))
+export async function enrichSubmissions(
+  docs: SubmissionDoc[],
+  viewerId?: string | null,
+): Promise<EnrichedSubmission[]> {
+  return Promise.all(docs.map((doc) => enrichSubmission(doc, viewerId)))
+}
+
+/** 提交前规范化业务字段（如报销明细汇总 totalAmount） */
+export function normalizeSubmissionData(
+  schemaCode: string | null | undefined,
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const normalized = { ...data }
+  if (schemaCode === 'fin-expense-apply' || schemaCode === 'fin-purchase-apply') {
+    const items = normalized.items
+    if (Array.isArray(items)) {
+      const total = items.reduce((sum, row) => {
+        const amount = typeof row === 'object' && row !== null ? Number((row as Record<string, unknown>).amount) : 0
+        return sum + (Number.isFinite(amount) ? amount : 0)
+      }, 0)
+      normalized.totalAmount = total
+    }
+  }
+  return normalized
 }
 
 /** 请假详情页 descriptions 组件用扁平视图 */
@@ -110,5 +147,6 @@ export function toLeaveDetailView(enriched: EnrichedSubmission): Record<string, 
     agentUser: data.agentUser ?? data.agentUserName ?? '—',
     flowInstanceId: enriched.flowInstanceId,
     recordId: enriched.id,
+    taskId: enriched.viewerTaskId,
   }
 }

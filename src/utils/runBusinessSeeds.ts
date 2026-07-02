@@ -4,6 +4,10 @@ import { seedMenus, migrateMenuFields } from './seedMenus.js'
 import { seedSubmissionFlowBindings } from './seedWebhooks.js'
 import { seedBusinessRoles, assignBusinessRolesToAdmin } from './seedBusinessRoles.js'
 import { seedBusinessDicts } from './seedBusinessDicts.js'
+import { seedBusinessAgentWorkflows } from './seedBusinessAgentWorkflows.js'
+import { seedSampleNotices } from './seedSampleNotices.js'
+import { seedSampleAuditIssues, seedSampleMetrologyDevices } from './seedSampleDomainData.js'
+import { seedDemoTenant } from './seedDemoTenant.js'
 
 /**
  * Idempotent business-platform seeds (flow templates, schemas, menu binding, webhooks).
@@ -15,6 +19,11 @@ export async function runBusinessSeeds(): Promise<void> {
   await assignBusinessRolesToAdmin()
   await seedBusinessDicts()
   await seedBusinessSchemas()
+  await seedBusinessAgentWorkflows()
+  await seedSampleNotices()
+  await seedSampleAuditIssues()
+  await seedSampleMetrologyDevices()
+  await seedDemoTenant()
   await seedMenus()
   await migrateMenuFields()
   await seedSubmissionFlowBindings()

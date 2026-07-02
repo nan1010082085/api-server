@@ -4,6 +4,18 @@ import {
   DELIVERABLE_SCHEMA_CODES,
   type BusinessSchemaRefs,
 } from '../businessSchemaDeliverables.js'
+import { EXTENDED_DELIVERABLE_CODES } from '../business-deliverables/modules/extended.js'
+
+const CORE_CODES = [
+  'dashboard-workbench',
+  'hr-leave-apply',
+  'hr-leave-list',
+  'hr-leave-detail',
+  'hr-leave-stats',
+  'sys-user-mgmt',
+  'sys-role-mgmt',
+  'sys-dept-mgmt',
+] as const
 
 const mockRefs: BusinessSchemaRefs = {
   schemas: {
@@ -27,17 +39,14 @@ function assertBoardShape(json: Record<string, unknown>) {
 }
 
 describe('businessSchemaDeliverables', () => {
-  it('exports all D1 deliverable codes', () => {
-    expect(DELIVERABLE_SCHEMA_CODES).toEqual([
-      'dashboard-workbench',
-      'hr-leave-apply',
-      'hr-leave-list',
-      'hr-leave-detail',
-      'hr-leave-stats',
-      'sys-user-mgmt',
-      'sys-role-mgmt',
-      'sys-dept-mgmt',
-    ])
+  it('exports core + extended deliverable codes', () => {
+    expect(DELIVERABLE_SCHEMA_CODES.length).toBeGreaterThanOrEqual(80)
+    for (const code of CORE_CODES) {
+      expect(DELIVERABLE_SCHEMA_CODES).toContain(code)
+    }
+    for (const code of EXTENDED_DELIVERABLE_CODES) {
+      expect(DELIVERABLE_SCHEMA_CODES).toContain(code)
+    }
   })
 
   for (const code of DELIVERABLE_SCHEMA_CODES) {

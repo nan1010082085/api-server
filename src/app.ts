@@ -20,6 +20,10 @@ import rolesRouter from './routes/roles.js'
 import statsRouter from './routes/stats.js'
 import dashboardRouter from './routes/dashboard.js'
 import businessModuleRouter from './routes/businessModule.js'
+import noticesRouter from './routes/notices.js'
+import aiRuntimeRouter from './routes/aiRuntime.js'
+import auditIssuesRouter from './routes/auditIssues.js'
+import metrologyDevicesRouter from './routes/metrologyDevices.js'
 import templateRouter from './routes/template.js'
 import tenantRouter from './routes/tenant.js'
 import deptsRouter from './routes/depts.js'
@@ -141,6 +145,14 @@ app.use(dashboardRouter.routes())
 app.use(dashboardRouter.allowedMethods())
 app.use(businessModuleRouter.routes())
 app.use(businessModuleRouter.allowedMethods())
+app.use(noticesRouter.routes())
+app.use(noticesRouter.allowedMethods())
+app.use(aiRuntimeRouter.routes())
+app.use(aiRuntimeRouter.allowedMethods())
+app.use(auditIssuesRouter.routes())
+app.use(auditIssuesRouter.allowedMethods())
+app.use(metrologyDevicesRouter.routes())
+app.use(metrologyDevicesRouter.allowedMethods())
 app.use(dictRouter.routes())
 app.use(dictRouter.allowedMethods())
 app.use(optionsRouter.routes())

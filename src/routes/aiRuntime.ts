@@ -8,6 +8,9 @@
  */
 import Router from '@koa/router'
 import { authMiddleware } from '../middleware/auth.js'
+import { buildApprovalSuggestion } from '../services/approvalSuggestionService.js'
+import { buildDailyDigest } from '../services/dailyDigestService.js'
+import { getCurrentTenantId } from '../middleware/tenantContext.js'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -93,19 +96,31 @@ router.post('/detect-anomaly', requireAuth, async (ctx) => {
   ctx.body = null
 })
 
-/**
- * 审批建议
- */
 router.post('/approval-suggestion', requireAuth, async (ctx) => {
-  const { task, context } = ctx.request.body as any
-
-  // TODO: 基于历史数据和 AI 模型生成建议
-  // 暂时返回通用建议
-  ctx.body = {
-    suggestion: '建议通过',
-    confidence: 0.7,
-    reasoning: '基于历史数据，类似申请的通过率为 85%',
+  const body = ctx.request.body as {
+    task?: { id?: string }
+    taskId?: string
+    submissionId?: string
+    formData?: Record<string, unknown>
+    context?: Record<string, unknown>
   }
+
+  const result = await buildApprovalSuggestion({
+    taskId: body.taskId ?? body.task?.id,
+    submissionId: body.submissionId,
+    formData: body.formData,
+    flowContext: body.context,
+  })
+
+  ctx.body = result
+})
+
+/** A-06 — 每日工作摘要（规则版） */
+router.get('/daily-digest', requireAuth, async (ctx) => {
+  const userId = (ctx.state.user as { id?: string })?.id
+  const tenantId = getCurrentTenantId(ctx)
+  const digest = await buildDailyDigest(tenantId, userId)
+  ctx.body = { success: true, data: digest }
 })
 
 export default router

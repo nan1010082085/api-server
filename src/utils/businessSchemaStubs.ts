@@ -3,6 +3,10 @@
  * Deliverables are synced via businessSchemaDeliverables.ts at seed time.
  */
 import { DELIVERABLE_SCHEMA_CODES } from './businessSchemaDeliverables.js'
+import { buildExtendedSchemaSeeds } from './business-deliverables/extendedSeeds.js'
+
+export type { BusinessSchemaSeedSpec } from './business-deliverables/types.js'
+import type { BusinessSchemaSeedSpec } from './business-deliverables/types.js'
 
 function deliverablePlaceholder(canvas: { width: number; height: number }): Record<string, unknown> {
   return {
@@ -20,13 +24,6 @@ function deliverablePlaceholder(canvas: { width: number; height: number }): Reco
       events: [],
     },
   }
-}
-
-export interface BusinessSchemaSeedSpec {
-  code: string
-  name: string
-  type: 'form' | 'search_list' | 'layout' | 'table' | 'chart' | 'business' | 'report' | 'other'
-  json: Record<string, unknown>
 }
 
 export const BUSINESS_SCHEMA_SEEDS: BusinessSchemaSeedSpec[] = [
@@ -78,6 +75,7 @@ export const BUSINESS_SCHEMA_SEEDS: BusinessSchemaSeedSpec[] = [
     type: 'business',
     json: deliverablePlaceholder({ width: 1440, height: 900 }),
   },
+  ...buildExtendedSchemaSeeds(deliverablePlaceholder),
 ]
 
 export const LEAVE_FLOW_DEFINITION_NAME = '请假审批'

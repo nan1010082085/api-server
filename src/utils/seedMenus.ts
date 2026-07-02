@@ -2,27 +2,12 @@ import { MenuModel } from '../models/Menu.js'
 import { FormSchemaModel } from '../models/FormSchema.js'
 import { PublishedSchemaModel } from '../models/PublishedSchema.js'
 import { DEFAULT_TENANT_ID } from './initDefaultTenant.js'
+import type { MenuSeed } from './seedMenusTypes.js'
+import { EXTENDED_MENUS, EXTENDED_PARENT_PLACEHOLDERS } from './seedExtendedMenus.js'
 
-interface MenuSeed {
-  parentId: string | null
-  name: string
-  path: string
-  icon: string
-  type: 'menu' | 'button'
-  permission: string
-  sort: number
-  microAppId: string | null
-  target?: '_self' | '_blank'
-  routeType?: 'schema' | 'micro-app' | 'link'
-  schemaId?: string | null
-  /** Stable business code — resolved to publishId after seedBusinessSchemas */
-  schemaCode?: string
-  url?: string
-  app?: string
-  layout?: 'with-menu' | 'without-menu'
-}
+export type { MenuSeed } from './seedMenusTypes.js'
 
-const MENUS: MenuSeed[] = [
+const CORE_MENUS: MenuSeed[] = [
   // ── Shell 内置页面 ──
   { parentId: null, name: '首页', path: '/', icon: 'home-filled', type: 'menu', permission: '', sort: 0, microAppId: null, target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
 
@@ -40,7 +25,7 @@ const MENUS: MenuSeed[] = [
 
   // ── 系统管理 (目录) ──
   { parentId: null, name: '系统管理', path: '', icon: 'setting', type: 'menu', permission: '', sort: 10, microAppId: null, app: 'admin', layout: 'with-menu' },
-  { parentId: '__SYSTEM__', name: '菜单管理', path: '/app/editor/view', icon: 'menu', type: 'menu', permission: '', sort: 1, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema' },
+  { parentId: '__SYSTEM__', name: '菜单管理', path: '/app/editor/view', icon: 'menu', type: 'menu', permission: '', sort: 1, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema', schemaCode: 'sys-menu-manage' },
   { parentId: '__SYSTEM__', name: '微应用管理', path: '/admin/micro-apps', icon: 'monitor', type: 'menu', permission: '', sort: 2, microAppId: null, target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
   { parentId: '__SYSTEM__', name: '用户管理', path: '/app/editor/view', icon: 'user', type: 'menu', permission: '', sort: 3, microAppId: 'editor', target: '_self', app: 'admin', layout: 'with-menu', routeType: 'schema', schemaCode: 'sys-user-mgmt' },
   { parentId: '__SYSTEM__', name: '角色管理', path: '/app/editor/view', icon: 'medal', type: 'menu', permission: '', sort: 4, microAppId: 'editor', target: '_self', app: 'admin', layout: 'with-menu', routeType: 'schema', schemaCode: 'sys-role-mgmt' },
@@ -49,6 +34,11 @@ const MENUS: MenuSeed[] = [
   // ── Phase 1 P0：能力平台 ──
   { parentId: null, name: '能力平台', path: '', icon: 'cpu', type: 'menu', permission: '', sort: 50, microAppId: null, app: 'shell', layout: 'with-menu' },
   { parentId: '__PLATFORM__', name: 'Schema 管理', path: '/app/editor/instances', icon: 'grid', type: 'menu', permission: '', sort: 1, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
+  { parentId: '__PLATFORM__', name: '表单数据', path: '/app/editor/submissions', icon: 'document', type: 'menu', permission: '', sort: 2, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
+  { parentId: '__PLATFORM__', name: '流程定义', path: '/app/flow/list', icon: 'connection', type: 'menu', permission: '', sort: 3, microAppId: 'flow', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
+  { parentId: '__PLATFORM__', name: '流程模板', path: '/app/flow/templates', icon: 'files', type: 'menu', permission: '', sort: 4, microAppId: 'flow', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
+  { parentId: '__PLATFORM__', name: 'Agent 编排', path: '/app/ai/workflows', icon: 'cpu', type: 'menu', permission: '', sort: 5, microAppId: 'ai', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
+  { parentId: '__PLATFORM__', name: '知识库', path: '/app/ai/rag', icon: 'reading', type: 'menu', permission: '', sort: 6, microAppId: 'ai', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
 
   // ── 设计器全屏入口 ──
   { parentId: null, name: '表单设计器', path: '/standalone/editor', icon: 'edit', type: 'menu', permission: '', sort: 20, microAppId: 'editor', target: '_blank', app: 'shell', layout: 'without-menu', routeType: 'micro-app' },
@@ -56,11 +46,14 @@ const MENUS: MenuSeed[] = [
   { parentId: null, name: 'AI 应用', path: '/standalone/ai', icon: 'chat-dot-round', type: 'menu', permission: '', sort: 40, microAppId: 'ai', target: '_blank', app: 'shell', layout: 'without-menu', routeType: 'micro-app' },
 ]
 
+const MENUS: MenuSeed[] = [...CORE_MENUS, ...EXTENDED_MENUS]
+
 const PARENT_PLACEHOLDERS: Record<string, string> = {
   __SYSTEM__: '系统管理',
   __FLOW_CENTER__: '流程中心',
   __HR__: '人事管理',
   __PLATFORM__: '能力平台',
+  ...EXTENDED_PARENT_PLACEHOLDERS,
 }
 
 async function resolveParentId(parentId: string | null): Promise<string | null> {

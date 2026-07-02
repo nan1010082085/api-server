@@ -1,15 +1,13 @@
 import { v4 as uuidv4 } from 'uuid'
 import { FormSchemaModel } from '../models/FormSchema.js'
 import { PublishedSchemaModel } from '../models/PublishedSchema.js'
-import { FlowDefinitionModel } from '../flow-models/FlowDefinition.js'
 import { FlowVersionModel } from '../flow-models/FlowVersion.js'
-import { FlowTemplateModel } from '../flow-models/FlowTemplate.js'
+import { FlowDefinitionModel } from '../flow-models/FlowDefinition.js'
 import { DEFAULT_TENANT_ID } from './initDefaultTenant.js'
 import { bindMenuSchemaIds } from './seedMenus.js'
 import {
   BUSINESS_SCHEMA_SEEDS,
   DELIVERABLE_SCHEMA_CODES,
-  LEAVE_FLOW_DEFINITION_NAME,
   type BusinessSchemaSeedSpec,
 } from './businessSchemaStubs.js'
 import {
@@ -17,6 +15,15 @@ import {
   type BusinessSchemaRefs,
   isDeliverableSchemaCode,
 } from './businessSchemaDeliverables.js'
+import { seedBusinessFlowDefinitions } from './seedBusinessFlowDefinitions.js'
+import {
+  EXPENSE_FLOW_NAME,
+  LEAVE_FLOW_NAME,
+  OVERTIME_FLOW_NAME,
+  PURCHASE_FLOW_NAME,
+  TRIP_FLOW_NAME,
+} from './builtinFlowGraphs.js'
+import { syncAllFlowFormBindings } from './seedFlowFormBinding.js'
 import { resolveLeaveFlowGraphRoles } from './seedBusinessRoles.js'
 
 export interface SeededBusinessSchema {
@@ -107,88 +114,17 @@ async function upsertBusinessSchema(spec: BusinessSchemaSeedSpec): Promise<Seede
   }
 }
 
-async function seedLeaveFlowDefinition(): Promise<string | null> {
-  const existing = await FlowDefinitionModel.findOne({
-    tenantId: DEFAULT_TENANT_ID,
-    name: LEAVE_FLOW_DEFINITION_NAME,
-  })
-  if (existing) {
-    if (existing.status !== 'published') {
-      const latestVersion = await FlowVersionModel.findOne({ definitionId: existing._id }).sort({ version: -1 })
-      if (latestVersion) {
-        existing.status = 'published'
-        existing.currentVersionId = String(latestVersion._id)
-        await existing.save()
-      }
-    }
-    const currentVersion = await FlowVersionModel.findById(existing.currentVersionId)
-    if (currentVersion?.graph) {
-      const changed = await resolveLeaveFlowGraphRoles(currentVersion.graph as { nodes: Array<Record<string, unknown>> })
-      if (changed) {
-        currentVersion.markModified('graph')
-        await currentVersion.save()
-        console.log('[seed] Leave flow definition roles synced')
-      }
-    }
-    return String(existing._id)
+async function syncLeaveFlowRoles(): Promise<void> {
+  const definition = await FlowDefinitionModel.findOne({ tenantId: DEFAULT_TENANT_ID, name: LEAVE_FLOW_NAME })
+  if (!definition?.currentVersionId) return
+  const version = await FlowVersionModel.findById(definition.currentVersionId)
+  if (!version?.graph) return
+  const graph = version.graph as { nodes: Array<Record<string, unknown>> }
+  if (await resolveLeaveFlowGraphRoles(graph)) {
+    version.markModified('graph')
+    await version.save()
+    console.log('[seed] Leave flow definition roles synced')
   }
-
-  const template = await FlowTemplateModel.findOne({ name: LEAVE_FLOW_DEFINITION_NAME, isBuiltin: true })
-  if (!template) {
-    console.warn('[seed] Leave flow template not found — run flow template seed first')
-    return null
-  }
-
-  const idMap = new Map<string, string>()
-  const nodes = template.graph.nodes.map((node: Record<string, unknown>) => {
-    const newId = uuidv4()
-    idMap.set(node.id as string, newId)
-    return { ...node, id: newId }
-  })
-  const edges = template.graph.edges.map((edge: Record<string, unknown>) => ({
-    ...edge,
-    id: uuidv4(),
-    source: {
-      ...(edge.source as Record<string, unknown>),
-      cell: idMap.get((edge.source as Record<string, unknown>).cell as string)
-        ?? (edge.source as Record<string, unknown>).cell,
-    },
-    target: {
-      ...(edge.target as Record<string, unknown>),
-      cell: idMap.get((edge.target as Record<string, unknown>).cell as string)
-        ?? (edge.target as Record<string, unknown>).cell,
-    },
-  }))
-
-  const graph = { nodes, edges }
-  await resolveLeaveFlowGraphRoles(graph)
-
-  const now = new Date()
-  const pad = (n: number, len: number) => String(n).padStart(len, '2')
-  const nextVersion = `v${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}`
-
-  const definition = await FlowDefinitionModel.create({
-    tenantId: DEFAULT_TENANT_ID,
-    name: LEAVE_FLOW_DEFINITION_NAME,
-    description: template.description,
-    category: template.category,
-    status: 'published',
-    createdBy: 'system',
-    permissions: { editors: [], launchers: [], viewers: [] },
-  })
-
-  const version = await FlowVersionModel.create({
-    definitionId: definition._id,
-    version: nextVersion,
-    graph,
-    metadata: null,
-  })
-
-  definition.currentVersionId = String(version._id)
-  await definition.save()
-
-  console.log(`[seed] Leave flow definition created: ${LEAVE_FLOW_DEFINITION_NAME}`)
-  return String(definition._id)
 }
 
 async function syncDeliverableSchemas(
@@ -239,7 +175,25 @@ export async function seedBusinessSchemas(): Promise<BusinessSeedResult> {
     if (seeded) schemas.push(seeded)
   }
 
-  const leaveFlowDefinitionId = await seedLeaveFlowDefinition()
+  const flowIds = await seedBusinessFlowDefinitions()
+  await syncLeaveFlowRoles()
+  const leaveFlowDefinitionId = flowIds[LEAVE_FLOW_NAME] ?? null
+
+  const bindingMap: Array<{ flowName: string; schemaCode: string }> = [
+    { flowName: LEAVE_FLOW_NAME, schemaCode: 'hr-leave-apply' },
+    { flowName: TRIP_FLOW_NAME, schemaCode: 'oa-trip-apply' },
+    { flowName: EXPENSE_FLOW_NAME, schemaCode: 'fin-expense-apply' },
+    { flowName: PURCHASE_FLOW_NAME, schemaCode: 'fin-purchase-apply' },
+    { flowName: OVERTIME_FLOW_NAME, schemaCode: 'hr-overtime-apply' },
+  ]
+  await syncAllFlowFormBindings(
+    bindingMap.flatMap(({ flowName, schemaCode }) => {
+      const seeded = schemas.find((s) => s.code === schemaCode)
+      if (!seeded) return []
+      return [{ flowName, schemaCode, formSchemaId: seeded.formSchemaId, formPublishId: seeded.publishId }]
+    }),
+  )
+
   const synced = await syncDeliverableSchemas(schemas, leaveFlowDefinitionId)
   await bindMenuSchemaIds()
 

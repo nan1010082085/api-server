@@ -28,11 +28,12 @@ router.get('/hr/leave/stats', requireAuth, async (ctx) => {
 })
 
 /**
- * GET /api/business/hr/leave/detail?recordId=
- * 请假详情 descriptions 数据源（需 URL 带 recordId，PublishView ?recordId= 注入后由前端拼 query）
+ * GET /api/business/hr/leave/detail?recordId=&taskId=
+ * 请假详情 descriptions 数据源（可选 taskId 覆盖当前用户 pending task）
  */
 router.get('/hr/leave/detail', requireAuth, async (ctx) => {
   const recordId = ctx.query.recordId as string
+  const taskIdOverride = ctx.query.taskId as string | undefined
   if (!recordId || !mongoose.Types.ObjectId.isValid(recordId)) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'Query recordId is required and must be a valid id.' } }
@@ -53,8 +54,15 @@ router.get('/hr/leave/detail', requireAuth, async (ctx) => {
     return
   }
 
-  const enriched = await enrichSubmission(submission)
-  ctx.body = { success: true, data: toLeaveDetailView(enriched) }
+  const enriched = await enrichSubmission(
+    submission,
+    (ctx.state.user as { id?: string })?.id ?? null,
+  )
+  const detail = toLeaveDetailView(enriched)
+  if (taskIdOverride && mongoose.Types.ObjectId.isValid(taskIdOverride)) {
+    detail.taskId = taskIdOverride
+  }
+  ctx.body = { success: true, data: detail }
 })
 
 /** GET /api/business/hr/leave/schemas — 模块 Schema 元信息（菜单/debug） */

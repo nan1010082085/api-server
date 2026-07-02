@@ -19,7 +19,7 @@ import {
 } from '../services/exportService.js'
 import type { SubmissionStatus } from '../models/FormSubmission.js'
 import mongoose from 'mongoose'
-import { enrichSubmissions, enrichSubmission, toLeaveDetailView } from '../services/business/submissionEnrichment.js'
+import { enrichSubmissions, enrichSubmission, toLeaveDetailView, normalizeSubmissionData } from '../services/business/submissionEnrichment.js'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -49,9 +49,11 @@ router.post('/:schemaId', requireAuth, validate(createSubmissionSchema), async (
 
   const userId = (ctx.state.user as { id: string }).id
 
+  const normalizedData = normalizeSubmissionData(schema.code ?? null, data)
+
   const submission = await FormSubmissionModel.create({
     schemaId,
-    data,
+    data: normalizedData,
     submitterId: submitterId ?? userId,
     status: 'submitted',
   })
@@ -64,7 +66,7 @@ router.post('/:schemaId', requireAuth, validate(createSubmissionSchema), async (
     submissionId: submission._id,
     schemaId,
     submitterId: submission.submitterId ?? userId,
-    data,
+    data: normalizedData,
   }).catch((err) => console.error('[submission.created] emit failed:', err))
 })
 
@@ -97,7 +99,8 @@ router.get('/:schemaId', requireAuth, async (ctx) => {
   ])
 
   const enrich = ctx.query.enrich !== 'false'
-  const payloadItems = enrich ? await enrichSubmissions(items) : items
+  const viewerId = (ctx.state.user as { id?: string })?.id ?? null
+  const payloadItems = enrich ? await enrichSubmissions(items, viewerId) : items
 
   ctx.body = {
     success: true,

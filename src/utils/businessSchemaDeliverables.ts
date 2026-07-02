@@ -2,11 +2,14 @@
  * Phase D1 — Deliverable Board JSON for leave module + workbench.
  * Built at seed time with resolved schema / flow IDs.
  */
+import {
+  EXTENDED_DELIVERABLE_CODES,
+  buildExtendedDeliverableSchemaJson,
+  isExtendedDeliverableCode,
+} from './business-deliverables/modules/extended.js'
+import type { BusinessSchemaRefs } from './business-deliverables/types.js'
 
-export interface BusinessSchemaRefs {
-  schemas: Record<string, { formSchemaId: string; publishId: string }>
-  leaveFlowDefinitionId: string | null
-}
+export type { BusinessSchemaRefs } from './business-deliverables/types.js'
 
 export const LEAVE_TYPE_OPTIONS = [
   { label: '年假', value: 'annual' },
@@ -27,7 +30,7 @@ export const LEAVE_STATUS_COLOR_MAP: Record<string, string> = {
   rejected: 'danger',
 }
 
-export const DELIVERABLE_SCHEMA_CODES = [
+const CORE_DELIVERABLE_SCHEMA_CODES = [
   'dashboard-workbench',
   'hr-leave-apply',
   'hr-leave-list',
@@ -36,6 +39,11 @@ export const DELIVERABLE_SCHEMA_CODES = [
   'sys-user-mgmt',
   'sys-role-mgmt',
   'sys-dept-mgmt',
+] as const
+
+export const DELIVERABLE_SCHEMA_CODES = [
+  ...CORE_DELIVERABLE_SCHEMA_CODES,
+  ...EXTENDED_DELIVERABLE_CODES,
 ] as const
 
 function makeBoard(width: number, height: number, variables: Record<string, unknown>[] = []) {
@@ -139,6 +147,41 @@ export function buildDashboardWorkbenchSchema(refs: BusinessSchemaRefs): Record<
           apiUrl: '/dashboard',
           responseDataPath: 'flows.initiatedByMe',
         },
+        options: [],
+        variables: [],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+      {
+        id: 'wb-stat-digest',
+        type: 'statistic',
+        name: 'FgStatistic',
+        label: '今日摘要',
+        position: { x: 912, y: 80, w: 280, h: 120, zIndex: 2 },
+        style: { backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
+        props: {
+          title: '今日待办',
+          value: 0,
+          suffix: '项',
+          color: '#909399',
+          apiUrl: '/ai/runtime/daily-digest',
+          responseDataPath: 'pendingTasks',
+        },
+        options: [],
+        variables: [],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+      {
+        id: 'wb-notifications',
+        type: 'notification',
+        name: 'FgNotification',
+        label: '最新公告',
+        position: { x: 920, y: 220, w: 480, h: 320, zIndex: 3 },
+        style: { backgroundColor: '#fff', borderRadius: '8px', padding: '12px' },
+        props: { title: '最新公告', pageSize: 5 },
         options: [],
         variables: [],
         events: [],
@@ -284,6 +327,7 @@ export function buildHrLeaveApplySchema(refs: BusinessSchemaRefs): Record<string
         position: { x: 48, y: 120, w: 400, h: 40, zIndex: 3 },
         style: { width: '100%' },
         props: { placeholder: '请选择请假类型', clearable: true },
+        api: { dictCode: 'leave_type' },
         options: LEAVE_TYPE_OPTIONS,
         variables: [],
         events: [],
@@ -506,6 +550,12 @@ export function buildHrLeaveListSchema(refs: BusinessSchemaRefs): Record<string,
               colorMap: LEAVE_STATUS_COLOR_MAP,
               options: LEAVE_STATUS_OPTIONS,
             },
+            {
+              prop: 'flowStatus',
+              label: '流程状态',
+              minWidth: 110,
+              render: 'flowStatus',
+            },
             { prop: 'currentTaskName', label: '当前节点', minWidth: 120, render: 'text' },
             { prop: 'data.reason', label: '事由', minWidth: 180, render: 'text', showTooltip: true },
             { prop: 'createdAt', label: '申请时间', minWidth: 160, render: 'text' },
@@ -555,7 +605,12 @@ export function buildHrLeaveListSchema(refs: BusinessSchemaRefs): Record<string,
               {
                 type: 'navigate',
                 navigatePath: '/app/editor/view',
-                navigateQuery: { id: detailPublishId, recordId: '{{row._id}}' },
+                navigateQuery: {
+                  id: detailPublishId,
+                  recordId: '{{row._id}}',
+                  flowInstanceId: '{{row.flowInstanceId}}',
+                  taskId: '{{row.viewerTaskId}}',
+                },
               },
             ],
           },
@@ -566,7 +621,12 @@ export function buildHrLeaveListSchema(refs: BusinessSchemaRefs): Record<string,
               {
                 type: 'navigate',
                 navigatePath: '/app/editor/view',
-                navigateQuery: { id: detailPublishId, recordId: '{{row._id}}' },
+                navigateQuery: {
+                  id: detailPublishId,
+                  recordId: '{{row._id}}',
+                  flowInstanceId: '{{row.flowInstanceId}}',
+                  taskId: '{{row.viewerTaskId}}',
+                },
               },
             ],
           },
@@ -663,21 +723,54 @@ export function buildHrLeaveDetailSchema(_refs: BusinessSchemaRefs): Record<stri
         validationRules: [],
       },
       {
-        id: 'detail-flow-link',
-        type: 'button',
-        name: 'FgButton',
-        label: '流程审批',
-        position: { x: 24, y: 490, w: 160, h: 40, zIndex: 3 },
-        style: {},
-        props: { text: '前往待办审批', type: 'primary', size: 'default' },
+        id: 'detail-flow-timeline',
+        type: 'flow-timeline',
+        name: 'FgFlowTimeline',
+        label: '审批记录',
+        position: { x: 24, y: 490, w: 1392, h: 280, zIndex: 3 },
+        style: { width: '100%', backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
+        props: {
+          title: '审批记录',
+          instanceIdVariable: 'flowInstanceId',
+        },
         options: [],
         variables: [],
-        events: [
-          {
-            trigger: 'click',
-            actions: [{ type: 'navigate', navigatePath: '/app/flow/tasks' }],
-          },
-        ],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+      {
+        id: 'detail-comment',
+        type: 'approval-comment',
+        name: 'FgApprovalComment',
+        label: '审批意见',
+        field: 'approvalComment',
+        position: { x: 24, y: 790, w: 1392, h: 120, zIndex: 4 },
+        style: { width: '100%' },
+        props: { placeholder: '请输入审批意见', rows: 3 },
+        options: [],
+        variables: [],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+      {
+        id: 'detail-flow-actions',
+        type: 'flow-task-actions',
+        name: 'FgFlowTaskActions',
+        label: '审批操作',
+        position: { x: 24, y: 930, w: 1392, h: 160, zIndex: 5 },
+        style: { width: '100%', backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
+        props: {
+          title: '审批操作',
+          taskIdVariable: 'taskId',
+          instanceIdVariable: 'flowInstanceId',
+          commentWidgetId: 'detail-comment',
+          showAiSuggestion: true,
+        },
+        options: [],
+        variables: [],
+        events: [],
         rules: [],
         validationRules: [],
       },
@@ -685,6 +778,7 @@ export function buildHrLeaveDetailSchema(_refs: BusinessSchemaRefs): Record<stri
     board: makeBoard(1440, 1400, [
       { name: 'recordId', type: 'string', defaultValue: '' },
       { name: 'flowInstanceId', type: 'string', defaultValue: '' },
+      { name: 'taskId', type: 'string', defaultValue: '' },
     ]),
   }
 }
@@ -971,7 +1065,7 @@ export function buildHrLeaveStatsSchema(_refs: BusinessSchemaRefs): Record<strin
 }
 
 const DELIVERABLE_BUILDERS: Record<
-  (typeof DELIVERABLE_SCHEMA_CODES)[number],
+  (typeof CORE_DELIVERABLE_SCHEMA_CODES)[number],
   (refs: BusinessSchemaRefs) => Record<string, unknown>
 > = {
   'dashboard-workbench': buildDashboardWorkbenchSchema,
@@ -988,7 +1082,10 @@ export function buildDeliverableSchemaJson(
   code: (typeof DELIVERABLE_SCHEMA_CODES)[number],
   refs: BusinessSchemaRefs,
 ): Record<string, unknown> {
-  return DELIVERABLE_BUILDERS[code](refs)
+  if (isExtendedDeliverableCode(code)) {
+    return buildExtendedDeliverableSchemaJson(code, refs)
+  }
+  return DELIVERABLE_BUILDERS[code as (typeof CORE_DELIVERABLE_SCHEMA_CODES)[number]](refs)
 }
 
 export function isDeliverableSchemaCode(code: string): code is (typeof DELIVERABLE_SCHEMA_CODES)[number] {
