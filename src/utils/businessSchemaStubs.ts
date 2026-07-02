@@ -1,36 +1,9 @@
 /**
  * Business Schema seed registry.
- * D1 deliverables (leave + workbench) are synced via businessSchemaDeliverables.ts at seed time.
+ * Deliverables are synced via businessSchemaDeliverables.ts at seed time.
  */
 import { DELIVERABLE_SCHEMA_CODES } from './businessSchemaDeliverables.js'
 
-function stubSchema(title: string, canvas: { width: number; height: number }, widgetType = 'title'): Record<string, unknown> {
-  const widgetId = `stub-${widgetType}-1`
-  return {
-    widgets: [
-      {
-        id: widgetId,
-        type: widgetType,
-        props: { text: title, title },
-        position: { x: 24, y: 24, w: 480, h: 48, zIndex: 1 },
-      },
-    ],
-    board: {
-      canvas: {
-        width: canvas.width,
-        height: canvas.height,
-        widthUnit: 'px',
-        heightUnit: 'px',
-        backgroundColor: '#f5f7fa',
-        padding: '16px',
-      },
-      variables: [],
-      events: [],
-    },
-  }
-}
-
-/** Placeholder until syncDeliverableSchemas runs (same canvas sizes as deliverables). */
 function deliverablePlaceholder(canvas: { width: number; height: number }): Record<string, unknown> {
   return {
     widgets: [],
@@ -91,19 +64,19 @@ export const BUSINESS_SCHEMA_SEEDS: BusinessSchemaSeedSpec[] = [
     code: 'sys-user-mgmt',
     name: '用户管理',
     type: 'business',
-    json: stubSchema('用户管理（Phase 1 占位）', { width: 1440, height: 900 }, 'user-management'),
+    json: deliverablePlaceholder({ width: 1440, height: 900 }),
   },
   {
     code: 'sys-role-mgmt',
     name: '角色管理',
     type: 'business',
-    json: stubSchema('角色管理（Phase 1 占位）', { width: 1440, height: 900 }),
+    json: deliverablePlaceholder({ width: 1440, height: 900 }),
   },
   {
     code: 'sys-dept-mgmt',
     name: '部门管理',
     type: 'business',
-    json: stubSchema('部门管理（Phase 1 占位）', { width: 1440, height: 900 }),
+    json: deliverablePlaceholder({ width: 1440, height: 900 }),
   },
 ]
 

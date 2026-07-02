@@ -34,6 +34,9 @@ describe('businessSchemaDeliverables', () => {
       'hr-leave-list',
       'hr-leave-detail',
       'hr-leave-stats',
+      'sys-user-mgmt',
+      'sys-role-mgmt',
+      'sys-dept-mgmt',
     ])
   })
 
@@ -100,5 +103,31 @@ describe('businessSchemaDeliverables', () => {
     const buttons = widgets.filter((w) => w.type === 'button')
     expect(stats.length).toBeGreaterThanOrEqual(3)
     expect(buttons.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('sys-user-mgmt uses user-management widget', () => {
+    const json = buildDeliverableSchemaJson('sys-user-mgmt', mockRefs)
+    const widget = (json.widgets as Array<Record<string, unknown>>).find((w) => w.type === 'user-management')
+    expect(widget).toBeDefined()
+  })
+
+  it('sys-role-mgmt uses role-management widget', () => {
+    const json = buildDeliverableSchemaJson('sys-role-mgmt', mockRefs)
+    const widget = (json.widgets as Array<Record<string, unknown>>).find((w) => w.type === 'role-management')
+    expect(widget).toBeDefined()
+  })
+
+  it('sys-dept-mgmt uses advanced-table with /depts API', () => {
+    const json = buildDeliverableSchemaJson('sys-dept-mgmt', mockRefs)
+    const table = (json.widgets as Array<Record<string, unknown>>).find((w) => w.type === 'advanced-table')
+    expect(table).toBeDefined()
+    expect((table!.api as Record<string, unknown>).url).toBe('/depts')
+  })
+
+  it('hr-leave-detail dataSource includes recordId variable placeholder', () => {
+    const json = buildDeliverableSchemaJson('hr-leave-detail', mockRefs)
+    const desc = (json.widgets as Array<Record<string, unknown>>).find((w) => w.type === 'descriptions')
+    const url = ((desc!.props as Record<string, unknown>).dataSource as Record<string, unknown>).url
+    expect(url).toContain('{{variables.recordId}}')
   })
 })

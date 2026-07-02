@@ -28,7 +28,7 @@
 | `hr-leave-apply` | `POST /api/submissions/:formSchemaId` body `{ data }` | submitSubmission 动作 |
 | | `submission.created` → Webhook 绑定 | 自动启动「请假审批」流程，回写 `flowInstanceId` |
 | `hr-leave-list` | `GET /api/submissions/:formSchemaId` | 默认 `enrich=true`，含 `submitterName`、`currentTaskName` |
-| `hr-leave-detail` | `GET /api/business/hr/leave/detail?recordId=` | descriptions `dataSource`；需 URL 带 `recordId`（PublishView `?recordId=`） |
+| `hr-leave-detail` | `GET /api/business/hr/leave/detail?recordId=` | descriptions `dataSource` URL 含 `{{variables.recordId}}`；PublishView `?recordId=` 注入变量 |
 | | `GET /api/submissions/:schemaId/:id/view` | 同上扁平视图，按 schemaId + id |
 | `hr-leave-stats` | `GET /api/business/hr/leave/stats` | `monthlyCount`、`avgDays`、`byDept`、`monthlyTrend` |
 | 字典 | `GET /api/dict/data/by-type/leave_type` | seed `leave_type`（`seedBusinessDicts`） |

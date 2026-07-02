@@ -33,6 +33,9 @@ export const DELIVERABLE_SCHEMA_CODES = [
   'hr-leave-list',
   'hr-leave-detail',
   'hr-leave-stats',
+  'sys-user-mgmt',
+  'sys-role-mgmt',
+  'sys-dept-mgmt',
 ] as const
 
 function makeBoard(width: number, height: number, variables: Record<string, unknown>[] = []) {
@@ -612,7 +615,7 @@ export function buildHrLeaveDetailSchema(_refs: BusinessSchemaRefs): Record<stri
           border: true,
           dataSource: {
             type: 'api',
-            url: '/business/hr/leave/detail',
+            url: '/business/hr/leave/detail?recordId={{variables.recordId}}',
           },
           staticData: {
             applicantName: '张三',
@@ -659,11 +662,186 @@ export function buildHrLeaveDetailSchema(_refs: BusinessSchemaRefs): Record<stri
         rules: [],
         validationRules: [],
       },
+      {
+        id: 'detail-flow-link',
+        type: 'button',
+        name: 'FgButton',
+        label: '流程审批',
+        position: { x: 24, y: 490, w: 160, h: 40, zIndex: 3 },
+        style: {},
+        props: { text: '前往待办审批', type: 'primary', size: 'default' },
+        options: [],
+        variables: [],
+        events: [
+          {
+            trigger: 'click',
+            actions: [{ type: 'navigate', navigatePath: '/app/flow/tasks' }],
+          },
+        ],
+        rules: [],
+        validationRules: [],
+      },
     ],
     board: makeBoard(1440, 1400, [
       { name: 'recordId', type: 'string', defaultValue: '' },
       { name: 'flowInstanceId', type: 'string', defaultValue: '' },
     ]),
+  }
+}
+
+/** 系统管理 — 用户 */
+export function buildSysUserMgmtSchema(_refs: BusinessSchemaRefs): Record<string, unknown> {
+  return {
+    widgets: [
+      {
+        id: 'sys-user-title',
+        type: 'title',
+        name: 'FgTitle',
+        label: '标题',
+        position: { x: 24, y: 16, w: 400, h: 48, zIndex: 1 },
+        style: { fontSize: '22px', fontWeight: '600' },
+        props: { content: '用户管理', level: 3, align: 'left' },
+        options: [],
+        variables: [],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+      {
+        id: 'sys-user-widget',
+        type: 'user-management',
+        name: 'FgUserManagement',
+        label: '用户管理',
+        position: { x: 24, y: 72, w: 1392, h: 780, zIndex: 2 },
+        style: { width: '100%', height: '780px', backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
+        props: {
+          tableColumns: ['username', 'displayName', 'deptId', 'phone', 'status', 'createdAt'],
+          pageSize: 20,
+          searchable: true,
+        },
+        options: [],
+        variables: [],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+    ],
+    board: makeBoard(1440, 900),
+  }
+}
+
+/** 系统管理 — 角色 */
+export function buildSysRoleMgmtSchema(_refs: BusinessSchemaRefs): Record<string, unknown> {
+  return {
+    widgets: [
+      {
+        id: 'sys-role-title',
+        type: 'title',
+        name: 'FgTitle',
+        label: '标题',
+        position: { x: 24, y: 16, w: 400, h: 48, zIndex: 1 },
+        style: { fontSize: '22px', fontWeight: '600' },
+        props: { content: '角色管理', level: 3, align: 'left' },
+        options: [],
+        variables: [],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+      {
+        id: 'sys-role-widget',
+        type: 'role-management',
+        name: 'FgRoleManagement',
+        label: '角色管理',
+        position: { x: 24, y: 72, w: 1392, h: 780, zIndex: 2 },
+        style: { width: '100%', height: '780px', backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
+        props: {
+          tableColumns: ['name', 'permissions', 'data_scope', 'createdAt'],
+          pageSize: 20,
+          searchable: true,
+        },
+        options: [],
+        variables: [],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+    ],
+    board: makeBoard(1440, 900),
+  }
+}
+
+const DEPT_STATUS_OPTIONS = [
+  { label: '启用', value: 'active' },
+  { label: '停用', value: 'inactive' },
+]
+
+const DEPT_STATUS_COLOR_MAP: Record<string, string> = {
+  active: 'success',
+  inactive: 'info',
+}
+
+/** 系统管理 — 部门（列表） */
+export function buildSysDeptMgmtSchema(_refs: BusinessSchemaRefs): Record<string, unknown> {
+  return {
+    widgets: [
+      {
+        id: 'sys-dept-title',
+        type: 'title',
+        name: 'FgTitle',
+        label: '标题',
+        position: { x: 24, y: 16, w: 400, h: 48, zIndex: 1 },
+        style: { fontSize: '22px', fontWeight: '600' },
+        props: { content: '部门管理', level: 3, align: 'left' },
+        options: [],
+        variables: [],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+      {
+        id: 'sys-dept-table',
+        type: 'advanced-table',
+        name: 'FgAdvancedTable',
+        label: '部门列表',
+        position: { x: 24, y: 72, w: 1392, h: 780, zIndex: 2 },
+        style: { width: '100%', height: '780px' },
+        props: {
+          columns: [
+            { prop: 'name', label: '部门名称', minWidth: 160, render: 'text', filterable: true },
+            { prop: 'code', label: '编码', minWidth: 120, render: 'text' },
+            {
+              prop: 'status',
+              label: '状态',
+              width: 100,
+              render: 'tag',
+              filterable: true,
+              colorMap: DEPT_STATUS_COLOR_MAP,
+              options: DEPT_STATUS_OPTIONS,
+            },
+            { prop: 'sort', label: '排序', width: 80, align: 'center', render: 'text' },
+            { prop: 'createdAt', label: '创建时间', minWidth: 160, render: 'text' },
+          ],
+          stripe: true,
+          border: true,
+          height: 680,
+          pagination: { enabled: true, pageSize: 20, pageSizes: [10, 20, 50] },
+          selection: { enabled: false },
+        },
+        api: {
+          url: '/depts',
+          method: 'get',
+          dataPath: 'items',
+          immediate: true,
+        },
+        options: [],
+        variables: [],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+    ],
+    board: makeBoard(1440, 900),
   }
 }
 
@@ -801,6 +979,9 @@ const DELIVERABLE_BUILDERS: Record<
   'hr-leave-list': buildHrLeaveListSchema,
   'hr-leave-detail': buildHrLeaveDetailSchema,
   'hr-leave-stats': buildHrLeaveStatsSchema,
+  'sys-user-mgmt': buildSysUserMgmtSchema,
+  'sys-role-mgmt': buildSysRoleMgmtSchema,
+  'sys-dept-mgmt': buildSysDeptMgmtSchema,
 }
 
 export function buildDeliverableSchemaJson(
