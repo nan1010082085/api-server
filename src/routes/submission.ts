@@ -62,6 +62,7 @@ router.post('/:schemaId', requireAuth, validate(createSubmissionSchema), async (
   eventBus.emit('submission.created', {
     submissionId: submission._id,
     schemaId,
+    submitterId: submission.submitterId ?? userId,
     data,
   }).catch((err) => console.error('[submission.created] emit failed:', err))
 })

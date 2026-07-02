@@ -5,6 +5,7 @@ import { connectDatabase, mongoose } from './config/database.js'
 import { initSocket } from './socket.js'
 import { setSocketInstance } from './services/socketService.js'
 import { initWebhookDispatcher } from './services/webhookDispatcher.js'
+import { initSubmissionFlowBridge } from './services/submissionFlowBridge.js'
 import { runBusinessSeeds } from './utils/runBusinessSeeds.js'
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10)
@@ -19,6 +20,7 @@ async function start() {
   }
 
   initWebhookDispatcher()
+  initSubmissionFlowBridge()
 
   const httpServer = createServer(app.callback())
   const io = initSocket(httpServer)
