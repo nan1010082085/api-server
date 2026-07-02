@@ -11,6 +11,8 @@ export interface IFormSchema {
   _id: string
   tenantId: string
   editId: string
+  /** Stable business identifier for seed/menu binding, e.g. hr-leave-apply */
+  code?: string | null
   version: string
   name: string
   type: 'form' | 'search_list'
@@ -36,6 +38,7 @@ const formSchemaDef = new mongoose.Schema(
   {
     tenantId: { type: String, default: '000000', index: true },
     editId: { type: String, required: true, unique: true, index: true },
+    code: { type: String, default: null, sparse: true, index: true },
     version: { type: String, required: true },
     name: { type: String, required: true },
     type: { type: String, enum: ['form', 'search_list', 'layout', 'table', 'chart', 'business', 'report', 'other'], default: 'form' },

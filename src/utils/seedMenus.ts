@@ -15,6 +15,8 @@ interface MenuSeed {
   target?: '_self' | '_blank'
   routeType?: 'schema' | 'micro-app' | 'link'
   schemaId?: string | null
+  /** Stable business code — resolved to publishId after seedBusinessSchemas */
+  schemaCode?: string
   url?: string
   app?: string
   layout?: 'with-menu' | 'without-menu'
@@ -22,33 +24,52 @@ interface MenuSeed {
 
 const MENUS: MenuSeed[] = [
   // ── Shell 内置页面 ──
+  { parentId: null, name: '首页', path: '/', icon: 'home-filled', type: 'menu', permission: '', sort: 0, microAppId: null, target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
 
-  // 首页 — app=shell, with-menu
-  { parentId: null,   name: '首页',       path: '/',                     icon: 'HomeFilled', type: 'menu', permission: '', sort: 0, microAppId: null, target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
+  // ── Phase 1 P0：工作台 ──
+  { parentId: null, name: '工作台', path: '/dashboard', icon: 'odometer', type: 'menu', permission: '', sort: 1, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema', schemaCode: 'dashboard-workbench' },
 
-  // ── 系统管理 (目录) — 必须先于子菜单创建 ──
-  { parentId: null,   name: '系统管理',   path: '',            icon: 'Setting',    type: 'menu', permission: '', sort: 10, microAppId: null, app: 'admin', layout: 'with-menu' },
+  // ── Phase 1 P0：流程中心 ──
+  { parentId: null, name: '流程中心', path: '', icon: 'connection', type: 'menu', permission: '', sort: 5, microAppId: null, app: 'shell', layout: 'with-menu' },
+  { parentId: '__FLOW_CENTER__', name: '我的待办', path: '/app/flow/tasks', icon: 'bell', type: 'menu', permission: '', sort: 1, microAppId: 'flow', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
 
-  // ── 系统管理 / 菜单管理 — with-menu ──
-  { parentId: '__SYSTEM__', name: '菜单管理', path: '/app/editor/view', icon: 'Menu', type: 'menu', permission: '', sort: 1, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema' },
+  // ── Phase 1 P0：人事管理 ──
+  { parentId: null, name: '人事管理', path: '', icon: 'user-filled', type: 'menu', permission: '', sort: 15, microAppId: null, app: 'shell', layout: 'with-menu' },
+  { parentId: '__HR__', name: '请假申请', path: '/app/editor/view', icon: 'calendar', type: 'menu', permission: '', sort: 1, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema', schemaCode: 'hr-leave-apply' },
+  { parentId: '__HR__', name: '请假台账', path: '/app/editor/view', icon: 'document', type: 'menu', permission: '', sort: 2, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema', schemaCode: 'hr-leave-list' },
 
-  // 微应用管理 — 放在系统管理下, app=shell, with-menu
-  { parentId: '__SYSTEM__', name: '微应用管理', path: '/admin/micro-apps',      icon: 'Monitor',    type: 'menu', permission: '', sort: 2, microAppId: null, target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
+  // ── 系统管理 (目录) ──
+  { parentId: null, name: '系统管理', path: '', icon: 'setting', type: 'menu', permission: '', sort: 10, microAppId: null, app: 'admin', layout: 'with-menu' },
+  { parentId: '__SYSTEM__', name: '菜单管理', path: '/app/editor/view', icon: 'menu', type: 'menu', permission: '', sort: 1, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema' },
+  { parentId: '__SYSTEM__', name: '微应用管理', path: '/admin/micro-apps', icon: 'monitor', type: 'menu', permission: '', sort: 2, microAppId: null, target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
+  { parentId: '__SYSTEM__', name: '用户管理', path: '/app/editor/view', icon: 'user', type: 'menu', permission: '', sort: 3, microAppId: 'editor', target: '_self', app: 'admin', layout: 'with-menu', routeType: 'schema', schemaCode: 'sys-user-mgmt' },
+  { parentId: '__SYSTEM__', name: '角色管理', path: '/app/editor/view', icon: 'medal', type: 'menu', permission: '', sort: 4, microAppId: 'editor', target: '_self', app: 'admin', layout: 'with-menu', routeType: 'schema', schemaCode: 'sys-role-mgmt' },
+  { parentId: '__SYSTEM__', name: '部门管理', path: '/app/editor/view', icon: 'house', type: 'menu', permission: '', sort: 5, microAppId: 'editor', target: '_self', app: 'admin', layout: 'with-menu', routeType: 'schema', schemaCode: 'sys-dept-mgmt' },
 
-  // ── 表单设计器 — without-menu（独立全屏，新页签） ──
-  { parentId: null,   name: '表单设计器', path: '/standalone/editor',     icon: 'edit',       type: 'menu', permission: '', sort: 20, microAppId: 'editor', target: '_blank', app: 'shell', layout: 'without-menu' },
+  // ── Phase 1 P0：能力平台 ──
+  { parentId: null, name: '能力平台', path: '', icon: 'cpu', type: 'menu', permission: '', sort: 50, microAppId: null, app: 'shell', layout: 'with-menu' },
+  { parentId: '__PLATFORM__', name: 'Schema 管理', path: '/app/editor/instances', icon: 'grid', type: 'menu', permission: '', sort: 1, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
 
-  // ── 流程设计器 — without-menu（独立全屏，新页签） ──
-  { parentId: null,   name: '流程设计器', path: '/standalone/flow/designer', icon: 'Connection', type: 'menu', permission: '', sort: 30, microAppId: 'flow',  target: '_blank', app: 'shell', layout: 'without-menu' },
-
-  // ── AI 应用 — without-menu（独立全屏，新页签） ──
-  { parentId: null,   name: 'AI 应用',    path: '/standalone/ai',          icon: 'ChatDotRound', type: 'menu', permission: '', sort: 40, microAppId: 'ai', target: '_blank', app: 'shell', layout: 'without-menu' },
+  // ── 设计器全屏入口 ──
+  { parentId: null, name: '表单设计器', path: '/standalone/editor', icon: 'edit', type: 'menu', permission: '', sort: 20, microAppId: 'editor', target: '_blank', app: 'shell', layout: 'without-menu', routeType: 'micro-app' },
+  { parentId: null, name: '流程设计器', path: '/standalone/flow/designer', icon: 'connection', type: 'menu', permission: '', sort: 30, microAppId: 'flow', target: '_blank', app: 'shell', layout: 'without-menu', routeType: 'micro-app' },
+  { parentId: null, name: 'AI 应用', path: '/standalone/ai', icon: 'chat-dot-round', type: 'menu', permission: '', sort: 40, microAppId: 'ai', target: '_blank', app: 'shell', layout: 'without-menu', routeType: 'micro-app' },
 ]
 
+const PARENT_PLACEHOLDERS: Record<string, string> = {
+  __SYSTEM__: '系统管理',
+  __FLOW_CENTER__: '流程中心',
+  __HR__: '人事管理',
+  __PLATFORM__: '能力平台',
+}
+
 async function resolveParentId(parentId: string | null): Promise<string | null> {
-  if (parentId !== '__SYSTEM__') return parentId
-  const systemDir = await MenuModel.findOne({ tenantId: DEFAULT_TENANT_ID, name: '系统管理', parentId: null })
-  return systemDir ? String(systemDir._id) : null
+  if (parentId === null) return null
+  const dirName = PARENT_PLACEHOLDERS[parentId]
+  if (!dirName) return parentId
+
+  const dir = await MenuModel.findOne({ tenantId: DEFAULT_TENANT_ID, name: dirName, parentId: null })
+  return dir ? String(dir._id) : null
 }
 
 /**
@@ -63,6 +84,7 @@ export async function seedMenus(): Promise<void> {
   for (const menu of MENUS) {
     const menuData = { ...menu }
     menuData.parentId = await resolveParentId(menuData.parentId)
+    delete menuData.schemaCode
 
     const result = await MenuModel.updateOne(
       { tenantId: DEFAULT_TENANT_ID, name: menu.name },
@@ -78,24 +100,65 @@ export async function seedMenus(): Promise<void> {
 }
 
 /**
- * 修复历史 seed 中 parentId 丢失的问题（__SYSTEM__ 在系统管理目录创建前被解析为 null）
+ * 将 schemaCode 解析为 publishId 并写入菜单 schemaId（幂等）
+ */
+export async function bindMenuSchemaIds(): Promise<void> {
+  const codeToMenuNames = new Map<string, string[]>()
+  for (const menu of MENUS) {
+    if (!menu.schemaCode) continue
+    const names = codeToMenuNames.get(menu.schemaCode) ?? []
+    names.push(menu.name)
+    codeToMenuNames.set(menu.schemaCode, names)
+  }
+
+  let bound = 0
+  for (const [code, menuNames] of codeToMenuNames) {
+    const schema = await FormSchemaModel.findOne({ tenantId: DEFAULT_TENANT_ID, code })
+    if (!schema) continue
+
+    const published = await PublishedSchemaModel.findOne({ sourceId: schema.editId })
+    if (!published) continue
+
+    const publishId = published.publishId
+    const result = await MenuModel.updateMany(
+      {
+        tenantId: DEFAULT_TENANT_ID,
+        name: { $in: menuNames },
+        $or: [{ schemaId: null }, { schemaId: '' }, { schemaId: { $exists: false } }],
+      },
+      { $set: { schemaId: publishId, routeType: 'schema' } },
+    )
+    bound += result.modifiedCount
+  }
+
+  if (bound > 0) {
+    console.log(`[seed] Bound menu schemaId for ${bound} item(s)`)
+  }
+}
+
+/**
+ * 修复历史 seed 中 parentId 丢失的问题
  */
 export async function repairMenuParentIds(): Promise<void> {
-  const systemDir = await MenuModel.findOne({ tenantId: DEFAULT_TENANT_ID, name: '系统管理', parentId: null })
-  if (!systemDir) return
+  for (const [, dirName] of Object.entries(PARENT_PLACEHOLDERS)) {
+    const dir = await MenuModel.findOne({ tenantId: DEFAULT_TENANT_ID, name: dirName, parentId: null })
+    if (!dir) continue
 
-  const systemId = String(systemDir._id)
-  const result = await MenuModel.updateMany(
-    {
-      tenantId: DEFAULT_TENANT_ID,
-      name: { $in: ['菜单管理', '微应用管理'] },
-      $or: [{ parentId: null }, { parentId: '' }],
-    },
-    { $set: { parentId: systemId } },
-  )
+    const childNames = MENUS.filter((m) => PARENT_PLACEHOLDERS[m.parentId ?? ''] === dirName).map((m) => m.name)
+    if (childNames.length === 0) continue
 
-  if (result.modifiedCount > 0) {
-    console.log(`[seed] Repaired menu parentId for ${result.modifiedCount} item(s)`)
+    const result = await MenuModel.updateMany(
+      {
+        tenantId: DEFAULT_TENANT_ID,
+        name: { $in: childNames },
+        $or: [{ parentId: null }, { parentId: '' }],
+      },
+      { $set: { parentId: String(dir._id) } },
+    )
+
+    if (result.modifiedCount > 0) {
+      console.log(`[seed] Repaired parentId for ${result.modifiedCount} "${dirName}" child menu(s)`)
+    }
   }
 }
 
@@ -117,34 +180,51 @@ export async function repairFlowDesignerMenuPath(): Promise<void> {
 }
 
 /**
- * 迁移：为现有菜单补充 app/layout 字段
- * 仅在字段不存在时补充，不覆盖已有值
+ * 迁移：为现有菜单补充 app/layout/routeType 字段
  */
 export async function migrateMenuFields(): Promise<void> {
   await repairMenuParentIds()
   await repairFlowDesignerMenuPath()
 
   const systemDir = await MenuModel.findOne({ tenantId: DEFAULT_TENANT_ID, name: '系统管理', parentId: null })
-  if (!systemDir) return
+  if (systemDir) {
+    await MenuModel.updateMany(
+      { tenantId: DEFAULT_TENANT_ID, parentId: systemDir._id, app: { $exists: false } },
+      { $set: { app: 'admin', layout: 'with-menu' } },
+    )
+  }
 
-  // 系统管理目录下的子菜单 → app=admin, layout=with-menu
+  const adminChildNames = ['用户管理', '角色管理', '部门管理']
   await MenuModel.updateMany(
-    { tenantId: DEFAULT_TENANT_ID, parentId: systemDir._id, app: { $exists: false } },
-    { $set: { app: 'admin', layout: 'with-menu' } },
+    { tenantId: DEFAULT_TENANT_ID, name: { $in: adminChildNames }, app: { $exists: false } },
+    { $set: { app: 'admin', layout: 'with-menu', routeType: 'schema' } },
   )
-  // microAppId=admin 的菜单 → app=admin, layout=with-menu
+
   await MenuModel.updateMany(
     { tenantId: DEFAULT_TENANT_ID, microAppId: 'admin', app: { $exists: false } },
     { $set: { app: 'admin', layout: 'with-menu' } },
   )
-  // microAppId=editor/flow/ai 的菜单 → app=shell, layout=without-menu
+
+  const standaloneNames = ['表单设计器', '流程设计器', 'AI 应用']
   await MenuModel.updateMany(
-    { tenantId: DEFAULT_TENANT_ID, microAppId: { $in: ['editor', 'flow', 'ai'] }, app: { $exists: false } },
-    { $set: { app: 'shell', layout: 'without-menu' } },
+    { tenantId: DEFAULT_TENANT_ID, name: { $in: standaloneNames }, layout: { $exists: false } },
+    { $set: { app: 'shell', layout: 'without-menu', routeType: 'micro-app' } },
   )
-  // 没有 microAppId 且没有 layout 的菜单 → 默认 with-menu
+
+  await MenuModel.updateMany(
+    { tenantId: DEFAULT_TENANT_ID, name: '我的待办', routeType: { $exists: false } },
+    { $set: { routeType: 'micro-app', microAppId: 'flow', layout: 'with-menu', app: 'shell' } },
+  )
+
+  await MenuModel.updateMany(
+    { tenantId: DEFAULT_TENANT_ID, name: '工作台', routeType: { $exists: false } },
+    { $set: { routeType: 'schema', path: '/dashboard', layout: 'with-menu', app: 'shell' } },
+  )
+
   await MenuModel.updateMany(
     { tenantId: DEFAULT_TENANT_ID, microAppId: null, layout: { $exists: false } },
     { $set: { layout: 'with-menu' } },
   )
+
+  await bindMenuSchemaIds()
 }
