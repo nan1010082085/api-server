@@ -124,7 +124,6 @@ export async function bindMenuSchemaIds(): Promise<void> {
       {
         tenantId: DEFAULT_TENANT_ID,
         name: { $in: menuNames },
-        $or: [{ schemaId: null }, { schemaId: '' }, { schemaId: { $exists: false } }],
       },
       { $set: { schemaId: publishId, routeType: 'schema' } },
     )

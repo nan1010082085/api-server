@@ -44,7 +44,7 @@ describe('businessSchemaDeliverables', () => {
     })
   }
 
-  it('hr-leave-apply has submitSubmission with schemaId and flow binding', () => {
+  it('hr-leave-apply has submitSubmission with schemaId (webhook starts flow)', () => {
     const json = buildDeliverableSchemaJson('hr-leave-apply', mockRefs)
     const widgets = json.widgets as Array<Record<string, unknown>>
     const submitBtn = widgets.find((w) => w.id === 'btn-submit')
@@ -53,7 +53,17 @@ describe('businessSchemaDeliverables', () => {
     const submitAction = events[0].actions.find((a) => a.type === 'submitSubmission')
     expect(submitAction).toBeDefined()
     expect(submitAction!.schemaId).toBe('mongo-apply')
-    expect(submitAction!.definitionId).toBe('flow-leave-001')
+    expect(submitAction!.definitionId).toBeUndefined()
+  })
+
+  it('hr-leave-list uses data.* column paths for submission fields', () => {
+    const json = buildDeliverableSchemaJson('hr-leave-list', mockRefs)
+    const table = (json.widgets as Array<Record<string, unknown>>).find((w) => w.type === 'advanced-table')
+    const columns = (table!.props as Record<string, unknown>).columns as Array<{ prop: string }>
+    const props = columns.map((c) => c.prop)
+    expect(props).toContain('data.leaveType')
+    expect(props).toContain('data.days')
+    expect(props).toContain('data.reason')
   })
 
   it('hr-leave-apply includes required form fields', () => {

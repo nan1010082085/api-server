@@ -17,6 +17,7 @@ import {
   type BusinessSchemaRefs,
   isDeliverableSchemaCode,
 } from './businessSchemaDeliverables.js'
+import { resolveLeaveFlowGraphRoles } from './seedBusinessRoles.js'
 
 export interface SeededBusinessSchema {
   code: string
@@ -120,6 +121,15 @@ async function seedLeaveFlowDefinition(): Promise<string | null> {
         await existing.save()
       }
     }
+    const currentVersion = await FlowVersionModel.findById(existing.currentVersionId)
+    if (currentVersion?.graph) {
+      const changed = await resolveLeaveFlowGraphRoles(currentVersion.graph as { nodes: Array<Record<string, unknown>> })
+      if (changed) {
+        currentVersion.markModified('graph')
+        await currentVersion.save()
+        console.log('[seed] Leave flow definition roles synced')
+      }
+    }
     return String(existing._id)
   }
 
@@ -150,6 +160,9 @@ async function seedLeaveFlowDefinition(): Promise<string | null> {
     },
   }))
 
+  const graph = { nodes, edges }
+  await resolveLeaveFlowGraphRoles(graph)
+
   const now = new Date()
   const pad = (n: number, len: number) => String(n).padStart(len, '2')
   const nextVersion = `v${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}`
@@ -167,7 +180,7 @@ async function seedLeaveFlowDefinition(): Promise<string | null> {
   const version = await FlowVersionModel.create({
     definitionId: definition._id,
     version: nextVersion,
-    graph: { nodes, edges },
+    graph,
     metadata: null,
   })
 

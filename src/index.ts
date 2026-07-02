@@ -6,6 +6,7 @@ import { initSocket } from './socket.js'
 import { setSocketInstance } from './services/socketService.js'
 import { initWebhookDispatcher } from './services/webhookDispatcher.js'
 import { initSubmissionFlowBridge } from './services/submissionFlowBridge.js'
+import { initFlowSubmissionStatusBridge } from './services/flowSubmissionStatusBridge.js'
 import { runBusinessSeeds } from './utils/runBusinessSeeds.js'
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10)
@@ -21,6 +22,7 @@ async function start() {
 
   initWebhookDispatcher()
   initSubmissionFlowBridge()
+  initFlowSubmissionStatusBridge()
 
   const httpServer = createServer(app.callback())
   const io = initSocket(httpServer)

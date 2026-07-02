@@ -234,15 +234,10 @@ export function buildDashboardWorkbenchSchema(refs: BusinessSchemaRefs): Record<
 export function buildHrLeaveApplySchema(refs: BusinessSchemaRefs): Record<string, unknown> {
   const applyFormSchemaId = refs.schemas['hr-leave-apply']?.formSchemaId ?? ''
   const listPublishId = refs.schemas['hr-leave-list']?.publishId ?? ''
-  const flowDefinitionId = refs.leaveFlowDefinitionId ?? undefined
 
   const submitAction: Record<string, unknown> = {
     type: 'submitSubmission',
     schemaId: applyFormSchemaId,
-  }
-  if (flowDefinitionId) {
-    submitAction.definitionId = flowDefinitionId
-    submitAction.variables = { days: 'formData.days', leaveType: 'formData.leaveType' }
   }
 
   return {
@@ -488,16 +483,15 @@ export function buildHrLeaveListSchema(refs: BusinessSchemaRefs): Record<string,
         props: {
           columns: [
             { prop: '_id', label: '单号', minWidth: 120, render: 'link', linkEvent: 'open-detail' },
-            { prop: 'applicantName', label: '申请人', minWidth: 100, render: 'text' },
             {
-              prop: 'leaveType',
+              prop: 'data.leaveType',
               label: '假别',
               minWidth: 90,
               render: 'tag',
               filterable: true,
               options: LEAVE_TYPE_OPTIONS,
             },
-            { prop: 'days', label: '天数', width: 80, align: 'center', render: 'text' },
+            { prop: 'data.days', label: '天数', width: 80, align: 'center', render: 'text' },
             {
               prop: 'status',
               label: '状态',
@@ -507,7 +501,7 @@ export function buildHrLeaveListSchema(refs: BusinessSchemaRefs): Record<string,
               colorMap: LEAVE_STATUS_COLOR_MAP,
               options: LEAVE_STATUS_OPTIONS,
             },
-            { prop: 'reason', label: '事由', minWidth: 180, render: 'text', showTooltip: true },
+            { prop: 'data.reason', label: '事由', minWidth: 180, render: 'text', showTooltip: true },
             { prop: 'createdAt', label: '申请时间', minWidth: 160, render: 'text' },
             {
               prop: 'action',
