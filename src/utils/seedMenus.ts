@@ -39,7 +39,7 @@ const MENUS: MenuSeed[] = [
   { parentId: null,   name: '表单设计器', path: '/standalone/editor',     icon: 'edit',       type: 'menu', permission: '', sort: 20, microAppId: 'editor', target: '_blank', app: 'shell', layout: 'without-menu' },
 
   // ── 流程设计器 — without-menu（独立全屏，新页签） ──
-  { parentId: null,   name: '流程设计器', path: '/standalone/flow/design', icon: 'Connection', type: 'menu', permission: '', sort: 30, microAppId: 'flow',  target: '_blank', app: 'shell', layout: 'without-menu' },
+  { parentId: null,   name: '流程设计器', path: '/standalone/flow/designer', icon: 'Connection', type: 'menu', permission: '', sort: 30, microAppId: 'flow',  target: '_blank', app: 'shell', layout: 'without-menu' },
 
   // ── AI 应用 — without-menu（独立全屏，新页签） ──
   { parentId: null,   name: 'AI 应用',    path: '/standalone/ai',          icon: 'ChatDotRound', type: 'menu', permission: '', sort: 40, microAppId: 'ai', target: '_blank', app: 'shell', layout: 'without-menu' },
@@ -100,11 +100,29 @@ export async function repairMenuParentIds(): Promise<void> {
 }
 
 /**
+ * 修复历史 seed 中流程设计器菜单路径错误（/standalone/flow/design → /standalone/flow/designer）
+ */
+export async function repairFlowDesignerMenuPath(): Promise<void> {
+  const result = await MenuModel.updateMany(
+    {
+      tenantId: DEFAULT_TENANT_ID,
+      name: '流程设计器',
+      path: '/standalone/flow/design',
+    },
+    { $set: { path: '/standalone/flow/designer' } },
+  )
+  if (result.modifiedCount > 0) {
+    console.log(`[seed] Repaired Flow designer menu path for ${result.modifiedCount} item(s)`)
+  }
+}
+
+/**
  * 迁移：为现有菜单补充 app/layout 字段
  * 仅在字段不存在时补充，不覆盖已有值
  */
 export async function migrateMenuFields(): Promise<void> {
   await repairMenuParentIds()
+  await repairFlowDesignerMenuPath()
 
   const systemDir = await MenuModel.findOne({ tenantId: DEFAULT_TENANT_ID, name: '系统管理', parentId: null })
   if (!systemDir) return
