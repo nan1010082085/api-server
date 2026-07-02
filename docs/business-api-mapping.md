@@ -31,6 +31,8 @@
 | `hr-leave-detail` | `GET /api/business/hr/leave/detail?recordId=` | descriptions `dataSource` URL 含 `{{variables.recordId}}`；PublishView `?recordId=` 注入变量 |
 | | `GET /api/submissions/:schemaId/:id/view` | 同上扁平视图，按 schemaId + id |
 | `hr-leave-stats` | `GET /api/business/hr/leave/stats` | `monthlyCount`、`avgDays`、`byDept`、`monthlyTrend` |
+| `oa-trip-list` / 弹窗 | `GET /api/submissions/{oa-trip-apply schemaId}` | AdvancedTable + export |
+| `oa-trip-detail` | `GET /api/business/oa/trip/detail?recordId=` | descriptions + 全屏审批 |
 | 字典 | `GET /api/dict/data/by-type/leave_type` | seed `leave_type`（`seedBusinessDicts`） |
 
 ### 系统管理（modules/01-system-admin）

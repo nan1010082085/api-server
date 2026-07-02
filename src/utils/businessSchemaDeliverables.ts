@@ -8,6 +8,9 @@ import {
   isExtendedDeliverableCode,
 } from './business-deliverables/modules/extended.js'
 import type { BusinessSchemaRefs } from './business-deliverables/types.js'
+import { buildCrudSubmissionListPage } from './business-deliverables/patterns/crudSubmissionListPage.js'
+import { buildFlowSubmissionDetailPage } from './business-deliverables/patterns/flowSubmissionPages.js'
+import { buildSchemaViewPath } from './menuPath.js'
 
 export type { BusinessSchemaRefs } from './business-deliverables/types.js'
 
@@ -65,11 +68,102 @@ function requiredRule(message: string) {
   return [{ required: true, message, trigger: 'blur' }]
 }
 
-/** 工作台 — statistic KPI + 快捷入口 */
-export function buildDashboardWorkbenchSchema(refs: BusinessSchemaRefs): Record<string, unknown> {
-  const leaveApplyPublishId = refs.schemas['hr-leave-apply']?.publishId ?? ''
-  const leaveListPublishId = refs.schemas['hr-leave-list']?.publishId ?? ''
+function leaveDetailDescriptionItems(): Record<string, unknown>[] {
+  return [
+    { label: '申请人', field: 'applicantName', type: 'text' },
+    {
+      label: '假别',
+      field: 'leaveType',
+      type: 'tag',
+      options: LEAVE_TYPE_OPTIONS.map((o) => ({ ...o, color: 'primary' })),
+    },
+    { label: '开始时间', field: 'startTime', type: 'text' },
+    { label: '结束时间', field: 'endTime', type: 'text' },
+    { label: '天数', field: 'days', type: 'text', suffix: '天' },
+    { label: '部门', field: 'deptName', type: 'text' },
+    {
+      label: '状态',
+      field: 'status',
+      type: 'tag',
+      options: [
+        { label: '审批中', value: '审批中', color: 'warning' },
+        { label: '已通过', value: '已通过', color: 'success' },
+        { label: '已驳回', value: '已驳回', color: 'danger' },
+      ],
+    },
+    { label: '代理人', field: 'agentUser', type: 'text' },
+    { label: '附件', field: 'attachments', type: 'text' },
+    { label: '流程状态', field: 'flowStatus', type: 'text' },
+    { label: '当前节点', field: 'currentTask', type: 'text' },
+    { label: '事由', field: 'reason', type: 'text', span: 2 },
+  ]
+}
 
+/** HR-02 请假台账 — P-01 / E-45 */
+export function buildHrLeaveListSchema(refs: BusinessSchemaRefs): Record<string, unknown> {
+  return buildCrudSubmissionListPage({
+    code: 'hr-leave-list',
+    title: '请假台账',
+    tableId: 'leave-table',
+    applySchemaCode: 'hr-leave-apply',
+    detailSchemaCode: 'hr-leave-detail',
+    refs,
+    columns: [
+      { prop: '_id', label: '单号', minWidth: 120, render: 'link', linkEvent: 'open-detail' },
+      { prop: 'submitterName', label: '申请人', minWidth: 100, render: 'text' },
+      {
+        prop: 'data.leaveType',
+        label: '假别',
+        minWidth: 90,
+        render: 'tag',
+        filterable: true,
+        dictCode: 'leave_type',
+        options: LEAVE_TYPE_OPTIONS,
+      },
+      { prop: 'data.days', label: '天数', width: 80, align: 'center', render: 'text' },
+      {
+        prop: 'status',
+        label: '状态',
+        minWidth: 100,
+        render: 'tag',
+        filterable: true,
+        colorMap: LEAVE_STATUS_COLOR_MAP,
+        options: LEAVE_STATUS_OPTIONS,
+      },
+      { prop: 'flowStatus', label: '流程状态', minWidth: 110, render: 'flowStatus' },
+      { prop: 'currentTaskName', label: '当前节点', minWidth: 120, render: 'text' },
+      { prop: 'data.reason', label: '事由', minWidth: 180, render: 'text', showTooltip: true },
+      { prop: 'createdAt', label: '申请时间', minWidth: 160, render: 'text' },
+      {
+        prop: 'action',
+        label: '操作',
+        width: 160,
+        fixed: 'right',
+        render: 'buttons',
+        buttons: [
+          { key: 'view', label: '查看', type: 'primary', size: 'small' },
+          { key: 'approve', label: '审批', type: 'success', size: 'small' },
+        ],
+      },
+    ],
+    searchFields: [
+      { field: 'keyword', label: '关键词', type: 'input', placeholder: '单号/申请人/事由' },
+      { field: 'leaveType', label: '假别', type: 'select', options: LEAVE_TYPE_OPTIONS },
+      { field: 'status', label: '状态', type: 'select', options: LEAVE_STATUS_OPTIONS },
+      { field: 'dateFrom', label: '开始日期', type: 'date', placeholder: 'YYYY-MM-DD' },
+      { field: 'dateTo', label: '结束日期', type: 'date', placeholder: 'YYYY-MM-DD' },
+    ],
+    dialog: {
+      dialogTitle: '请假详情',
+      detailApiUrl: '/business/hr/leave/detail',
+      descriptionItems: leaveDetailDescriptionItems(),
+      exportFilename: '请假台账',
+    },
+  })
+}
+
+/** 工作台 — statistic KPI + 快捷入口 */
+export function buildDashboardWorkbenchSchema(_refs: BusinessSchemaRefs): Record<string, unknown> {
   return {
     widgets: [
       {
@@ -218,8 +312,7 @@ export function buildDashboardWorkbenchSchema(refs: BusinessSchemaRefs): Record<
             actions: [
               {
                 type: 'navigate',
-                navigatePath: '/app/editor/view',
-                navigateQuery: { id: leaveApplyPublishId },
+                navigatePath: buildSchemaViewPath('hr-leave-apply'),
               },
             ],
           },
@@ -243,8 +336,7 @@ export function buildDashboardWorkbenchSchema(refs: BusinessSchemaRefs): Record<
             actions: [
               {
                 type: 'navigate',
-                navigatePath: '/app/editor/view',
-                navigateQuery: { id: leaveListPublishId },
+                navigatePath: buildSchemaViewPath('hr-leave-list'),
               },
             ],
           },
@@ -279,7 +371,6 @@ export function buildDashboardWorkbenchSchema(refs: BusinessSchemaRefs): Record<
 /** HR-01 请假申请 */
 export function buildHrLeaveApplySchema(refs: BusinessSchemaRefs): Record<string, unknown> {
   const applyFormSchemaId = refs.schemas['hr-leave-apply']?.formSchemaId ?? ''
-  const listPublishId = refs.schemas['hr-leave-list']?.publishId ?? ''
 
   const submitAction: Record<string, unknown> = {
     type: 'submitSubmission',
@@ -463,8 +554,7 @@ export function buildHrLeaveApplySchema(refs: BusinessSchemaRefs): Record<string
               submitAction,
               {
                 type: 'navigate',
-                navigatePath: '/app/editor/view',
-                navigateQuery: { id: listPublishId },
+                navigatePath: buildSchemaViewPath('hr-leave-list'),
               },
             ],
           },
@@ -498,289 +588,25 @@ export function buildHrLeaveApplySchema(refs: BusinessSchemaRefs): Record<string
   }
 }
 
-/** HR-02 请假台账 */
-export function buildHrLeaveListSchema(refs: BusinessSchemaRefs): Record<string, unknown> {
-  const applyFormSchemaId = refs.schemas['hr-leave-apply']?.formSchemaId ?? ''
-  const applyPublishId = refs.schemas['hr-leave-apply']?.publishId ?? ''
-  const detailPublishId = refs.schemas['hr-leave-detail']?.publishId ?? ''
-
-  return {
-    widgets: [
-      {
-        id: 'list-title',
-        type: 'title',
-        name: 'FgTitle',
-        label: '标题',
-        position: { x: 24, y: 16, w: 400, h: 48, zIndex: 1 },
-        style: { fontSize: '22px', fontWeight: '600' },
-        props: { content: '请假台账', level: 3, align: 'left' },
-        options: [],
-        variables: [],
-        events: [],
-        rules: [],
-        validationRules: [],
-      },
-      {
-        id: 'leave-table',
-        type: 'advanced-table',
-        name: 'FgAdvancedTable',
-        label: '请假台账',
-        position: { x: 24, y: 72, w: 1392, h: 780, zIndex: 2 },
-        style: { width: '100%', height: '780px' },
-        props: {
-          columns: [
-            { prop: '_id', label: '单号', minWidth: 120, render: 'link', linkEvent: 'open-detail' },
-            { prop: 'submitterName', label: '申请人', minWidth: 100, render: 'text' },
-            {
-              prop: 'data.leaveType',
-              label: '假别',
-              minWidth: 90,
-              render: 'tag',
-              filterable: true,
-              dictCode: 'leave_type',
-              options: LEAVE_TYPE_OPTIONS,
-            },
-            { prop: 'data.days', label: '天数', width: 80, align: 'center', render: 'text' },
-            {
-              prop: 'status',
-              label: '状态',
-              minWidth: 100,
-              render: 'tag',
-              filterable: true,
-              colorMap: LEAVE_STATUS_COLOR_MAP,
-              options: LEAVE_STATUS_OPTIONS,
-            },
-            {
-              prop: 'flowStatus',
-              label: '流程状态',
-              minWidth: 110,
-              render: 'flowStatus',
-            },
-            { prop: 'currentTaskName', label: '当前节点', minWidth: 120, render: 'text' },
-            { prop: 'data.reason', label: '事由', minWidth: 180, render: 'text', showTooltip: true },
-            { prop: 'createdAt', label: '申请时间', minWidth: 160, render: 'text' },
-            {
-              prop: 'action',
-              label: '操作',
-              width: 160,
-              fixed: 'right',
-              render: 'buttons',
-              buttons: [
-                { key: 'view', label: '查看', type: 'primary', size: 'small' },
-                { key: 'approve', label: '审批', type: 'success', size: 'small' },
-              ],
-            },
-          ],
-          toolbar: [{ key: 'add', label: '发起申请', type: 'primary', icon: 'plus' }],
-          stripe: true,
-          border: true,
-          height: 680,
-          pagination: { enabled: true, pageSize: 20, pageSizes: [10, 20, 50, 100] },
-          selection: { enabled: false },
-        },
-        api: {
-          url: `/submissions/${applyFormSchemaId}`,
-          method: 'get',
-          dataPath: 'items',
-          immediate: true,
-        },
-        options: [],
-        variables: [],
-        events: [
-          {
-            trigger: 'click',
-            eventTarget: 'toolbar-add',
-            actions: [
-              {
-                type: 'navigate',
-                navigatePath: '/app/editor/view',
-                navigateQuery: { id: applyPublishId },
-              },
-            ],
-          },
-          {
-            trigger: 'click',
-            eventTarget: 'row-view',
-            actions: [
-              {
-                type: 'navigate',
-                navigatePath: '/app/editor/view',
-                navigateQuery: {
-                  id: detailPublishId,
-                  recordId: '{{row._id}}',
-                  flowInstanceId: '{{row.flowInstanceId}}',
-                  taskId: '{{row.viewerTaskId}}',
-                },
-              },
-            ],
-          },
-          {
-            trigger: 'click',
-            eventTarget: 'link-_id',
-            actions: [
-              {
-                type: 'navigate',
-                navigatePath: '/app/editor/view',
-                navigateQuery: {
-                  id: detailPublishId,
-                  recordId: '{{row._id}}',
-                  flowInstanceId: '{{row.flowInstanceId}}',
-                  taskId: '{{row.viewerTaskId}}',
-                },
-              },
-            ],
-          },
-          {
-            trigger: 'click',
-            eventTarget: 'row-approve',
-            actions: [{ type: 'navigate', navigatePath: '/app/flow/tasks' }],
-          },
-        ],
-        rules: [],
-        validationRules: [],
-      },
-    ],
-    board: makeBoard(1440, 900),
-  }
-}
-
-/** HR 请假详情（只读） */
+/** HR 请假详情（全屏审批）— P-03 */
 export function buildHrLeaveDetailSchema(_refs: BusinessSchemaRefs): Record<string, unknown> {
-  return {
-    widgets: [
-      {
-        id: 'detail-title',
-        type: 'title',
-        name: 'FgTitle',
-        label: '标题',
-        position: { x: 24, y: 16, w: 400, h: 48, zIndex: 1 },
-        style: { fontSize: '22px', fontWeight: '600' },
-        props: { content: '请假详情', level: 3, align: 'left' },
-        options: [],
-        variables: [],
-        events: [],
-        rules: [],
-        validationRules: [],
-      },
-      {
-        id: 'detail-desc',
-        type: 'descriptions',
-        name: 'FgDescriptions',
-        label: '申请信息',
-        position: { x: 24, y: 72, w: 1392, h: 400, zIndex: 2 },
-        style: { width: '100%', backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
-        props: {
-          title: '申请信息',
-          column: 2,
-          border: true,
-          dataSource: {
-            type: 'api',
-            url: '/business/hr/leave/detail?recordId={{variables.recordId}}',
-          },
-          staticData: {
-            applicantName: '张三',
-            leaveType: '年假',
-            startTime: '2026-07-05 09:00',
-            endTime: '2026-07-07 18:00',
-            days: 3,
-            reason: '家庭事务处理。',
-            deptName: '研发部',
-            status: '审批中',
-            agentUser: '李四',
-          },
-          items: [
-            { label: '申请人', field: 'applicantName', type: 'text' },
-            {
-              label: '假别',
-              field: 'leaveType',
-              type: 'tag',
-              options: LEAVE_TYPE_OPTIONS.map((o) => ({ ...o, color: 'primary' })),
-            },
-            { label: '开始时间', field: 'startTime', type: 'text' },
-            { label: '结束时间', field: 'endTime', type: 'text' },
-            { label: '天数', field: 'days', type: 'text', suffix: '天' },
-            { label: '部门', field: 'deptName', type: 'text' },
-            {
-              label: '状态',
-              field: 'status',
-              type: 'tag',
-              options: [
-                { label: '审批中', value: '审批中', color: 'warning' },
-                { label: '已通过', value: '已通过', color: 'success' },
-                { label: '已驳回', value: '已驳回', color: 'danger' },
-              ],
-            },
-            { label: '代理人', field: 'agentUser', type: 'text' },
-            { label: '流程状态', field: 'flowStatus', type: 'text' },
-            { label: '当前节点', field: 'currentTask', type: 'text' },
-            { label: '事由', field: 'reason', type: 'text', span: 2 },
-          ],
-        },
-        options: [],
-        variables: [],
-        events: [],
-        rules: [],
-        validationRules: [],
-      },
-      {
-        id: 'detail-flow-timeline',
-        type: 'flow-timeline',
-        name: 'FgFlowTimeline',
-        label: '审批记录',
-        position: { x: 24, y: 490, w: 1392, h: 280, zIndex: 3 },
-        style: { width: '100%', backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
-        props: {
-          title: '审批记录',
-          instanceIdVariable: 'flowInstanceId',
-        },
-        options: [],
-        variables: [],
-        events: [],
-        rules: [],
-        validationRules: [],
-      },
-      {
-        id: 'detail-comment',
-        type: 'approval-comment',
-        name: 'FgApprovalComment',
-        label: '审批意见',
-        field: 'approvalComment',
-        position: { x: 24, y: 790, w: 1392, h: 120, zIndex: 4 },
-        style: { width: '100%' },
-        props: { placeholder: '请输入审批意见', rows: 3 },
-        options: [],
-        variables: [],
-        events: [],
-        rules: [],
-        validationRules: [],
-      },
-      {
-        id: 'detail-flow-actions',
-        type: 'flow-task-actions',
-        name: 'FgFlowTaskActions',
-        label: '审批操作',
-        position: { x: 24, y: 930, w: 1392, h: 160, zIndex: 5 },
-        style: { width: '100%', backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
-        props: {
-          title: '审批操作',
-          taskIdVariable: 'taskId',
-          instanceIdVariable: 'flowInstanceId',
-          commentWidgetId: 'detail-comment',
-          showAiSuggestion: true,
-        },
-        options: [],
-        variables: [],
-        events: [],
-        rules: [],
-        validationRules: [],
-      },
-    ],
-    board: makeBoard(1440, 1400, [
-      { name: 'recordId', type: 'string', defaultValue: '' },
-      { name: 'flowInstanceId', type: 'string', defaultValue: '' },
-      { name: 'taskId', type: 'string', defaultValue: '' },
-    ]),
-  }
+  return buildFlowSubmissionDetailPage({
+    code: 'detail',
+    title: '请假详情',
+    detailApiUrl: '/business/hr/leave/detail',
+    descriptionItems: leaveDetailDescriptionItems(),
+    staticData: {
+      applicantName: '张三',
+      leaveType: '年假',
+      startTime: '2026-07-05 09:00',
+      endTime: '2026-07-07 18:00',
+      days: 3,
+      reason: '家庭事务处理。',
+      deptName: '研发部',
+      status: '审批中',
+      agentUser: '李四',
+    },
+  })
 }
 
 /** 系统管理 — 用户 */
@@ -1004,6 +830,28 @@ export function buildHrLeaveStatsSchema(_refs: BusinessSchemaRefs): Record<strin
         validationRules: [],
       },
       {
+        id: 'stats-pie-type',
+        type: 'pie-chart',
+        name: 'FgPieChart',
+        label: '假别占比',
+        position: { x: 660, y: 72, w: 360, h: 120, zIndex: 2 },
+        style: { backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
+        props: {
+          title: '假别占比',
+          apiUrl: '/business/hr/leave/stats',
+          responseDataPath: 'byLeaveType',
+          nameField: 'category',
+          valueField: 'value',
+          showLegend: true,
+          legendPosition: 'right',
+        },
+        options: [],
+        variables: [],
+        events: [],
+        rules: [],
+        validationRules: [],
+      },
+      {
         id: 'stats-bar-dept',
         type: 'bar-chart',
         name: 'FgBarChart',
@@ -1012,13 +860,8 @@ export function buildHrLeaveStatsSchema(_refs: BusinessSchemaRefs): Record<strin
         style: { backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
         props: {
           title: '各部门请假天数',
-          staticData: [
-            { category: '研发部', value: 42 },
-            { category: '产品部', value: 28 },
-            { category: '人事部', value: 15 },
-            { category: '财务部', value: 12 },
-            { category: '行政部', value: 8 },
-          ],
+          apiUrl: '/business/hr/leave/stats',
+          responseDataPath: 'byDept',
           xField: 'category',
           yField: 'value',
           yAxisName: '天数',
@@ -1039,14 +882,8 @@ export function buildHrLeaveStatsSchema(_refs: BusinessSchemaRefs): Record<strin
         style: { backgroundColor: '#fff', borderRadius: '8px', padding: '16px' },
         props: {
           title: '月度请假趋势',
-          staticData: [
-            { category: '1月', value: 18 },
-            { category: '2月', value: 22 },
-            { category: '3月', value: 15 },
-            { category: '4月', value: 28 },
-            { category: '5月', value: 24 },
-            { category: '6月', value: 32 },
-          ],
+          apiUrl: '/business/hr/leave/stats',
+          responseDataPath: 'monthlyTrend',
           xField: 'category',
           yField: 'value',
           yAxisName: '人次',

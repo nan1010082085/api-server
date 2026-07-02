@@ -293,6 +293,52 @@ const GENERATE_SCHEMA_TOOL = 'generate_schema'
 const BIND_TOOLS = new Set(['save_and_bind_schema', 'bind_schema_to_flow_node'])
 
 // ────────────────────────────────────────────
+// POST /api/ai/analyze-image — 图片纯视觉语义分析
+// ────────────────────────────────────────────
+
+router.post('/analyze-image', async (ctx) => {
+  const userId = ctx.state.user?.id ?? ctx.state.user?.userId
+  const body = ctx.request.body as {
+    image?: string
+    documentId?: string
+    prompt?: string
+  }
+
+  try {
+    if (body.documentId?.trim()) {
+      const { analyzeDocumentVision } = await import('./services/documentService.js')
+      const result = await analyzeDocumentVision(body.documentId.trim(), {
+        visionPrompt: body.prompt,
+        userId: userId ? String(userId) : undefined,
+      })
+      if (!result) {
+        ctx.status = 404
+        ctx.body = { success: false, error: { message: 'Document not found' } }
+        return
+      }
+      ctx.body = { success: true, data: { description: result.description } }
+      return
+    }
+
+    if (!body.image?.trim()) {
+      ctx.status = 400
+      ctx.body = { success: false, error: { message: 'image or documentId is required' } }
+      return
+    }
+
+    const { analyzeImagePayload } = await import('./services/fileService.js')
+    const result = await analyzeImagePayload(body.image, body.prompt)
+    ctx.body = { success: true, data: { description: result.description } }
+  } catch (err) {
+    ctx.status = 400
+    ctx.body = {
+      success: false,
+      error: { message: err instanceof Error ? err.message : 'Image analysis failed' },
+    }
+  }
+})
+
+// ────────────────────────────────────────────
 // POST /api/ai/chat  (SSE via LangGraph streamEvents)
 // ────────────────────────────────────────────
 

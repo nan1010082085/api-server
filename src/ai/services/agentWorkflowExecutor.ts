@@ -8,6 +8,7 @@ import { HumanMessage, SystemMessage, AIMessage, ToolMessage, type BaseMessage }
 import { AgentWorkflowExecutionModel } from '../models/agentWorkflow.js'
 import { getLLM } from './llmCache.js'
 import { logger } from '../../utils/logger.js'
+import { leanDoc } from '../../utils/leanDoc.js'
 import {
   buildEditorSystemPrompt,
   buildFlowSystemPrompt,
@@ -18,7 +19,17 @@ import { normalizeToolName } from '@schema-platform/ai-shared/toolNames'
 import { getToolSync, ensureToolsReady, getToolsByNames } from '../tools/registry.js'
 import { getMetadata } from '../tools/toolHandlers.js'
 import { extractJsonFromResponse } from '../graph/agentBase.js'
-import { getDocumentWithText, reprocessDocumentFromStorage } from './documentService.js'
+import { getDocumentWithText, reprocessDocumentFromStorage, analyzeDocumentVision } from './documentService.js'
+import { resolveWorkflowTemplate } from './agentWorkflowTemplateResolver.js'
+import {
+  normalizeConversationTurns,
+  trimConversationTurns,
+  mergeConversationSources,
+  extractMessageFromContext,
+  extractAssistantContent,
+  resolveDocumentIdFromNodeData,
+  type WorkflowConversationTurn,
+} from './agentWorkflowConversation.js'
 import type { StructuredTool } from '@langchain/core/tools'
 
 interface WorkflowGraphNode {
@@ -44,6 +55,14 @@ interface WorkflowGraphNode {
     documentSource?: 'documentId' | 'inputField'
     documentId?: string
     inputField?: string
+    visionPrompt?: string
+    memoryMode?: 'read' | 'append' | 'reset'
+    memoryRole?: 'user' | 'assistant'
+    messageField?: string
+    contentSource?: 'input' | 'lastOutput'
+    maxHistoryTurns?: number
+    useConversationHistory?: boolean
+    appendAssistantReply?: boolean
   }
 }
 
@@ -69,9 +88,57 @@ interface ExecuteParams {
 }
 
 interface RuntimeContext {
+  executionId: string
+  triggeredBy: string
   input: Record<string, unknown>
   lastOutput: unknown
   nodeOutputs: Record<string, unknown>
+  conversationHistory: WorkflowConversationTurn[]
+}
+
+async function loadExecutionConversation(executionId: string): Promise<WorkflowConversationTurn[]> {
+  const execution = leanDoc<{ conversationHistory?: unknown }>(
+    await AgentWorkflowExecutionModel.findById(executionId).lean(),
+  )
+  return normalizeConversationTurns(execution?.conversationHistory)
+}
+
+async function saveExecutionConversation(
+  executionId: string,
+  turns: WorkflowConversationTurn[],
+): Promise<void> {
+  await AgentWorkflowExecutionModel.updateOne(
+    { _id: executionId },
+    { $set: { conversationHistory: turns } },
+  )
+}
+
+async function initExecutionConversation(
+  executionId: string,
+  input: Record<string, unknown>,
+): Promise<WorkflowConversationTurn[]> {
+  const execution = leanDoc<{ conversationHistory?: unknown }>(
+    await AgentWorkflowExecutionModel.findById(executionId).lean(),
+  )
+  const existing = normalizeConversationTurns(execution?.conversationHistory)
+  if (existing.length) return existing
+
+  const sources: unknown[] = [input.history, input.conversationHistory]
+  const continueFrom = input.continueFromExecutionId
+  if (typeof continueFrom === 'string' && continueFrom.trim()) {
+    const parent = leanDoc<{ conversationHistory?: unknown }>(
+      await AgentWorkflowExecutionModel.findById(continueFrom.trim()).lean(),
+    )
+    if (parent?.conversationHistory) {
+      sources.unshift(parent.conversationHistory)
+    }
+  }
+
+  const merged = trimConversationTurns(mergeConversationSources(...sources), 50)
+  if (merged.length) {
+    await saveExecutionConversation(executionId, merged)
+  }
+  return merged
 }
 
 async function appendNodeRecord(
@@ -122,16 +189,7 @@ function getNode(graph: WorkflowGraph, nodeId: string): WorkflowGraphNode | unde
 }
 
 function resolveTemplate(text: string, ctx: RuntimeContext): string {
-  return text
-    .replace(/\{\{\$input\.([\w.]+)\}\}/g, (_, key: string) => {
-      const val = ctx.input[key]
-      return val != null ? String(val) : ''
-    })
-    .replace(/\{\{\$json\}\}/g, () => JSON.stringify(ctx.lastOutput ?? {}))
-    .replace(/\{\{\$node\.([\w-]+)\}\}/g, (_, nodeId: string) => {
-      const val = ctx.nodeOutputs[nodeId]
-      return val != null ? JSON.stringify(val) : ''
-    })
+  return resolveWorkflowTemplate(text, ctx)
 }
 
 function evaluateIfExpression(expression: string, ctx: RuntimeContext): boolean {
@@ -554,18 +612,12 @@ async function runNode(
       return { output: { ...ctx.input } }
 
     case 'document-parse': {
-      const source = data.documentSource ?? 'inputField'
-      let documentId = ''
-      if (source === 'documentId') {
-        documentId = resolveTemplate(data.documentId ?? '', ctx).trim()
-      } else {
-        const field = data.inputField?.trim() || 'documentId'
-        const inputObj = ctx.input as Record<string, unknown>
-        const lastObj = (ctx.lastOutput ?? {}) as Record<string, unknown>
-        const body = inputObj.body as Record<string, unknown> | undefined
-        const raw = lastObj[field] ?? inputObj[field] ?? body?.[field]
-        documentId = raw != null ? String(raw) : ''
-      }
+      const documentId = resolveDocumentIdFromNodeData(
+        data,
+        (text) => resolveTemplate(text, ctx),
+        ctx.input,
+        ctx.lastOutput,
+      )
       if (!documentId) {
         return { output: { error: '未指定文档 ID' } }
       }
@@ -605,6 +657,78 @@ async function runNode(
       }
     }
 
+    case 'vision-analyze': {
+      const documentId = resolveDocumentIdFromNodeData(
+        data,
+        (text) => resolveTemplate(text, ctx),
+        ctx.input,
+        ctx.lastOutput,
+      )
+      if (!documentId) {
+        return { output: { error: '未指定图片 documentId' } }
+      }
+      const visionPrompt = data.visionPrompt?.trim()
+        ? resolveTemplate(data.visionPrompt, ctx)
+        : undefined
+      const result = await analyzeDocumentVision(documentId, {
+        visionPrompt,
+        userId: ctx.triggeredBy,
+      })
+      if (!result) {
+        return { output: { error: `图片不存在: ${documentId}` } }
+      }
+      return { output: result }
+    }
+
+    case 'conversation-memory': {
+      const mode = data.memoryMode ?? 'read'
+      const maxTurns = data.maxHistoryTurns ?? 20
+
+      if (mode === 'reset') {
+        ctx.conversationHistory = []
+        await saveExecutionConversation(ctx.executionId, [])
+        return { output: { history: [], count: 0, mode: 'reset' } }
+      }
+
+      if (mode === 'read') {
+        return {
+          output: {
+            history: ctx.conversationHistory,
+            count: ctx.conversationHistory.length,
+            mode: 'read',
+          },
+        }
+      }
+
+      const role = data.memoryRole ?? 'user'
+      const content =
+        role === 'user' || data.contentSource === 'input'
+          ? extractMessageFromContext(data.messageField ?? 'message', ctx.input, ctx.lastOutput)
+          : extractAssistantContent(ctx.lastOutput)
+
+      if (!content) {
+        return { output: { error: '无可追加的对话内容' } }
+      }
+
+      ctx.conversationHistory = trimConversationTurns(
+        [
+          ...ctx.conversationHistory,
+          { role, content, at: new Date().toISOString() },
+        ],
+        maxTurns,
+      )
+      await saveExecutionConversation(ctx.executionId, ctx.conversationHistory)
+
+      return {
+        output: {
+          history: ctx.conversationHistory,
+          count: ctx.conversationHistory.length,
+          mode: 'append',
+          appended: { role, content },
+        },
+      }
+    }
+
     case 'llm': {
       const prompt = resolveTemplate(data.prompt ?? '', ctx)
       const system = data.systemPrompt?.trim()
@@ -612,13 +736,40 @@ async function runNode(
         : '你是工作流中的 LLM 节点，请根据输入完成任务。'
       const modelId = data.model?.trim() && data.model !== 'default' ? data.model : undefined
       const llm = await getLLM({ temperature: 0.3, model: modelId })
-      const response = await llm.invoke([
-        new SystemMessage(system),
+      const messages: BaseMessage[] = [new SystemMessage(system)]
+
+      if (data.useConversationHistory) {
+        const history = trimConversationTurns(
+          ctx.conversationHistory,
+          data.maxHistoryTurns ?? 20,
+        )
+        for (const turn of history) {
+          if (turn.role === 'user') messages.push(new HumanMessage(turn.content))
+          else if (turn.role === 'assistant') messages.push(new AIMessage(turn.content))
+          else messages.push(new SystemMessage(turn.content))
+        }
+      }
+
+      messages.push(
         new HumanMessage(prompt || JSON.stringify(ctx.lastOutput ?? ctx.input)),
-      ])
+      )
+
+      const response = await llm.invoke(messages)
       const content = typeof response.content === 'string'
         ? response.content
         : JSON.stringify(response.content)
+
+      if (data.appendAssistantReply && content.trim()) {
+        ctx.conversationHistory = trimConversationTurns(
+          [
+            ...ctx.conversationHistory,
+            { role: 'assistant', content, at: new Date().toISOString() },
+          ],
+          data.maxHistoryTurns ?? 20,
+        )
+        await saveExecutionConversation(ctx.executionId, ctx.conversationHistory)
+      }
+
       return { output: { text: content } }
     }
 
@@ -648,10 +799,21 @@ async function runNode(
 
 export async function executeAgentWorkflow(params: ExecuteParams): Promise<void> {
   const { executionId, graph, input, resumeFromWaiting } = params
+  const executionDoc = leanDoc<{ triggeredBy?: unknown }>(
+    await AgentWorkflowExecutionModel.findById(executionId).lean(),
+  )
+  const triggeredBy = String(executionDoc?.triggeredBy ?? '')
+  const conversationHistory = resumeFromWaiting
+    ? await loadExecutionConversation(executionId)
+    : await initExecutionConversation(executionId, input)
+
   const ctx: RuntimeContext = {
+    executionId,
+    triggeredBy,
     input,
     lastOutput: input,
     nodeOutputs: {},
+    conversationHistory,
   }
 
   let currentId: string | null = graph.entryNodeId
@@ -687,6 +849,7 @@ export async function executeAgentWorkflow(params: ExecuteParams): Promise<void>
         ctx.nodeOutputs[rec.nodeId as string] = rec.output
       }
     }
+    ctx.conversationHistory = await loadExecutionConversation(executionId)
     ctx.lastOutput = input
     ctx.nodeOutputs[waitNodeId] = input
     await updateNodeRecord(executionId, waitNodeId, {

@@ -10,7 +10,7 @@ import {
   type DocumentExtractionMethod,
   type StructuredSummary,
 } from '../models/document.js'
-import { processFile, isAllowedFileType, DOCUMENT_TEXT_MODEL } from './fileService.js'
+import { processFile, isAllowedFileType, isImageType, DOCUMENT_TEXT_MODEL, performVisionAnalysis } from './fileService.js'
 import {
   saveDocumentFile,
   readDocumentFile,
@@ -323,4 +323,37 @@ export async function loadDocumentsForChat(
     hasOriginalFile: !!doc.storagePath,
     extractionMethod: doc.extractionMethod as DocumentExtractionMethod | undefined,
   }))
+}
+
+/** 对已上传图片做纯视觉语义分析（非 OCR） */
+export async function analyzeDocumentVision(
+  documentId: string,
+  options?: { visionPrompt?: string; userId?: string },
+) {
+  const doc = await getDocumentWithText(documentId, options?.userId)
+  if (!doc) return null
+
+  const mimetype = String(doc.mimetype ?? '')
+  if (!isImageType(mimetype)) {
+    throw new Error(`文档不是图片类型: ${mimetype}`)
+  }
+  if (!doc.storagePath) {
+    throw new Error('图片原文件未存储，无法进行视觉分析')
+  }
+
+  const buffer = await readDocumentFile(doc.storagePath as string)
+  const description = await performVisionAnalysis(
+    buffer.toString('base64'),
+    mimetype,
+    options?.visionPrompt,
+  )
+
+  return {
+    documentId,
+    filename: doc.filename as string,
+    mimetype,
+    size: doc.size as number,
+    description,
+    mode: 'vision' as const,
+  }
 }

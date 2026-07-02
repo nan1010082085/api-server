@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate.js'
 import { completeTaskSchema, delegateTaskSchema, rejectToNodeSchema } from '../flow-schemas/instanceSchemas.js'
 import { flowEngine } from '../flow-services/FlowEngine.js'
 import { taskService } from '../flow-services/TaskService.js'
+import { urgeFlowTask } from '../flow-services/flowUrgeService.js'
 import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
@@ -149,6 +150,26 @@ router.post('/:id/reject-to-node', requireAuth, requireFlowApprove, validate(rej
   await flowEngine.rejectToNode(id, targetNodeId, comment, userId)
   const task = await TaskInstanceModel.findById(id)
   ctx.body = { success: true, data: task }
+})
+
+// POST /api/flow-tasks/:id/urge — F-06 催办
+router.post('/:id/urge', requireAuth, async (ctx) => {
+  const { id } = ctx.params
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
+    return
+  }
+
+  const userId = (ctx.state.user as { id: string }).id
+  try {
+    const data = await urgeFlowTask(id, userId)
+    ctx.body = { success: true, data }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Urge failed'
+    ctx.status = message === 'Task not found' ? 404 : 400
+    ctx.body = { success: false, error: { message } }
+  }
 })
 
 export default router

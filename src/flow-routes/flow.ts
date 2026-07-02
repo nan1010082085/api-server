@@ -46,10 +46,12 @@ router.get('/', requireAuth, requireFlowView, async (ctx) => {
 
 // POST /api/flows
 router.post('/', requireAuth, requireFlowDesign, validate(createFlowSchema), async (ctx) => {
-  const { name, description, category, permissions } = ctx.request.body as {
+  const { name, description, category, permissions, formSchemaId, formPublishId } = ctx.request.body as {
     name: string
     description?: string
     category?: string
+    formSchemaId?: string | null
+    formPublishId?: string | null
     permissions?: { editors?: string[]; launchers?: string[]; viewers?: string[] }
   }
 
@@ -58,6 +60,8 @@ router.post('/', requireAuth, requireFlowDesign, validate(createFlowSchema), asy
     description: description ?? '',
     category: category ?? '',
     status: 'draft',
+    formSchemaId: formSchemaId ?? null,
+    formPublishId: formPublishId ?? null,
     createdBy: (ctx.state.user as { id: string }).id,
     permissions: {
       editors: permissions?.editors ?? [],
@@ -114,17 +118,21 @@ router.put('/:id', requireAuth, requireFlowDesign, validate(updateFlowSchema), a
   }
 
   const data: Record<string, unknown> = {}
-  const { name, description, category, thumbnail, permissions } = ctx.request.body as {
+  const { name, description, category, thumbnail, permissions, formSchemaId, formPublishId } = ctx.request.body as {
     name?: string
     description?: string
     category?: string
     thumbnail?: string
+    formSchemaId?: string | null
+    formPublishId?: string | null
     permissions?: { editors?: string[]; launchers?: string[]; viewers?: string[] }
   }
   if (name !== undefined) data.name = name.trim()
   if (description !== undefined) data.description = description
   if (category !== undefined) data.category = category
   if (thumbnail !== undefined) data.thumbnail = thumbnail
+  if (formSchemaId !== undefined) data.formSchemaId = formSchemaId
+  if (formPublishId !== undefined) data.formPublishId = formPublishId
   if (permissions !== undefined) {
     data.permissions = {
       editors: permissions.editors ?? existing.permissions?.editors ?? [],

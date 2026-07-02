@@ -227,7 +227,14 @@ export class FlowEngine {
 
     if (!version) throw new Error('No flow version found')
 
-    const model = parseBpmnGraph(version.graph)
+    const normalizedGraph = {
+      ...version.graph,
+      edges: version.graph.edges.map((edge: { data?: Record<string, unknown> }) => ({
+        ...edge,
+        data: edge.data ?? {},
+      })),
+    }
+    const model = parseBpmnGraph(normalizedGraph)
 
     const instance = await FlowInstanceModel.create({
       definitionId,

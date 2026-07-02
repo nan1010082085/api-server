@@ -16,6 +16,7 @@
  */
 
 import Router from '@koa/router'
+import type { AgentWorkflowTemplateId } from '@schema-platform/ai-shared'
 import { authMiddleware } from '../middleware/auth.js'
 import { isValidObjectId } from '../utils/objectId.js'
 import {
@@ -31,6 +32,7 @@ import {
   listAgentWorkflowExecutions,
   getAgentWorkflowExecution,
   resumeAgentWorkflowExecution,
+  continueAgentWorkflowExecution,
 } from './services/agentWorkflowService.js'
 
 const router = new Router({ prefix: '/api/ai' })
@@ -60,13 +62,22 @@ router.get('/workflows', async (ctx) => {
 })
 
 router.post('/workflows', async (ctx) => {
-  const { name, description } = ctx.request.body as { name?: string; description?: string }
+  const { name, description, templateId } = ctx.request.body as {
+    name?: string
+    description?: string
+    templateId?: AgentWorkflowTemplateId
+  }
   if (!name?.trim()) {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'name is required' } }
     return
   }
-  const data = await createAgentWorkflow(getUserId(ctx), name.trim(), description?.trim() ?? '')
+  const data = await createAgentWorkflow(
+    getUserId(ctx),
+    name.trim(),
+    description?.trim() ?? '',
+    templateId ?? 'blank',
+  )
   ctx.body = { success: true, data }
 })
 
@@ -198,6 +209,22 @@ router.post('/workflow-executions/:id/resume', async (ctx) => {
   if (!data) {
     ctx.status = 404
     ctx.body = { success: false, error: { message: 'Execution not found or not waiting' } }
+    return
+  }
+  ctx.body = { success: true, data }
+})
+
+router.post('/workflow-executions/:id/continue', async (ctx) => {
+  if (rejectInvalidObjectId(ctx, ctx.params.id, 'execution id')) return
+  const body = (ctx.request.body ?? {}) as { input?: Record<string, unknown> }
+  const data = await continueAgentWorkflowExecution(
+    ctx.params.id,
+    getUserId(ctx),
+    body.input ?? {},
+  )
+  if (!data) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Execution not found' } }
     return
   }
   ctx.body = { success: true, data }

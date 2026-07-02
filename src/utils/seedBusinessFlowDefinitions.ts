@@ -6,6 +6,22 @@ import { FlowDefinitionModel } from '../flow-models/FlowDefinition.js'
 import { FlowVersionModel } from '../flow-models/FlowVersion.js'
 import { FlowTemplateModel } from '../flow-models/FlowTemplate.js'
 import { DEFAULT_TENANT_ID } from './initDefaultTenant.js'
+import { resolveLeaveFlowGraphRoles } from './seedBusinessRoles.js'
+import {
+  ASSET_FLOW_NAME,
+  DOC_FLOW_NAME,
+  EXPENSE_FLOW_NAME,
+  GOV_PARALLEL_FLOW_NAME,
+  LEAVE_FLOW_NAME,
+  ONBOARD_FLOW_NAME,
+  OVERTIME_FLOW_NAME,
+  PURCHASE_FLOW_NAME,
+  RECRUIT_FLOW_NAME,
+  RECRUIT_OFFER_FLOW_NAME,
+  RESIGN_FLOW_NAME,
+  SEAL_FLOW_NAME,
+  TRIP_FLOW_NAME,
+} from './builtinFlowGraphs.js'
 
 function remapGraphIds(graph: { nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>> }) {
   const idMap = new Map<string, string>()
@@ -17,6 +33,10 @@ function remapGraphIds(graph: { nodes: Array<Record<string, unknown>>; edges: Ar
   const edges = graph.edges.map((edge) => ({
     ...edge,
     id: uuidv4(),
+    data: {
+      label: '',
+      ...(typeof edge.data === 'object' && edge.data !== null ? edge.data : {}),
+    },
     source: {
       ...(edge.source as Record<string, unknown>),
       cell: idMap.get((edge.source as Record<string, unknown>).cell as string)
@@ -28,7 +48,17 @@ function remapGraphIds(graph: { nodes: Array<Record<string, unknown>>; edges: Ar
         ?? (edge.target as Record<string, unknown>).cell,
     },
   }))
-  return { nodes, edges }
+  const remapped = { nodes, edges }
+  return remapped
+}
+
+async function remapAndResolveGraph(graph: {
+  nodes: Array<Record<string, unknown>>
+  edges: Array<Record<string, unknown>>
+}) {
+  const remapped = remapGraphIds(graph)
+  await resolveLeaveFlowGraphRoles(remapped)
+  return remapped
 }
 
 export async function ensurePublishedFlowDefinition(templateName: string): Promise<string | null> {
@@ -38,6 +68,13 @@ export async function ensurePublishedFlowDefinition(templateName: string): Promi
   })
 
   if (existing) {
+    const template = await FlowTemplateModel.findOne({ name: templateName, isBuiltin: true })
+    if (template?.graph && existing.currentVersionId) {
+      const graph = await remapAndResolveGraph(
+        template.graph as { nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>> },
+      )
+      await FlowVersionModel.updateOne({ _id: existing.currentVersionId }, { $set: { graph } })
+    }
     if (existing.status !== 'published' && existing.currentVersionId) {
       existing.status = 'published'
       await existing.save()
@@ -51,7 +88,9 @@ export async function ensurePublishedFlowDefinition(templateName: string): Promi
     return null
   }
 
-  const graph = remapGraphIds(template.graph as { nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>> })
+  const graph = await remapAndResolveGraph(
+    template.graph as { nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>> },
+  )
   const now = new Date()
   const pad = (n: number, len: number) => String(n).padStart(len, '2')
   const version = `v${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}`
@@ -81,12 +120,19 @@ export async function ensurePublishedFlowDefinition(templateName: string): Promi
 
 export async function seedBusinessFlowDefinitions(): Promise<Record<string, string>> {
   const templateNames = [
-    '请假审批',
-    '出差审批',
-    '报销审批',
-    '采购审批',
-    '加班审批',
-    '政务并联审批',
+    LEAVE_FLOW_NAME,
+    TRIP_FLOW_NAME,
+    EXPENSE_FLOW_NAME,
+    PURCHASE_FLOW_NAME,
+    OVERTIME_FLOW_NAME,
+    GOV_PARALLEL_FLOW_NAME,
+    SEAL_FLOW_NAME,
+    ONBOARD_FLOW_NAME,
+    RESIGN_FLOW_NAME,
+    DOC_FLOW_NAME,
+    RECRUIT_FLOW_NAME,
+    RECRUIT_OFFER_FLOW_NAME,
+    ASSET_FLOW_NAME,
   ]
   const ids: Record<string, string> = {}
   for (const name of templateNames) {

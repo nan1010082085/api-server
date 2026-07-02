@@ -8,6 +8,7 @@ import { validate } from '../middleware/validate.js'
 import { createSchemaSchema, updateSchemaSchema, importSchemaSchema } from '../schemas/schemaSchemas.js'
 import { eventBus } from '../services/eventBus.js'
 import mongoose from 'mongoose'
+import { leanDoc } from '../utils/leanDoc.js'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -276,6 +277,32 @@ router.get('/published', requireAuth, async (ctx) => {
       totalPages: Math.ceil(total / pageSize),
     },
   }
+})
+
+// GET /api/schemas/published/by-code/:code
+// Reads published schema by business schema code (e.g. hr-leave-apply).
+// ────────────────────────────────────────────
+router.get('/published/by-code/:code', requireAuth, async (ctx) => {
+  const { code } = ctx.params
+  const tenantId = (ctx.state.user as { tenantId?: string })?.tenantId ?? '000000'
+
+  const formSchema = leanDoc<{ editId?: unknown }>(
+    await FormSchemaModel.findOne({ tenantId, code }).lean(),
+  )
+  if (!formSchema) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Schema not found for code.' } }
+    return
+  }
+
+  const published = await PublishedSchemaModel.findOne({ sourceId: formSchema.editId })
+  if (!published) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Published schema not found.' } }
+    return
+  }
+
+  ctx.body = { success: true, data: published }
 })
 
 // ────────────────────────────────────────────

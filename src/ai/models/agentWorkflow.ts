@@ -162,6 +162,8 @@ export interface IAgentWorkflowExecution {
   finishedAt?: Date
   durationMs?: number
   nodeRecords: Array<Record<string, unknown>>
+  conversationHistory?: Array<{ role: string; content: string; at?: string }>
+  parentExecutionId?: string | null
   error?: string
   triggeredBy: string
 }
@@ -194,6 +196,17 @@ const executionSchema = new mongoose.Schema(
     nodeRecords: { type: [nodeRecordSchema], default: [] },
     error: String,
     triggeredBy: { type: String, required: true },
+    conversationHistory: {
+      type: [
+        {
+          role: { type: String, enum: ['user', 'assistant', 'system'] },
+          content: { type: String },
+          at: { type: String },
+        },
+      ],
+      default: [],
+    },
+    parentExecutionId: { type: String, default: null },
   },
   {
     timestamps: true,

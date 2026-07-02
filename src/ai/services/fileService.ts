@@ -38,9 +38,14 @@ const ALLOWED_DOC_TYPES = new Set([
   'text/plain',
 ])
 
-// ---- OCR via DeepSeek VL ----
+// ---- Vision API (DeepSeek VL) ----
 
-async function performOCR(base64Image: string, mimeType: string): Promise<string> {
+async function callVisionModel(
+  base64Image: string,
+  mimeType: string,
+  textPrompt: string,
+  maxTokens = 4096,
+): Promise<string> {
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) {
     throw new Error('DEEPSEEK_API_KEY environment variable is required.')
@@ -60,12 +65,12 @@ async function performOCR(base64Image: string, mimeType: string): Promise<string
         {
           role: 'user',
           content: [
-            { type: 'text', text: '请仔细识别图片中的所有文字内容，包括表格、表单字段、标签等。直接输出识别到的文字，不要添加额外说明。' },
+            { type: 'text', text: textPrompt },
             { type: 'image_url', image_url: { url: dataUrl } },
           ],
         },
       ],
-      max_tokens: 4096,
+      max_tokens: maxTokens,
     }),
   })
 
@@ -79,6 +84,51 @@ async function performOCR(base64Image: string, mimeType: string): Promise<string
   }
 
   return data.choices[0]?.message?.content ?? ''
+}
+
+// ---- OCR via DeepSeek VL ----
+
+async function performOCR(base64Image: string, mimeType: string): Promise<string> {
+  return callVisionModel(
+    base64Image,
+    mimeType,
+    '请仔细识别图片中的所有文字内容，包括表格、表单字段、标签等。直接输出识别到的文字，不要添加额外说明。',
+  )
+}
+
+const DEFAULT_VISION_PROMPT =
+  '请从视觉语义角度描述这张图片：场景、主体、布局、UI/表单结构、图表类型、颜色与空间关系等。文字内容可简要概括，重点不是逐字 OCR。'
+
+/** 纯视觉语义描述（非 OCR） */
+export async function performVisionAnalysis(
+  base64Image: string,
+  mimeType: string,
+  customPrompt?: string,
+): Promise<string> {
+  const prompt = customPrompt?.trim() || DEFAULT_VISION_PROMPT
+  return callVisionModel(base64Image, mimeType, prompt)
+}
+
+/** 解析 data URL 或裸 base64，返回 { base64, mimeType } */
+export function parseImagePayload(image: string): { base64: string; mimeType: string } {
+  const trimmed = image.trim()
+  const dataUrlMatch = /^data:([^;]+);base64,(.+)$/i.exec(trimmed)
+  if (dataUrlMatch) {
+    return { mimeType: dataUrlMatch[1], base64: dataUrlMatch[2] }
+  }
+  return { mimeType: 'image/jpeg', base64: trimmed }
+}
+
+export async function analyzeImagePayload(
+  image: string,
+  customPrompt?: string,
+): Promise<{ description: string; mimetype: string }> {
+  const { base64, mimeType } = parseImagePayload(image)
+  if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
+    throw new Error(`Unsupported image type: ${mimeType}`)
+  }
+  const description = await performVisionAnalysis(base64, mimeType, customPrompt)
+  return { description, mimetype: mimeType }
 }
 
 // ---- Text extraction from documents ----

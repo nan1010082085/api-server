@@ -5,12 +5,16 @@ import { DEFAULT_TENANT_ID } from './initDefaultTenant.js'
 export const BUSINESS_ROLE_NAMES = {
   departmentManager: '部门经理',
   hr: 'HR',
+  vp: 'VP',
+  finance: '财务',
 } as const
 
 /** Placeholder codes in flow template → Role.name */
 export const FLOW_ROLE_CODE_MAP: Record<string, string> = {
   department_manager: BUSINESS_ROLE_NAMES.departmentManager,
   hr: BUSINESS_ROLE_NAMES.hr,
+  vp: BUSINESS_ROLE_NAMES.vp,
+  finance: BUSINESS_ROLE_NAMES.finance,
 }
 
 const APPROVER_PERMISSIONS = [
@@ -55,8 +59,7 @@ export async function assignBusinessRolesToAdmin(): Promise<void> {
   const merged = Array.from(new Set([...admin.roles, ...roleIds]))
   if (merged.length === admin.roles.length) return
 
-  admin.roles = merged
-  await admin.save()
+  await UserModel.updateOne({ _id: admin._id }, { $set: { roles: merged } })
   console.log('[seed] Admin user granted business approver roles')
 }
 

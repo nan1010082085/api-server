@@ -4,6 +4,8 @@ export const createFlowSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200),
   description: z.string().max(1000).optional(),
   category: z.string().max(100).optional(),
+  formSchemaId: z.string().optional().nullable(),
+  formPublishId: z.string().optional().nullable(),
   permissions: z.object({
     editors: z.array(z.string()).optional(),
     launchers: z.array(z.string()).optional(),
@@ -16,6 +18,8 @@ export const updateFlowSchema = z.object({
   description: z.string().max(1000).optional(),
   category: z.string().max(100).optional(),
   thumbnail: z.string().optional(),
+  formSchemaId: z.string().optional().nullable(),
+  formPublishId: z.string().optional().nullable(),
   permissions: z.object({
     editors: z.array(z.string()).optional(),
     launchers: z.array(z.string()).optional(),

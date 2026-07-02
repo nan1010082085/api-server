@@ -26,6 +26,71 @@ const requireAuth = authMiddleware({ required: true })
 const router = new Router({ prefix: '/api/submissions' })
 
 // ────────────────────────────────────────────
+// GET /api/submissions/record/:id/view
+// 按 submissionId 查询详情视图（无需 schemaId 参数）
+// ────────────────────────────────────────────
+router.get('/record/:id/view', requireAuth, async (ctx) => {
+  const { id } = ctx.params
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
+    return
+  }
+
+  const submission = await FormSubmissionModel.findById(id)
+  if (!submission) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Submission not found.' } }
+    return
+  }
+
+  const enriched = await enrichSubmission(submission)
+  ctx.body = { success: true, data: toLeaveDetailView(enriched) }
+})
+
+// ────────────────────────────────────────────
+// GET /api/submissions/record/:id/export
+// 导出单条 submission（CSV / Excel）
+// ────────────────────────────────────────────
+router.get('/record/:id/export', requireAuth, async (ctx) => {
+  const { id } = ctx.params
+  const { format: formatParam } = ctx.query
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
+    return
+  }
+
+  const submission = await FormSubmissionModel.findById(id)
+  if (!submission) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Submission not found.' } }
+    return
+  }
+
+  const format: ExportFormat = formatParam === 'xlsx' ? 'xlsx' : 'csv'
+  const schemaId = String(submission.schemaId)
+  const schema = await FormSchemaModel.findById(schemaId).lean() as Record<string, unknown> | null
+  const fieldLabels = schema ? extractFieldLabels(schema.json as Record<string, unknown>) : {}
+  const fields = buildExportFields([submission], fieldLabels)
+  const safeName = ((schema?.name as string) ?? schemaId).replace(/[^\w一-鿿-]/g, '_')
+
+  if (format === 'xlsx') {
+    const buffer = await exportToExcel([submission], fields)
+    ctx.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    ctx.set('Content-Disposition', `attachment; filename="submission-${safeName}.xlsx"`)
+    ctx.body = buffer
+  } else {
+    const csv = exportToCsv([submission], fields)
+    ctx.set('Content-Type', 'text/csv; charset=utf-8')
+    ctx.set('Content-Disposition', `attachment; filename="submission-${safeName}.csv"`)
+    ctx.body = csv
+  }
+})
+
+// ────────────────────────────────────────────
 // POST /api/submissions/:schemaId
 // 提交表单数据
 // ────────────────────────────────────────────

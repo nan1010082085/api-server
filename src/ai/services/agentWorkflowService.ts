@@ -8,7 +8,12 @@
  */
 
 import mongoose from 'mongoose'
+import { leanDoc } from '../../utils/leanDoc.js'
 import { v4 as uuidv4 } from 'uuid'
+import {
+  createAgentWorkflowGraphByTemplate,
+  type AgentWorkflowTemplateId,
+} from '@schema-platform/ai-shared'
 import {
   AgentWorkflowModel,
   AgentWorkflowExecutionModel,
@@ -95,6 +100,8 @@ function toExecution(doc: Record<string, unknown>) {
     finishedAt: doc.finishedAt ? new Date(doc.finishedAt as string).toISOString() : undefined,
     durationMs: doc.durationMs as number | undefined,
     nodeRecords: ((doc.nodeRecords as Record<string, unknown>[]) ?? []).map(toNodeRecord),
+    conversationHistory: doc.conversationHistory as Array<{ role: string; content: string; at?: string }> | undefined,
+    parentExecutionId: (doc.parentExecutionId as string) ?? null,
     error: doc.error as string | undefined,
   }
 }
@@ -124,11 +131,17 @@ export async function listAgentWorkflows(userId: string) {
   )
 }
 
-export async function createAgentWorkflow(userId: string, name: string, description = '') {
+export async function createAgentWorkflow(
+  userId: string,
+  name: string,
+  description = '',
+  templateId: AgentWorkflowTemplateId = 'blank',
+) {
+  const draftGraph = createAgentWorkflowGraphByTemplate(templateId)
   const doc = await AgentWorkflowModel.create({
     name,
     description,
-    draftGraph: DEFAULT_GRAPH,
+    draftGraph,
     version: generateVersion(),
     versions: [],
     createdBy: userId,
@@ -342,6 +355,65 @@ export async function startAgentWorkflowExecution(
     input,
   }).catch((err) => {
     logger.error({ msg: '[agentWorkflow] execution failed', executionId, err })
+  })
+
+  return toExecution(execution.toJSON() as unknown as Record<string, unknown>)
+}
+
+/** 基于上一轮执行继续多轮对话（继承 conversationHistory） */
+export async function continueAgentWorkflowExecution(
+  parentExecutionId: string,
+  userId: string,
+  input: Record<string, unknown> = {},
+) {
+  const parent = leanDoc<{
+    workflowId?: unknown
+    trigger?: string
+    conversationHistory?: unknown[]
+  }>(
+    await AgentWorkflowExecutionModel.findOne({
+      _id: parentExecutionId,
+      triggeredBy: userId,
+    }).lean(),
+  )
+  if (!parent?.workflowId) return null
+
+  const workflow = await AgentWorkflowModel.findById(parent.workflowId)
+  if (!workflow || workflow.createdBy !== userId) return null
+
+  const usePublished = workflow.status === 'published' && workflow.publishedGraph
+  const graph = usePublished ? workflow.publishedGraph : workflow.draftGraph
+  const versionId = usePublished ? workflow.publishId ?? null : null
+  const version = usePublished
+    ? workflow.publishedVersion ?? workflow.version ?? ''
+    : workflow.version ?? ''
+
+  const mergedInput: Record<string, unknown> = {
+    ...input,
+    continueFromExecutionId: parentExecutionId,
+  }
+
+  const execution = await AgentWorkflowExecutionModel.create({
+    workflowId: workflow._id,
+    workflowName: workflow.name,
+    versionId,
+    version,
+    status: 'running',
+    trigger: parent.trigger ?? 'manual',
+    nodeRecords: [],
+    triggeredBy: userId,
+    parentExecutionId,
+    conversationHistory: parent.conversationHistory ?? [],
+  })
+
+  const executionId = String(execution._id)
+
+  executeAgentWorkflow({
+    executionId,
+    graph: graph as unknown as Parameters<typeof executeAgentWorkflow>[0]['graph'],
+    input: mergedInput,
+  }).catch((err) => {
+    logger.error({ msg: '[agentWorkflow] continue execution failed', executionId, err })
   })
 
   return toExecution(execution.toJSON() as unknown as Record<string, unknown>)

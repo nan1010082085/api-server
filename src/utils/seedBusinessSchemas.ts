@@ -17,10 +17,18 @@ import {
 } from './businessSchemaDeliverables.js'
 import { seedBusinessFlowDefinitions } from './seedBusinessFlowDefinitions.js'
 import {
+  ASSET_FLOW_NAME,
+  DOC_FLOW_NAME,
   EXPENSE_FLOW_NAME,
+  GOV_PARALLEL_FLOW_NAME,
   LEAVE_FLOW_NAME,
+  ONBOARD_FLOW_NAME,
   OVERTIME_FLOW_NAME,
   PURCHASE_FLOW_NAME,
+  RECRUIT_FLOW_NAME,
+  RECRUIT_OFFER_FLOW_NAME,
+  RESIGN_FLOW_NAME,
+  SEAL_FLOW_NAME,
   TRIP_FLOW_NAME,
 } from './builtinFlowGraphs.js'
 import { syncAllFlowFormBindings } from './seedFlowFormBinding.js'
@@ -185,6 +193,14 @@ export async function seedBusinessSchemas(): Promise<BusinessSeedResult> {
     { flowName: EXPENSE_FLOW_NAME, schemaCode: 'fin-expense-apply' },
     { flowName: PURCHASE_FLOW_NAME, schemaCode: 'fin-purchase-apply' },
     { flowName: OVERTIME_FLOW_NAME, schemaCode: 'hr-overtime-apply' },
+    { flowName: ONBOARD_FLOW_NAME, schemaCode: 'hr-onboard-apply' },
+    { flowName: RESIGN_FLOW_NAME, schemaCode: 'hr-resign-apply' },
+    { flowName: SEAL_FLOW_NAME, schemaCode: 'oa-seal-apply' },
+    { flowName: DOC_FLOW_NAME, schemaCode: 'oa-doc-receive' },
+    { flowName: GOV_PARALLEL_FLOW_NAME, schemaCode: 'gov-case-apply' },
+    { flowName: ASSET_FLOW_NAME, schemaCode: 'oa-asset-apply' },
+    { flowName: RECRUIT_FLOW_NAME, schemaCode: 'hr-recruit-apply' },
+    { flowName: RECRUIT_OFFER_FLOW_NAME, schemaCode: 'hr-recruit-offer' },
   ]
   await syncAllFlowFormBindings(
     bindingMap.flatMap(({ flowName, schemaCode }) => {

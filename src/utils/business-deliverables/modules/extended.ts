@@ -11,20 +11,125 @@ import {
   titleWidget,
 } from '../patterns/pageBuilders.js'
 import {
-  buildAuditIssueDetailPage,
   buildAuditIssueListPage,
+  buildAuditIssueDetailPage,
+  buildAuditRectifyTrackPage,
+} from '../patterns/auditIssuePages.js'
+import {
   buildFinExpenseApplyPage,
   buildFinReconcilePage,
   buildFinStatsComboPage,
-  buildGovCaseDetailPage,
-  buildMeetingBookPage,
   buildNoticeDetailPage,
+  buildNoticeListPage,
   buildNoticePublishPage,
   buildReportDocDetailPage,
   buildSysAuditLogPage,
   buildSysConfigManagePage,
   buildSysDictManagePage,
+  buildHrOrgChartPage,
+  buildSysMenuManagePage,
+  buildSysLoginLogPage,
+  buildSysPostManagePage,
+  buildSysTenantManagePage,
+  buildHrEmployeeProfilePage,
+  buildReportExecScreenPage,
+  buildReportCenterHomePage,
+  buildReportExportCenterPage,
+  buildReportDocTemplatesPage,
+  buildSysOnlineUsersPage,
+  buildFinContractDetailPage,
+  buildOaKnowledgeEntryPage,
+  buildGovSupervisionKanbanPage,
+  buildFinPurchaseApplyPage,
+  buildFinPaymentApplyPage,
+  buildFinCashPlanPage,
+  buildMetrologyDeviceRegisterPage,
+  buildMetrologyCalibrationPlanPage,
+  buildEquipmentBorrowApplyPage,
+  buildReportDocEditPage,
+  buildReportAdhocQueryPage,
+  buildWorkbenchMessagesPage,
+  buildSysMicroAppManagePage,
+  buildMetrologyDeviceDetailPage,
 } from '../patterns/specialPages.js'
+import {
+  buildOaTripApplyPage,
+  buildOaTripDetailPage,
+  buildOaTripListPage,
+} from '../patterns/oaTripPages.js'
+import {
+  buildOaSealApplyPage,
+  buildOaSealListPage,
+  buildOaSealDetailPage,
+  buildOaDocReceivePage,
+  buildOaDocReceiveListPage,
+  buildOaDocReceiveDetailPage,
+  buildOaDocDraftPage,
+  buildOaDocDraftListPage,
+  buildOaDocDraftDetailPage,
+} from '../patterns/oaSealDocPages.js'
+import {
+  buildHrOvertimeApplyPage,
+  buildHrOvertimeListPage,
+  buildHrOvertimeDetailPage,
+  buildFinExpenseListPage,
+  buildFinExpenseDetailPage,
+  buildFinPurchaseListPage,
+  buildFinPurchaseDetailPage,
+  buildFinPaymentListPage,
+  buildFinPaymentDetailPage,
+} from '../patterns/hrFinModulePages.js'
+import {
+  buildFinInvoiceRegisterPage,
+  buildFinInvoiceListPage,
+  buildFinInvoiceDetailPage,
+} from '../patterns/finInvoicePages.js'
+import {
+  buildFinBudgetEditPage,
+  buildFinBudgetListPage,
+  buildFinBudgetDetailPage,
+} from '../patterns/finBudgetPages.js'
+import {
+  buildEquipRequisitionApplyPage,
+  buildEquipRequisitionListPage,
+  buildEquipRequisitionDetailPage,
+} from '../patterns/equipRequisitionPages.js'
+import {
+  buildHrOnboardApplyPage,
+  buildHrOnboardListPage,
+  buildHrOnboardDetailPage,
+} from '../patterns/hrOnboardPages.js'
+import {
+  buildGovCaseApplyPage,
+  buildGovCaseListPage,
+  buildGovCaseDetailPage,
+} from '../patterns/govCasePages.js'
+import {
+  buildGovLicenseApplyPage,
+  buildGovLicenseListPage,
+  buildGovLicenseDetailPage,
+} from '../patterns/govLicensePages.js'
+import {
+  buildHrResignApplyPage,
+  buildHrResignListPage,
+  buildHrResignDetailPage,
+} from '../patterns/hrResignPages.js'
+import {
+  buildOaMeetingBookPage,
+  buildOaMeetingListPage,
+  buildOaMeetingDetailPage,
+} from '../patterns/oaMeetingPages.js'
+import {
+  buildOaAssetApplyPage,
+  buildOaAssetListPage,
+  buildOaAssetDetailPage,
+} from '../patterns/oaAssetPages.js'
+import {
+  buildHrRecruitApplyPage,
+  buildHrRecruitListPage,
+  buildHrRecruitDetailPage,
+  buildHrRecruitOfferPage,
+} from '../patterns/hrRecruitPages.js'
 
 const DEFAULT_LIST_COLUMNS = [
   { prop: '_id', label: '单号', minWidth: 120, render: 'link', linkEvent: 'open-detail' },
@@ -49,7 +154,7 @@ const DEFAULT_FORM_FIELDS = [
 
 type Builder = (refs: BusinessSchemaRefs) => Record<string, unknown>
 
-function list(code: string, title: string, apply: string, detail?: string): Builder {
+function list(code: string, title: string, apply: string, detail?: string, searchBar?: Array<Record<string, unknown>>): Builder {
   return (refs) => buildSubmissionListPage({
     code,
     title,
@@ -57,6 +162,7 @@ function list(code: string, title: string, apply: string, detail?: string): Buil
     detailCode: detail,
     columns: DEFAULT_LIST_COLUMNS,
     refs,
+    searchBar,
   })
 }
 
@@ -73,6 +179,14 @@ function stats(title: string, api: string): Builder {
   return () => buildStatsDashboardPage(title, api)
 }
 
+function reportSummary(title: string, statLabel: string, tableApi: string, statApi?: string, statPath = 'total'): Builder {
+  return () => buildFinStatsComboPage(title, statLabel, tableApi, {
+    statApi: statApi ?? tableApi,
+    statDataPath: statPath,
+    columns: DEFAULT_LIST_COLUMNS,
+  })
+}
+
 function placeholder(title: string, note: string): Builder {
   return () => buildPlaceholderPage(title, note)
 }
@@ -81,96 +195,166 @@ function placeholder(title: string, note: string): Builder {
 export const EXTENDED_DELIVERABLE_CODES = [
   // OA
   'oa-notice-list', 'oa-notice-publish', 'oa-notice-detail',
-  'oa-trip-apply', 'oa-trip-list',
-  'oa-meeting-list', 'oa-meeting-book', 'oa-seal-apply',
-  'oa-doc-receive', 'oa-doc-draft', 'oa-asset-apply', 'oa-knowledge-entry',
+  'oa-trip-apply', 'oa-trip-list', 'oa-trip-detail',
+  'oa-meeting-list', 'oa-meeting-book', 'oa-meeting-detail',
+  'oa-seal-apply', 'oa-seal-list', 'oa-seal-detail',
+  'oa-doc-receive', 'oa-doc-receive-list', 'oa-doc-receive-detail',
+  'oa-doc-draft', 'oa-doc-draft-list', 'oa-doc-draft-detail',
+  'oa-asset-apply', 'oa-asset-list', 'oa-asset-detail', 'oa-knowledge-entry',
   // HR extended
-  'hr-overtime-apply', 'hr-overtime-list',
-  'hr-onboard-apply', 'hr-onboard-list',
-  'hr-resign-apply', 'hr-resign-list',
+  'hr-overtime-apply', 'hr-overtime-list', 'hr-overtime-detail',
+  'hr-onboard-apply', 'hr-onboard-list', 'hr-onboard-detail',
+  'hr-resign-apply', 'hr-resign-list', 'hr-resign-detail',
   'hr-employee-profile', 'hr-org-chart', 'hr-attendance-dashboard', 'hr-contract-list',
+  'hr-recruit-apply', 'hr-recruit-list', 'hr-recruit-detail', 'hr-recruit-offer',
   // Finance
-  'fin-expense-apply', 'fin-expense-list', 'fin-expense-stats',
-  'fin-purchase-apply', 'fin-purchase-list',
+  'fin-expense-apply', 'fin-expense-list', 'fin-expense-detail', 'fin-expense-stats',
+  'fin-purchase-apply', 'fin-purchase-list', 'fin-purchase-detail',
   'fin-contract-list', 'fin-contract-detail',
-  'fin-budget-edit', 'fin-budget-dashboard',
-  'fin-payment-apply', 'fin-payment-list',
-  'fin-invoice-list', 'fin-invoice-register',
+  'fin-budget-edit', 'fin-budget-list', 'fin-budget-detail', 'fin-budget-dashboard',
+  'fin-payment-apply', 'fin-payment-list', 'fin-payment-detail',
+  'fin-invoice-list', 'fin-invoice-register', 'fin-invoice-detail',
   'fin-bank-reconcile', 'fin-monthly-close', 'fin-ledger-balance', 'fin-cash-plan',
   // System extended
   'sys-menu-manage', 'sys-dict-manage', 'sys-config-manage',
   'sys-audit-log', 'sys-login-log', 'sys-post-manage', 'sys-online-users', 'sys-tenant-manage',
   // Audit
   'audit-plan-list', 'audit-project-list', 'audit-issue-list', 'audit-issue-detail', 'audit-report-list',
+  'audit-plan-edit', 'audit-project-detail', 'audit-working-paper', 'audit-rectify-track',
+  'audit-compliance-check', 'audit-compliance-form', 'audit-report-edit', 'audit-stats-dashboard', 'audit-sys-log',
   // Metrology
   'metrology-device-list', 'metrology-device-register', 'metrology-calibration-plan', 'metrology-alert-dashboard',
+  'metrology-device-detail', 'metrology-calibration-record', 'metrology-calibration-apply', 'metrology-cert-list',
+  'metrology-expiry-dashboard', 'metrology-stats',
   'equipment-asset-list', 'equipment-borrow-apply', 'equipment-inventory-list',
+  'equip-asset-list', 'equip-asset-register', 'equip-asset-detail', 'equip-requisition-apply', 'equip-requisition-list', 'equip-requisition-detail',
+  'equip-return-register', 'equip-inventory-task', 'equip-inventory-form', 'equip-scrap-apply', 'equip-stats-dashboard',
   // Government
-  'gov-case-apply', 'gov-case-list', 'gov-case-detail', 'gov-license-list', 'gov-supervision-list',
+  'gov-case-apply', 'gov-case-list', 'gov-case-detail', 'gov-license-list', 'gov-license-detail', 'gov-supervision-list',
+  'gov-case-accept', 'gov-parallel-board', 'gov-license-apply', 'gov-policy-publish', 'gov-supervise-list', 'gov-dashboard-screen',
   // Reports
   'report-dashboard-general', 'report-center-home', 'report-export-center', 'report-exec-screen',
   'report-doc-list', 'report-doc-edit', 'report-doc-detail', 'report-doc-templates',
+  'report-hr-summary', 'report-fin-summary', 'report-flow-efficiency', 'report-oa-summary', 'report-audit-summary',
+  'report-metrology-summary', 'report-adhoc-query', 'report-subscription',
+  'report-doc-schedule', 'report-doc-annual', 'report-doc-analysis', 'report-doc-preview',
+  // Workbench
+  'workbench-messages',
+  // System L-26
+  'sys-micro-app-manage',
 ] as const
 
 export type ExtendedDeliverableCode = (typeof EXTENDED_DELIVERABLE_CODES)[number]
 
 const EXTENDED_BUILDERS: Record<ExtendedDeliverableCode, Builder> = {
-  'oa-notice-list': list('oa-notice-list', '公告列表', 'oa-notice-publish', 'oa-notice-detail'),
+  'oa-notice-list': (refs) => buildNoticeListPage(refs),
   'oa-notice-publish': (refs) => buildNoticePublishPage(refs),
   'oa-notice-detail': () => buildNoticeDetailPage(),
-  'oa-trip-apply': apply('oa-trip-apply', '出差申请', 'oa-trip-apply'),
-  'oa-trip-list': list('oa-trip-list', '出差台账', 'oa-trip-apply'),
-  'oa-meeting-list': list('oa-meeting-list', '会议列表', 'oa-meeting-book'),
-  'oa-meeting-book': (refs) => buildMeetingBookPage(refs),
-  'oa-seal-apply': apply('oa-seal-apply', '用印申请', 'oa-seal-apply'),
-  'oa-doc-receive': apply('oa-doc-receive', '公文收文', 'oa-doc-receive'),
-  'oa-doc-draft': apply('oa-doc-draft', '公文拟稿', 'oa-doc-draft'),
-  'oa-asset-apply': apply('oa-asset-apply', '资产领用', 'oa-asset-apply'),
-  'oa-knowledge-entry': placeholder('知识库入口', '跳转 AI 知识库 /app/ai/rag'),
+  'oa-trip-apply': (refs) => buildOaTripApplyPage(refs),
+  'oa-trip-list': (refs) => buildOaTripListPage(refs),
+  'oa-trip-detail': (refs) => buildOaTripDetailPage(refs),
+  'oa-meeting-list': (refs) => buildOaMeetingListPage(refs),
+  'oa-meeting-book': (refs) => buildOaMeetingBookPage(refs),
+  'oa-meeting-detail': (refs) => buildOaMeetingDetailPage(refs),
+  'oa-seal-apply': (refs) => buildOaSealApplyPage(refs),
+  'oa-seal-list': (refs) => buildOaSealListPage(refs),
+  'oa-seal-detail': (refs) => buildOaSealDetailPage(refs),
+  'oa-doc-receive': (refs) => buildOaDocReceivePage(refs),
+  'oa-doc-receive-list': (refs) => buildOaDocReceiveListPage(refs),
+  'oa-doc-receive-detail': (refs) => buildOaDocReceiveDetailPage(refs),
+  'oa-doc-draft': (refs) => buildOaDocDraftPage(refs),
+  'oa-doc-draft-list': (refs) => buildOaDocDraftListPage(refs),
+  'oa-doc-draft-detail': (refs) => buildOaDocDraftDetailPage(refs),
+  'oa-asset-apply': (refs) => buildOaAssetApplyPage(refs),
+  'oa-asset-list': (refs) => buildOaAssetListPage(refs),
+  'oa-asset-detail': (refs) => buildOaAssetDetailPage(refs),
+  'oa-knowledge-entry': () => buildOaKnowledgeEntryPage(),
 
-  'hr-overtime-apply': apply('hr-overtime-apply', '加班申请', 'hr-overtime-apply'),
-  'hr-overtime-list': list('hr-overtime-list', '加班台账', 'hr-overtime-apply'),
-  'hr-onboard-apply': apply('hr-onboard-apply', '入职办理', 'hr-onboard-apply'),
-  'hr-onboard-list': list('hr-onboard-list', '入职台账', 'hr-onboard-apply'),
-  'hr-resign-apply': apply('hr-resign-apply', '离职办理', 'hr-resign-apply'),
-  'hr-resign-list': list('hr-resign-list', '离职台账', 'hr-resign-apply'),
-  'hr-employee-profile': placeholder('员工档案', '员工档案列表：AdvancedTable + 详情 descriptions'),
-  'hr-org-chart': placeholder('组织架构', '组织架构树：TreeLayout + dept API'),
+  'hr-overtime-apply': (refs) => buildHrOvertimeApplyPage(refs),
+  'hr-overtime-list': (refs) => buildHrOvertimeListPage(refs),
+  'hr-overtime-detail': (refs) => buildHrOvertimeDetailPage(refs),
+  'hr-onboard-apply': (refs) => buildHrOnboardApplyPage(refs),
+  'hr-onboard-list': (refs) => buildHrOnboardListPage(refs),
+  'hr-onboard-detail': (refs) => buildHrOnboardDetailPage(refs),
+  'hr-resign-apply': (refs) => buildHrResignApplyPage(refs),
+  'hr-resign-list': (refs) => buildHrResignListPage(refs),
+  'hr-resign-detail': (refs) => buildHrResignDetailPage(refs),
+  'hr-employee-profile': () => buildHrEmployeeProfilePage(),
+  'hr-org-chart': () => buildHrOrgChartPage(),
   'hr-attendance-dashboard': stats('考勤统计', '/dashboard'),
   'hr-contract-list': list('hr-contract-list', '合同台账', 'hr-onboard-apply'),
 
-  'fin-expense-apply': (refs) => buildFinExpenseApplyPage(refs),
-  'fin-expense-list': list('fin-expense-list', '报销台账', 'fin-expense-apply'),
-  'fin-expense-stats': stats('报销统计', '/business/hr/leave/stats'),
-  'fin-purchase-apply': apply('fin-purchase-apply', '采购申请', 'fin-purchase-apply'),
-  'fin-purchase-list': list('fin-purchase-list', '采购台账', 'fin-purchase-apply'),
-  'fin-contract-list': list('fin-contract-list', '合同台账', 'fin-contract-detail'),
-  'fin-contract-detail': placeholder('合同详情', '合同详情 descriptions + 附件'),
-  'fin-budget-edit': apply('fin-budget-edit', '预算编制', 'fin-budget-edit'),
-  'fin-budget-dashboard': stats('预算执行', '/dashboard'),
-  'fin-payment-apply': apply('fin-payment-apply', '付款申请', 'fin-payment-apply'),
-  'fin-payment-list': list('fin-payment-list', '付款台账', 'fin-payment-apply'),
-  'fin-invoice-list': list('fin-invoice-list', '发票台账', 'fin-invoice-register'),
-  'fin-invoice-register': apply('fin-invoice-register', '发票登记', 'fin-invoice-register'),
-  'fin-bank-reconcile': () => buildFinReconcilePage(),
-  'fin-monthly-close': () => buildFinStatsComboPage('财务月结', '待月结', '/submissions'),
-  'fin-ledger-balance': () => buildFinStatsComboPage('科目余额', '科目数', '/submissions'),
-  'fin-cash-plan': apply('fin-cash-plan', '资金计划', 'fin-cash-plan'),
+  'hr-recruit-apply': (refs) => buildHrRecruitApplyPage(refs),
+  'hr-recruit-list': (refs) => buildHrRecruitListPage(refs),
+  'hr-recruit-detail': (refs) => buildHrRecruitDetailPage(refs),
+  'hr-recruit-offer': (refs) => buildHrRecruitOfferPage(refs),
 
-  'sys-menu-manage': placeholder('菜单管理', '菜单 CRUD：对接 /api/menus'),
+  'fin-expense-apply': (refs) => buildFinExpenseApplyPage(refs),
+  'fin-expense-list': (refs) => buildFinExpenseListPage(refs),
+  'fin-expense-detail': (refs) => buildFinExpenseDetailPage(refs),
+  'fin-expense-stats': stats('报销统计', '/business/hr/leave/stats'),
+  'fin-purchase-apply': (refs) => buildFinPurchaseApplyPage(refs),
+  'fin-purchase-list': (refs) => buildFinPurchaseListPage(refs),
+  'fin-purchase-detail': (refs) => buildFinPurchaseDetailPage(refs),
+  'fin-contract-list': list('fin-contract-list', '合同台账', 'fin-contract-detail'),
+  'fin-contract-detail': () => buildFinContractDetailPage(),
+  'fin-budget-edit': (refs) => buildFinBudgetEditPage(refs),
+  'fin-budget-list': (refs) => buildFinBudgetListPage(refs),
+  'fin-budget-detail': (refs) => buildFinBudgetDetailPage(refs),
+  'fin-budget-dashboard': stats('预算执行', '/dashboard'),
+  'fin-payment-apply': (refs) => buildFinPaymentApplyPage(refs),
+  'fin-payment-list': (refs) => buildFinPaymentListPage(refs),
+  'fin-payment-detail': (refs) => buildFinPaymentDetailPage(refs),
+  'fin-invoice-list': (refs) => buildFinInvoiceListPage(refs),
+  'fin-invoice-register': (refs) => buildFinInvoiceRegisterPage(refs),
+  'fin-invoice-detail': (refs) => buildFinInvoiceDetailPage(refs),
+  'fin-bank-reconcile': () => buildFinReconcilePage(),
+  'fin-monthly-close': () => buildFinStatsComboPage('财务月结', '待月结', '/business/finance/monthly-close', {
+    statApi: '/business/finance/monthly-close',
+    statDataPath: 'total',
+    columns: [
+      { prop: 'title', label: '单据', minWidth: 160, render: 'text' },
+      { prop: 'module', label: '模块', minWidth: 100, render: 'text' },
+      { prop: 'amount', label: '金额', minWidth: 120, render: 'text' },
+      { prop: 'status', label: '状态', minWidth: 100, render: 'tag' },
+      { prop: 'createdAt', label: '时间', minWidth: 160, render: 'text' },
+    ],
+  }),
+  'fin-ledger-balance': () => buildFinStatsComboPage('科目余额', '科目数', '/business/finance/ledger-balance', {
+    statApi: '/business/finance/ledger-balance',
+    statDataPath: 'total',
+    columns: [
+      { prop: 'subject', label: '科目', minWidth: 160, render: 'text' },
+      { prop: 'budgetAmount', label: '预算额', minWidth: 120, render: 'text' },
+      { prop: 'actualAmount', label: '发生额', minWidth: 120, render: 'text' },
+      { prop: 'balance', label: '余额', minWidth: 120, render: 'text' },
+    ],
+  }),
+  'fin-cash-plan': (refs) => buildFinCashPlanPage(refs),
+
+  'sys-menu-manage': () => buildSysMenuManagePage(),
   'sys-dict-manage': () => buildSysDictManagePage(),
   'sys-config-manage': () => buildSysConfigManagePage(),
   'sys-audit-log': () => buildSysAuditLogPage(),
-  'sys-login-log': placeholder('登录日志', '登录日志 AdvancedTable'),
-  'sys-post-manage': placeholder('岗位管理', '岗位 AdvancedTable /api/posts'),
-  'sys-online-users': placeholder('在线用户', '在线会话列表'),
-  'sys-tenant-manage': placeholder('租户管理', '租户 AdvancedTable'),
+  'sys-login-log': () => buildSysLoginLogPage(),
+  'sys-post-manage': () => buildSysPostManagePage(),
+  'sys-online-users': () => buildSysOnlineUsersPage(),
+  'sys-tenant-manage': () => buildSysTenantManagePage(),
 
   'audit-plan-list': list('audit-plan-list', '审计计划', 'audit-project-list'),
   'audit-project-list': list('audit-project-list', '审计项目', 'audit-issue-list'),
   'audit-issue-list': () => buildAuditIssueListPage(),
   'audit-issue-detail': (refs) => buildAuditIssueDetailPage(refs),
   'audit-report-list': list('audit-report-list', '审计报告', 'audit-report-list'),
+  'audit-plan-edit': (refs) => apply('audit-plan-edit', '计划编制', 'audit-plan-edit')(refs),
+  'audit-project-detail': (refs) => buildAuditIssueDetailPage(refs),
+  'audit-working-paper': (refs) => apply('audit-working-paper', '工作底稿', 'audit-working-paper')(refs),
+  'audit-rectify-track': () => buildAuditRectifyTrackPage(),
+  'audit-compliance-check': list('audit-compliance-check', '合规检查', 'audit-compliance-form'),
+  'audit-compliance-form': (refs) => apply('audit-compliance-form', '合规检查表', 'audit-compliance-form')(refs),
+  'audit-report-edit': (refs) => apply('audit-report-edit', '报告编制', 'audit-report-edit')(refs),
+  'audit-stats-dashboard': stats('审计统计', '/dashboard'),
+  'audit-sys-log': () => buildSysAuditLogPage(),
 
   'metrology-device-list': () => ({
     widgets: [
@@ -204,27 +388,66 @@ const EXTENDED_BUILDERS: Record<ExtendedDeliverableCode, Builder> = {
     ],
     board: makeBoard(1440, 900),
   }),
-  'metrology-device-register': apply('metrology-device-register', '器具登记', 'metrology-device-register'),
-  'metrology-calibration-plan': apply('metrology-calibration-plan', '检定计划', 'metrology-calibration-plan'),
+  'metrology-device-register': (refs) => buildMetrologyDeviceRegisterPage(refs),
+  'metrology-calibration-plan': (refs) => buildMetrologyCalibrationPlanPage(refs),
   'metrology-alert-dashboard': stats('到期预警', '/dashboard'),
+  'metrology-device-detail': () => buildMetrologyDeviceDetailPage(),
+  'metrology-calibration-record': list('metrology-calibration-record', '检定记录', 'metrology-calibration-apply'),
+  'metrology-calibration-apply': (refs) => apply('metrology-calibration-apply', '检定申请', 'metrology-calibration-apply')(refs),
+  'metrology-cert-list': list('metrology-cert-list', '证书管理', 'metrology-device-register'),
+  'metrology-expiry-dashboard': stats('到期预警', '/dashboard'),
+  'metrology-stats': stats('计量统计', '/dashboard'),
   'equipment-asset-list': list('equipment-asset-list', '装备台账', 'equipment-borrow-apply'),
-  'equipment-borrow-apply': apply('equipment-borrow-apply', '装备领用', 'equipment-borrow-apply'),
-  'equipment-inventory-list': placeholder('装备盘点', 'Phase 4 盘点全流程'),
+  'equipment-borrow-apply': (refs) => buildEquipmentBorrowApplyPage(refs),
+  'equipment-inventory-list': list('equipment-inventory-list', '装备盘点', 'equipment-borrow-apply'),
+  'equip-asset-list': list('equip-asset-list', '装备台账', 'equip-requisition-apply'),
+  'equip-asset-register': (refs) => apply('equip-asset-register', '装备登记', 'equip-asset-register')(refs),
+  'equip-asset-detail': () => buildMetrologyDeviceDetailPage(),
+  'equip-requisition-apply': (refs) => buildEquipRequisitionApplyPage(refs),
+  'equip-requisition-list': (refs) => buildEquipRequisitionListPage(refs),
+  'equip-requisition-detail': (refs) => buildEquipRequisitionDetailPage(refs),
+  'equip-return-register': (refs) => apply('equip-return-register', '归还登记', 'equip-return-register')(refs),
+  'equip-inventory-task': list('equip-inventory-task', '盘点任务', 'equip-inventory-form'),
+  'equip-inventory-form': (refs) => apply('equip-inventory-form', '盘点录入', 'equip-inventory-form')(refs),
+  'equip-scrap-apply': (refs) => apply('equip-scrap-apply', '报废申请', 'equip-scrap-apply')(refs),
+  'equip-stats-dashboard': stats('装备统计', '/dashboard'),
 
-  'gov-case-apply': apply('gov-case-apply', '事项受理', 'gov-case-apply'),
-  'gov-case-list': list('gov-case-list', '事项台账', 'gov-case-apply', 'gov-case-detail'),
-  'gov-case-detail': () => buildGovCaseDetailPage(),
-  'gov-license-list': list('gov-license-list', '证照管理', 'gov-case-apply'),
-  'gov-supervision-list': list('gov-supervision-list', '督查督办', 'gov-case-apply'),
+  'gov-case-apply': (refs) => buildGovCaseApplyPage(refs),
+  'gov-case-list': (refs) => buildGovCaseListPage(refs),
+  'gov-case-detail': (refs) => buildGovCaseDetailPage(refs),
+  'gov-license-list': (refs) => buildGovLicenseListPage(refs),
+  'gov-license-detail': (refs) => buildGovLicenseDetailPage(refs),
+  'gov-supervision-list': () => buildGovSupervisionKanbanPage(),
+  'gov-case-accept': (refs) => buildGovCaseApplyPage(refs),
+  'gov-parallel-board': () => buildGovSupervisionKanbanPage(),
+  'gov-license-apply': (refs) => buildGovLicenseApplyPage(refs),
+  'gov-policy-publish': (refs) => apply('gov-policy-publish', '政策发布', 'gov-policy-publish')(refs),
+  'gov-supervise-list': () => buildGovSupervisionKanbanPage(),
+  'gov-dashboard-screen': () => buildReportExecScreenPage(),
 
-  'report-dashboard-general': stats('综合统计', '/dashboard'),
-  'report-center-home': placeholder('报表中心', '报表目录 + 快捷入口'),
-  'report-export-center': placeholder('导出中心', 'E-21 批量导出 Action'),
-  'report-exec-screen': placeholder('领导驾驶舱', 'E-09 大屏布局'),
+  'report-dashboard-general': stats('综合统计', '/business/reports/aggregate'),
+  'report-center-home': () => buildReportCenterHomePage(),
+  'report-export-center': (refs) => buildReportExportCenterPage(refs),
+  'report-exec-screen': () => buildReportExecScreenPage(),
   'report-doc-list': list('report-doc-list', '报告台账', 'report-doc-edit', 'report-doc-detail'),
-  'report-doc-edit': apply('report-doc-edit', '报告编制', 'report-doc-edit'),
+  'report-doc-edit': (refs) => buildReportDocEditPage(refs),
   'report-doc-detail': () => buildReportDocDetailPage(),
-  'report-doc-templates': placeholder('报告模板', '模板库 AdvancedTable'),
+  'report-doc-templates': () => buildReportDocTemplatesPage(),
+  'report-hr-summary': reportSummary('人事报表', '请假总数', '/submissions', '/business/hr/leave/stats', 'total'),
+  'report-fin-summary': reportSummary('财务报表', '待月结', '/submissions', '/business/finance/monthly-close', 'total'),
+  'report-flow-efficiency': stats('流程效率', '/dashboard'),
+  'report-oa-summary': reportSummary('OA 运营报表', '申请总数', '/submissions', '/dashboard', 'totalSubmissions'),
+  'report-audit-summary': list('report-audit-summary', '审计报表', 'audit-report-edit'),
+  'report-metrology-summary': stats('计装报表', '/dashboard'),
+  'report-adhoc-query': () => buildReportAdhocQueryPage({ schemas: {}, leaveFlowDefinitionId: null }),
+  'report-subscription': (refs) => apply('report-subscription', '报表订阅', 'report-subscription')(refs),
+  'report-doc-schedule': list('report-doc-schedule', '定期报告任务', 'report-doc-edit'),
+  'report-doc-annual': (refs) => apply('report-doc-annual', '年度报告', 'report-doc-annual')(refs),
+  'report-doc-analysis': (refs) => apply('report-doc-analysis', '专题分析', 'report-doc-analysis')(refs),
+  'report-doc-preview': () => buildReportDocDetailPage(),
+
+  'workbench-messages': () => buildWorkbenchMessagesPage(),
+  'sys-micro-app-manage': () => buildSysMicroAppManagePage(),
 }
 
 export function isExtendedDeliverableCode(code: string): code is ExtendedDeliverableCode {

@@ -10,7 +10,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { Middleware } from 'koa'
+import type { Context, Middleware } from 'koa'
 
 // ── AsyncLocalStorage for tenant context ──
 
@@ -20,9 +20,11 @@ interface TenantContext {
 
 export const tenantStorage = new AsyncLocalStorage<TenantContext>()
 
-/** Get the current tenantId from async context. Returns undefined if not set. */
-export function getCurrentTenantId(): string | undefined {
-  return tenantStorage.getStore()?.tenantId
+/** Get the current tenantId from async context or route state. Returns undefined if not set. */
+export function getCurrentTenantId(ctx?: Pick<Context, 'state'>): string | undefined {
+  const fromStore = tenantStorage.getStore()?.tenantId
+  if (fromStore) return fromStore
+  return (ctx?.state as { tenantId?: string } | undefined)?.tenantId
 }
 
 // ── Koa middleware ──

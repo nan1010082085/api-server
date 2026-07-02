@@ -4,6 +4,8 @@ import { PublishedSchemaModel } from '../models/PublishedSchema.js'
 import { DEFAULT_TENANT_ID } from './initDefaultTenant.js'
 import type { MenuSeed } from './seedMenusTypes.js'
 import { EXTENDED_MENUS, EXTENDED_PARENT_PLACEHOLDERS } from './seedExtendedMenus.js'
+import { finalizeSchemaMenuPath, buildSchemaViewPath } from './menuPath.js'
+import { leanDoc } from './leanDoc.js'
 
 export type { MenuSeed } from './seedMenusTypes.js'
 
@@ -17,11 +19,14 @@ const CORE_MENUS: MenuSeed[] = [
   // ── Phase 1 P0：流程中心 ──
   { parentId: null, name: '流程中心', path: '', icon: 'connection', type: 'menu', permission: '', sort: 5, microAppId: null, app: 'shell', layout: 'with-menu' },
   { parentId: '__FLOW_CENTER__', name: '我的待办', path: '/app/flow/tasks', icon: 'bell', type: 'menu', permission: '', sort: 1, microAppId: 'flow', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
+  { parentId: '__FLOW_CENTER__', name: '我的发起', path: '/app/flow/instances', icon: 'promotion', type: 'menu', permission: '', sort: 2, microAppId: 'flow', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'micro-app' },
+  { parentId: null, name: '消息中心', path: '/app/editor/view', icon: 'message', type: 'menu', permission: '', sort: 2, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema', schemaCode: 'workbench-messages' },
 
   // ── Phase 1 P0：人事管理 ──
   { parentId: null, name: '人事管理', path: '', icon: 'user-filled', type: 'menu', permission: '', sort: 15, microAppId: null, app: 'shell', layout: 'with-menu' },
-  { parentId: '__HR__', name: '请假申请', path: '/app/editor/view', icon: 'calendar', type: 'menu', permission: '', sort: 1, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema', schemaCode: 'hr-leave-apply' },
-  { parentId: '__HR__', name: '请假台账', path: '/app/editor/view', icon: 'document', type: 'menu', permission: '', sort: 2, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema', schemaCode: 'hr-leave-list' },
+  { parentId: '__HR__', name: '请假申请', path: '/app/editor/view/hr-leave-apply', icon: 'calendar', type: 'menu', permission: '', sort: 1, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema', schemaCode: 'hr-leave-apply' },
+  { parentId: '__HR__', name: '请假台账', path: '/app/editor/view/hr-leave-list', icon: 'document', type: 'menu', permission: '', sort: 2, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema', schemaCode: 'hr-leave-list' },
+  { parentId: '__HR__', name: '请假统计', path: '/app/editor/view/hr-leave-stats', icon: 'data-line', type: 'menu', permission: '', sort: 3, microAppId: 'editor', target: '_self', app: 'shell', layout: 'with-menu', routeType: 'schema', schemaCode: 'hr-leave-stats' },
 
   // ── 系统管理 (目录) ──
   { parentId: null, name: '系统管理', path: '', icon: 'setting', type: 'menu', permission: '', sort: 10, microAppId: null, app: 'admin', layout: 'with-menu' },
@@ -77,6 +82,9 @@ export async function seedMenus(): Promise<void> {
   for (const menu of MENUS) {
     const menuData = { ...menu }
     menuData.parentId = await resolveParentId(menuData.parentId)
+    if (menuData.routeType === 'schema' && menuData.schemaCode) {
+      menuData.path = finalizeSchemaMenuPath(menuData.path, menuData.schemaCode)
+    }
     delete menuData.schemaCode
 
     const result = await MenuModel.updateOne(
@@ -172,11 +180,58 @@ export async function repairFlowDesignerMenuPath(): Promise<void> {
 }
 
 /**
+ * 修复 schema 菜单共用 /app/editor/view 导致侧栏全部高亮的问题
+ */
+export async function repairSchemaMenuPaths(): Promise<void> {
+  const legacyMenus = await MenuModel.find({
+    tenantId: DEFAULT_TENANT_ID,
+    routeType: 'schema',
+    path: { $in: ['/app/editor/view', '/app/editor/view/'] },
+  })
+
+  let repaired = 0
+  for (const menu of legacyMenus) {
+    let code: string | null = null
+    const seed = MENUS.find((m) => m.name === menu.name && m.schemaCode)
+    if (seed?.schemaCode) {
+      code = seed.schemaCode
+    } else if (menu.schemaId) {
+      const published = await PublishedSchemaModel.findOne({ publishId: menu.schemaId })
+      if (published) {
+        const formSchema = leanDoc<{ code?: string }>(
+          await FormSchemaModel.findOne({ editId: published.sourceId }).select('code').lean(),
+        )
+        code = formSchema?.code ?? null
+      }
+    }
+    if (!code) continue
+
+    const newPath = finalizeSchemaMenuPath(menu.path, code)
+    const result = await MenuModel.updateOne({ _id: menu._id }, { $set: { path: newPath } })
+    if (result.modifiedCount > 0) repaired++
+  }
+
+  const statsMenu = await MenuModel.findOne({ tenantId: DEFAULT_TENANT_ID, name: '请假统计' })
+  if (statsMenu && statsMenu.path !== buildSchemaViewPath('hr-leave-stats')) {
+    await MenuModel.updateOne(
+      { _id: statsMenu._id },
+      { $set: { path: buildSchemaViewPath('hr-leave-stats'), routeType: 'schema', microAppId: 'editor' } },
+    )
+    repaired++
+  }
+
+  if (repaired > 0) {
+    console.log(`[seed] Repaired schema menu paths for ${repaired} item(s)`)
+  }
+}
+
+/**
  * 迁移：为现有菜单补充 app/layout/routeType 字段
  */
 export async function migrateMenuFields(): Promise<void> {
   await repairMenuParentIds()
   await repairFlowDesignerMenuPath()
+  await repairSchemaMenuPaths()
 
   const systemDir = await MenuModel.findOne({ tenantId: DEFAULT_TENANT_ID, name: '系统管理', parentId: null })
   if (systemDir) {

@@ -83,6 +83,13 @@ export const EXPENSE_FLOW_NAME = '报销审批'
 export const PURCHASE_FLOW_NAME = '采购审批'
 export const OVERTIME_FLOW_NAME = '加班审批'
 export const GOV_PARALLEL_FLOW_NAME = '政务并联审批'
+export const SEAL_FLOW_NAME = '用印审批'
+export const ONBOARD_FLOW_NAME = '入职审批'
+export const RESIGN_FLOW_NAME = '离职审批'
+export const DOC_FLOW_NAME = '公文审批'
+export const RECRUIT_FLOW_NAME = '招聘需求审批'
+export const RECRUIT_OFFER_FLOW_NAME = 'Offer审批'
+export const ASSET_FLOW_NAME = '资产领用审批'
 
 export const BUILTIN_FLOW_TEMPLATE_SPECS: BuiltinFlowTemplateSpec[] = [
   {
@@ -213,6 +220,124 @@ export const BUILTIN_FLOW_TEMPLATE_SPECS: BuiltinFlowTemplateSpec[] = [
         edge('e2', 'accept', 'parallel-sign'),
         edge('e3', 'parallel-sign', 'end'),
       ],
+    },
+  },
+  {
+    name: SEAL_FLOW_NAME,
+    description: '用印申请：部门经理 + 行政审批',
+    category: 'OA',
+    tags: ['用印', 'OA'],
+    graph: {
+      nodes: [
+        start('start', 100, 178),
+        userTask('dept-approve', '部门经理审批', 340, 176, 'department_manager'),
+        userTask('admin-approve', '行政审批', 580, 176, 'admin'),
+        end('end', 820, 178),
+      ],
+      edges: [
+        edge('e1', 'start', 'dept-approve'),
+        edge('e2', 'dept-approve', 'admin-approve'),
+        edge('e3', 'admin-approve', 'end'),
+      ],
+    },
+  },
+  {
+    name: ONBOARD_FLOW_NAME,
+    description: '入职办理：HR 审批',
+    category: '人事',
+    tags: ['入职', '人事'],
+    graph: {
+      nodes: [
+        start('start', 100, 178),
+        userTask('hr-approve', 'HR 审批', 340, 176, 'hr'),
+        end('end', 580, 178),
+      ],
+      edges: [edge('e1', 'start', 'hr-approve'), edge('e2', 'hr-approve', 'end')],
+    },
+  },
+  {
+    name: RESIGN_FLOW_NAME,
+    description: '离职办理：部门经理 + HR 审批',
+    category: '人事',
+    tags: ['离职', '人事'],
+    graph: {
+      nodes: [
+        start('start', 100, 178),
+        userTask('dept-approve', '部门经理审批', 340, 176, 'department_manager'),
+        userTask('hr-approve', 'HR 审批', 580, 176, 'hr'),
+        end('end', 820, 178),
+      ],
+      edges: [
+        edge('e1', 'start', 'dept-approve'),
+        edge('e2', 'dept-approve', 'hr-approve'),
+        edge('e3', 'hr-approve', 'end'),
+      ],
+    },
+  },
+  {
+    name: DOC_FLOW_NAME,
+    description: '公文流转：部门核稿 + 领导签发',
+    category: 'OA',
+    tags: ['公文', 'OA'],
+    graph: {
+      nodes: [
+        start('start', 100, 178),
+        userTask('dept-review', '部门核稿', 340, 176, 'department_manager'),
+        userTask('leader-sign', '领导签发', 580, 176, 'admin'),
+        end('end', 820, 178),
+      ],
+      edges: [
+        edge('e1', 'start', 'dept-review'),
+        edge('e2', 'dept-review', 'leader-sign'),
+        edge('e3', 'leader-sign', 'end'),
+      ],
+    },
+  },
+  {
+    name: RECRUIT_FLOW_NAME,
+    description: '招聘需求：部门经理审批',
+    category: '人事',
+    tags: ['招聘', '人事'],
+    graph: {
+      nodes: [
+        start('start', 100, 178),
+        userTask('dept-approve', '部门经理审批', 340, 176, 'department_manager'),
+        end('end', 580, 178),
+      ],
+      edges: [edge('e1', 'start', 'dept-approve'), edge('e2', 'dept-approve', 'end')],
+    },
+  },
+  {
+    name: RECRUIT_OFFER_FLOW_NAME,
+    description: 'Offer 审批：部门经理 → HR',
+    category: '人事',
+    tags: ['招聘', 'Offer', '人事'],
+    graph: {
+      nodes: [
+        start('start', 100, 178),
+        userTask('dept-approve', '部门经理审批', 340, 176, 'department_manager'),
+        userTask('hr-approve', 'HR 审批', 580, 176, 'hr'),
+        end('end', 820, 178),
+      ],
+      edges: [
+        edge('e1', 'start', 'dept-approve'),
+        edge('e2', 'dept-approve', 'hr-approve'),
+        edge('e3', 'hr-approve', 'end'),
+      ],
+    },
+  },
+  {
+    name: ASSET_FLOW_NAME,
+    description: '资产领用：部门经理审批',
+    category: 'OA',
+    tags: ['资产', 'OA'],
+    graph: {
+      nodes: [
+        start('start', 100, 178),
+        userTask('dept-approve', '部门经理审批', 340, 176, 'department_manager'),
+        end('end', 580, 178),
+      ],
+      edges: [edge('e1', 'start', 'dept-approve'), edge('e2', 'dept-approve', 'end')],
     },
   },
 ]

@@ -7,6 +7,7 @@ export type NotificationType =
   | 'task_completed'
   | 'task_delegated'
   | 'task_rejected'
+  | 'task_urged'
   | 'flow_completed'
 
 export interface INotification {
@@ -29,7 +30,7 @@ const notificationSchema = new mongoose.Schema(
     userId: { type: String, required: true, index: true },
     type: {
       type: String,
-      enum: ['task_created', 'task_timeout', 'task_completed', 'task_delegated', 'task_rejected', 'flow_completed'],
+      enum: ['task_created', 'task_timeout', 'task_completed', 'task_delegated', 'task_rejected', 'task_urged', 'flow_completed'],
       required: true,
     },
     title: { type: String, required: true },

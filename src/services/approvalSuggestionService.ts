@@ -3,6 +3,7 @@
  */
 import { FormSubmissionModel } from '../models/FormSubmission.js'
 import { TaskInstanceModel } from '../flow-models/TaskInstance.js'
+import { leanDoc } from '../utils/leanDoc.js'
 
 export interface ApprovalSuggestionInput {
   taskId?: string
@@ -64,14 +65,18 @@ export async function buildApprovalSuggestion(
   let formData = input.formData ?? {}
 
   if (input.submissionId) {
-    const submission = await FormSubmissionModel.findById(input.submissionId).lean()
+    const submission = leanDoc<{ data?: Record<string, unknown> }>(
+      await FormSubmissionModel.findById(input.submissionId).lean(),
+    )
     if (submission?.data) {
       formData = { ...formData, ...(submission.data as Record<string, unknown>) }
     }
   }
 
   if (input.taskId && Object.keys(formData).length === 0) {
-    const task = await TaskInstanceModel.findById(input.taskId).lean()
+    const task = leanDoc<{ formData?: Record<string, unknown> }>(
+      await TaskInstanceModel.findById(input.taskId).lean(),
+    )
     if (task?.formData) {
       formData = task.formData as Record<string, unknown>
     }

@@ -9,6 +9,10 @@ export interface IFlowDefinition {
   status: 'draft' | 'published' | 'archived'
   currentVersionId?: string
   thumbnail?: string
+  /** F-04 默认业务表单 Schema（FormSchema _id） */
+  formSchemaId?: string | null
+  /** F-04 默认业务表单 publishId */
+  formPublishId?: string | null
   createdBy: string
   permissions: {
     editors: string[]
@@ -32,6 +36,8 @@ const flowDefinitionSchema = new mongoose.Schema(
     },
     currentVersionId: { type: String, default: null },
     thumbnail: { type: String, default: '' },
+    formSchemaId: { type: String, default: null },
+    formPublishId: { type: String, default: null },
     createdBy: { type: String, required: true },
     permissions: {
       editors: { type: [String], default: [] },

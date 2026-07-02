@@ -26,7 +26,7 @@
     "@langchain/openai": "^1.4.7",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@schema-platform/ai-shared": "file:../schema-form-ai/shared",
-    "@schema-platform/flow-shared": "^1.0.0",
+    "@schema-platform/flow-shared": "^1.0.3",
     "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.7",
     "exceljs": "^4.4.0",

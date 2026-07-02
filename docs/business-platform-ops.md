@@ -20,6 +20,7 @@ pnpm dev        # API :3000
 | 0 | 请假详情 Timeline + TaskActions | `/app/editor/view?id=<hr-leave-detail publishId>&recordId=` |
 | 0 | Flow embed 审批 | `/app/flow/embed/task/:taskId` |
 | 1 | 扩展 Schema 数量 | `DELIVERABLE_SCHEMA_CODES.length >= 80` |
+| 1b | 可验收页面（A 级） | 见 `11-implementation-status.md` §3（当前 ~18） |
 | 2 | 公告 API S-05 | `GET /api/notices?status=published` |
 | 2 | OA/财务菜单 | Shell 侧栏 OA办公、财务管理 |
 | 3 | 每日摘要 A-06 | `GET /api/ai/runtime/daily-digest` |

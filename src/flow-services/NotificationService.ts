@@ -28,6 +28,8 @@ export class NotificationService {
         return `任务已委派: ${data.taskName}`
       case 'task_rejected':
         return `任务已驳回: ${data.taskName}`
+      case 'task_urged':
+        return `催办提醒: ${data.taskName}`
       case 'flow_completed':
         return `流程已完成: ${data.flowName ?? data.taskName}`
       default:
@@ -47,6 +49,8 @@ export class NotificationService {
         return `任务「${data.taskName}」已由 ${data.delegatedBy ?? '未知用户'} 委派给您。`
       case 'task_rejected':
         return `您提交的任务「${data.taskName}」已被 ${data.rejector ?? '审批人'} 驳回，请查看并修改。`
+      case 'task_urged':
+        return `任务「${data.taskName}」已被催办，请尽快处理。`
       case 'flow_completed':
         return `流程「${data.flowName ?? data.taskName}」已全部完成。`
       default:

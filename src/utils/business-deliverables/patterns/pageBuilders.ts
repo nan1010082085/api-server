@@ -2,6 +2,7 @@
  * Reusable Board JSON page builders for business deliverables.
  */
 import type { BusinessSchemaRefs } from '../types.js'
+import { buildGenericCrudSubmissionListPage } from './crudSubmissionListPage.js'
 
 export function makeBoard(width: number, height: number, variables: Record<string, unknown>[] = []) {
   return {
@@ -42,64 +43,28 @@ export interface ListPageOptions {
   detailCode?: string
   columns: Array<Record<string, unknown>>
   refs: BusinessSchemaRefs
+  searchBar?: Array<Record<string, unknown>>
 }
 
 export function buildSubmissionListPage(opts: ListPageOptions): Record<string, unknown> {
-  const apply = opts.applyCode ? opts.refs.schemas[opts.applyCode] : undefined
-  const detail = opts.detailCode ? opts.refs.schemas[opts.detailCode] : undefined
-  const tableId = `${opts.code}-table`
-
-  const events: Array<Record<string, unknown>> = []
-  if (apply?.publishId) {
-    events.push({
-      trigger: 'click',
-      eventTarget: 'toolbar-add',
-      actions: [{ type: 'navigate', navigatePath: '/app/editor/view', navigateQuery: { id: apply.publishId } }],
-    })
-  }
-  if (detail?.publishId) {
-    events.push({
-      trigger: 'click',
-      eventTarget: 'row-view',
-      actions: [{
-        type: 'navigate',
-        navigatePath: '/app/editor/view',
-        navigateQuery: { id: detail.publishId, recordId: '{{row._id}}', flowInstanceId: '{{row.flowInstanceId}}', taskId: '{{row.viewerTaskId}}' },
-      }],
-    })
+  if (!opts.applyCode) {
+    return {
+      widgets: [titleWidget(`${opts.code}-title`, opts.title)],
+      board: makeBoard(1440, 900),
+    }
   }
 
-  return {
-    widgets: [
-      titleWidget(`${opts.code}-title`, opts.title),
-      {
-        id: tableId,
-        type: 'advanced-table',
-        name: 'FgAdvancedTable',
-        label: opts.title,
-        position: { x: 24, y: 72, w: 1392, h: 780, zIndex: 2 },
-        style: { width: '100%', height: '780px' },
-        props: {
-          columns: opts.columns,
-          toolbar: apply ? [{ key: 'add', label: '新建', type: 'primary', icon: 'plus' }] : [],
-          stripe: true,
-          border: true,
-          height: 680,
-          pagination: { enabled: true, pageSize: 20, pageSizes: [10, 20, 50] },
-          selection: { enabled: false },
-        },
-        api: apply
-          ? { url: `/submissions/${apply.formSchemaId}`, method: 'get', dataPath: 'items', immediate: true }
-          : undefined,
-        options: [],
-        variables: [],
-        events,
-        rules: [],
-        validationRules: [],
-      },
-    ],
-    board: makeBoard(1440, 900),
-  }
+  return buildGenericCrudSubmissionListPage({
+    code: opts.code,
+    title: opts.title,
+    applySchemaCode: opts.applyCode,
+    detailSchemaCode: opts.detailCode,
+    refs: opts.refs,
+    columns: opts.columns,
+    searchFields: opts.searchBar,
+    addLabel: '新建',
+    exportFilename: opts.title,
+  })
 }
 
 export interface FormPageOptions {
