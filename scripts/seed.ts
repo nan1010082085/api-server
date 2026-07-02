@@ -24,6 +24,7 @@ import { seedAdmin } from '../src/utils/seedAdmin.js'
 import { seedMicroApps } from '../src/utils/seedMicroApps.js'
 import { seedMenus, migrateMenuFields } from '../src/utils/seedMenus.js'
 import { seedClients } from '../src/utils/seedClients.js'
+import { runBusinessSeeds } from '../src/utils/runBusinessSeeds.js'
 
 async function main() {
   console.log('=== 数据库初始化 ===\n')
@@ -51,6 +52,9 @@ async function main() {
 
   console.log('\n7. 创建 OAuth 客户端...')
   await seedClients()
+
+  console.log('\n8. 业务 Schema / 流程 seed...')
+  await runBusinessSeeds()
 
   console.log('\n=== 初始化完成 ===')
   console.log('默认管理员: admin / admin123456')

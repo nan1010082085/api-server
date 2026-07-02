@@ -5,11 +5,18 @@ import { connectDatabase, mongoose } from './config/database.js'
 import { initSocket } from './socket.js'
 import { setSocketInstance } from './services/socketService.js'
 import { initWebhookDispatcher } from './services/webhookDispatcher.js'
+import { runBusinessSeeds } from './utils/runBusinessSeeds.js'
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10)
 
 async function start() {
   await connectDatabase()
+
+  try {
+    await runBusinessSeeds()
+  } catch (err) {
+    console.error('[seed] Business seed failed:', err instanceof Error ? err.message : String(err))
+  }
 
   initWebhookDispatcher()
 

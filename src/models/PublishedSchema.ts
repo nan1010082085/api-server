@@ -5,7 +5,7 @@ export interface IPublishedSchema {
   tenantId: string
   sourceId: string
   name: string
-  type: 'form' | 'search_list'
+  type: 'form' | 'search_list' | 'layout' | 'table' | 'chart' | 'business' | 'report' | 'other'
   json: Record<string, unknown>
   thumbnail?: string
   publishId: string
@@ -20,7 +20,7 @@ const publishedSchemaDef = new mongoose.Schema(
     tenantId: { type: String, default: '000000', index: true },
     sourceId: { type: String, required: true, unique: true, index: true },
     name: { type: String, required: true },
-    type: { type: String, enum: ['form', 'search_list'], default: 'form' },
+    type: { type: String, enum: ['form', 'search_list', 'layout', 'table', 'chart', 'business', 'report', 'other'], default: 'form' },
     json: { type: mongoose.Schema.Types.Mixed, required: true },
     thumbnail: { type: String, default: '' },
     publishId: { type: String, required: true, index: true },
