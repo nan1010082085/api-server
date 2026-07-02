@@ -19,6 +19,7 @@ import {
 } from '../services/exportService.js'
 import type { SubmissionStatus } from '../models/FormSubmission.js'
 import mongoose from 'mongoose'
+import { enrichSubmissions, enrichSubmission, toLeaveDetailView } from '../services/business/submissionEnrichment.js'
 
 const requireAuth = authMiddleware({ required: true })
 
@@ -95,10 +96,13 @@ router.get('/:schemaId', requireAuth, async (ctx) => {
     FormSubmissionModel.countDocuments(filter),
   ])
 
+  const enrich = ctx.query.enrich !== 'false'
+  const payloadItems = enrich ? await enrichSubmissions(items) : items
+
   ctx.body = {
     success: true,
     data: {
-      items,
+      items: payloadItems,
       total,
       page,
       pageSize,
@@ -179,7 +183,32 @@ router.get('/:schemaId/:id', requireAuth, async (ctx) => {
     return
   }
 
-  ctx.body = { success: true, data: submission }
+  const enriched = await enrichSubmission(submission)
+  ctx.body = { success: true, data: enriched }
+})
+
+// ────────────────────────────────────────────
+// GET /api/submissions/:schemaId/:id/view
+// 详情页扁平视图（descriptions 组件）
+// ────────────────────────────────────────────
+router.get('/:schemaId/:id/view', requireAuth, async (ctx) => {
+  const { schemaId, id } = ctx.params
+
+  if (!mongoose.Types.ObjectId.isValid(schemaId) || !mongoose.Types.ObjectId.isValid(id)) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
+    return
+  }
+
+  const submission = await FormSubmissionModel.findOne({ _id: id, schemaId })
+  if (!submission) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Submission not found.' } }
+    return
+  }
+
+  const enriched = await enrichSubmission(submission)
+  ctx.body = { success: true, data: toLeaveDetailView(enriched) }
 })
 
 // ────────────────────────────────────────────
