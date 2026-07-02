@@ -8,9 +8,15 @@ import { DEFAULT_TENANT_ID } from './initDefaultTenant.js'
 import { bindMenuSchemaIds } from './seedMenus.js'
 import {
   BUSINESS_SCHEMA_SEEDS,
+  DELIVERABLE_SCHEMA_CODES,
   LEAVE_FLOW_DEFINITION_NAME,
   type BusinessSchemaSeedSpec,
 } from './businessSchemaStubs.js'
+import {
+  buildDeliverableSchemaJson,
+  type BusinessSchemaRefs,
+  isDeliverableSchemaCode,
+} from './businessSchemaDeliverables.js'
 
 export interface SeededBusinessSchema {
   code: string
@@ -172,8 +178,44 @@ async function seedLeaveFlowDefinition(): Promise<string | null> {
   return String(definition._id)
 }
 
+async function syncDeliverableSchemas(
+  schemas: SeededBusinessSchema[],
+  leaveFlowDefinitionId: string | null,
+): Promise<number> {
+  const refs: BusinessSchemaRefs = {
+    schemas: {},
+    leaveFlowDefinitionId,
+  }
+  for (const seeded of schemas) {
+    refs.schemas[seeded.code] = {
+      formSchemaId: seeded.formSchemaId,
+      publishId: seeded.publishId,
+    }
+  }
+
+  let updated = 0
+  for (const code of DELIVERABLE_SCHEMA_CODES) {
+    if (!isDeliverableSchemaCode(code)) continue
+    const seeded = schemas.find((s) => s.code === code)
+    if (!seeded) continue
+
+    const json = buildDeliverableSchemaJson(code, refs)
+    const draft = await FormSchemaModel.findById(seeded.formSchemaId)
+    if (!draft) continue
+
+    draft.json = json
+    await draft.save()
+    await publishFormSchema(draft)
+    updated++
+    console.log(`[seed] Deliverable schema synced: ${code}`)
+  }
+
+  return updated
+}
+
 /**
- * Seed Phase 1 business FormSchemas (stub widgets) and publish them.
+ * Seed Phase 1 business FormSchemas and publish them.
+ * D1 deliverables (leave + workbench) always sync full Board JSON on each seed run.
  * Also ensures leave approval flow definition exists from built-in template.
  */
 export async function seedBusinessSchemas(): Promise<BusinessSeedResult> {
@@ -185,8 +227,9 @@ export async function seedBusinessSchemas(): Promise<BusinessSeedResult> {
   }
 
   const leaveFlowDefinitionId = await seedLeaveFlowDefinition()
+  const synced = await syncDeliverableSchemas(schemas, leaveFlowDefinitionId)
   await bindMenuSchemaIds()
 
-  console.log(`[seed] Business schemas: ${schemas.length} ready`)
+  console.log(`[seed] Business schemas: ${schemas.length} ready (${synced} deliverables synced)`)
   return { schemas, leaveFlowDefinitionId }
 }
