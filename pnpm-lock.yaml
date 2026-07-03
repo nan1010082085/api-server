@@ -36,8 +36,8 @@ importers:
         specifier: file:../schema-form-ai/shared
         version: file:../schema-form-ai/shared
       '@schema-platform/flow-shared':
-        specifier: ^1.0.3
-        version: 1.0.3
+        specifier: file:../schema-form-flow-shared
+        version: file:../schema-form-flow-shared
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -597,8 +597,8 @@ packages:
   '@schema-platform/ai-shared@file:../schema-form-ai/shared':
     resolution: {directory: ../schema-form-ai/shared, type: directory}
 
-  '@schema-platform/flow-shared@1.0.3':
-    resolution: {integrity: sha512-mPeTKelLoMXJDBA1HzpdpEe/FL0kdcoTWuz+fXxCjzqcaImylfHix6F0TPVxx/W7OpKq4EG1wHWljhIQyIgL0g==, tarball: https://npm.pkg.github.com/download/@schema-platform/flow-shared/1.0.3/b3a2b9ae12d7dee78fad1a7fe8d8d1d8cc768025}
+  '@schema-platform/flow-shared@file:../schema-form-flow-shared':
+    resolution: {directory: ../schema-form-flow-shared, type: directory}
 
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
@@ -2519,9 +2519,9 @@ snapshots:
 
   '@schema-platform/ai-shared@file:../schema-form-ai/shared':
     dependencies:
-      '@schema-platform/flow-shared': 1.0.3
+      '@schema-platform/flow-shared': file:../schema-form-flow-shared
 
-  '@schema-platform/flow-shared@1.0.3': {}
+  '@schema-platform/flow-shared@file:../schema-form-flow-shared': {}
 
   '@socket.io/component-emitter@3.1.2': {}
 
