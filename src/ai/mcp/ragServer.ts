@@ -10,7 +10,7 @@ import { semanticSearch } from '../services/ragService.js'
 
 export function createRagServer(): McpServer {
   const server = new McpServer({
-    name: 'schema-form-rag',
+    name: 'rag',
     version: '2.0.0',
   })
 

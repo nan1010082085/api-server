@@ -19,7 +19,7 @@ import { validateSchemaDocument } from '../services/schemaService.js'
 
 export function createSchemaServer(): McpServer {
   const server = new McpServer({
-    name: 'schema-form-schemas',
+    name: 'schemas',
     version: '2.0.0',
   })
 

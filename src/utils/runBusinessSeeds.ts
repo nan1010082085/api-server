@@ -8,12 +8,24 @@ import { seedBusinessAgentWorkflows } from './seedBusinessAgentWorkflows.js'
 import { seedSampleNotices } from './seedSampleNotices.js'
 import { seedSampleAuditIssues, seedSampleMetrologyDevices } from './seedSampleDomainData.js'
 import { seedDemoTenant } from './seedDemoTenant.js'
+import { UserModel } from '../models/User.js'
 
 /**
- * Idempotent business-platform seeds (flow templates, schemas, menu binding, webhooks).
- * Safe to run on every server startup after DB connect.
+ * Business-platform seeds (flow templates, schemas, menu binding, webhooks).
+ *
+ * 只在新环境（数据库为空）时运行，已有数据则跳过。
+ * 避免每次启动覆盖用户修改过的业务数据。
  */
 export async function runBusinessSeeds(): Promise<void> {
+  // 检查是否已有用户数据，有则跳过 seed
+  const userCount = await UserModel.countDocuments()
+  if (userCount > 0) {
+    console.log('[seed] Database already has data, skipping business seeds')
+    return
+  }
+
+  console.log('[seed] New environment detected, running business seeds...')
+
   await seedBuiltinFlowTemplates()
   await seedBusinessRoles()
   await assignBusinessRolesToAdmin()

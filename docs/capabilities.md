@@ -1,10 +1,10 @@
-# schema-form-server 能力总览
+# server 能力总览
 
 > 最后更新: 2026-06-28
 
 ## 一、项目定位
 
-`@schema-form/server` 是 Schema Platform 的后端 API 服务，为可视化表单设计器、BPMN 流程引擎、AI 助手提供统一的数据层和业务逻辑层。
+`@server` 是 Schema Platform 的后端 API 服务，为可视化表单设计器、BPMN 流程引擎、AI 助手提供统一的数据层和业务逻辑层。
 
 ## 二、技术栈
 

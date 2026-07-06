@@ -78,6 +78,14 @@ router.post('/login', validate(loginSchema), async (ctx) => {
     return
   }
 
+  // Check user status before validating password
+  if (user.status !== 'active') {
+    recordLoginLog(tenantId, username, 'fail', '用户已禁用', ctx)
+    ctx.status = 403
+    ctx.body = { success: false, error: { message: 'Account is disabled or inactive.' } }
+    return
+  }
+
   const valid = await user.comparePassword(password)
   if (!valid) {
     recordLoginLog(tenantId, username, 'fail', '密码错误', ctx)
@@ -167,12 +175,24 @@ router.post('/refresh', validate(refreshSchema), async (ctx) => {
     return
   }
 
+  // Check if refresh token is blacklisted
+  if (payload.jti && await cacheExists(`token:blacklist:${payload.jti}`)) {
+    ctx.status = 401
+    ctx.body = { success: false, error: { message: 'Refresh token has been revoked.' } }
+    return
+  }
+
   // Verify user still exists
   const user = await UserModel.findById(payload.id)
   if (!user) {
     ctx.status = 401
     ctx.body = { success: false, error: { message: 'User no longer exists.' } }
     return
+  }
+
+  // Blacklist the old refresh token (TTL = 7 days to match REFRESH_TOKEN_EXPIRY)
+  if (payload.jti) {
+    await cacheSet(`token:blacklist:${payload.jti}`, '1', 7 * 24 * 60 * 60)
   }
 
   const newAccessToken = jwt.sign(

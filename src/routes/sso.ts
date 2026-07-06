@@ -132,11 +132,12 @@ router.get('/authorize', validateQuery(ssoAuthorizeQuerySchema), async (ctx) => 
     return
   }
 
-  // Check SSO session
+  // Check SSO session — if no valid session, redirect to login page
   const user = await resolveSessionUser(ctx)
   if (!user) {
-    ctx.status = 401
-    ctx.body = { success: false, error: { message: 'No active SSO session. Please log in first.' } }
+    const loginUrl = new URL('/schema-platform/login', `${ctx.protocol}://${ctx.host}`)
+    loginUrl.searchParams.set('redirect', ctx.URL.toString())
+    ctx.redirect(loginUrl.toString())
     return
   }
 

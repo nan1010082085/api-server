@@ -1,6 +1,6 @@
-# schema-form-server
+# server
 
-`@schema-form/server` — 可视化设计器后端 API 服务。
+`@server` — 可视化设计器后端 API 服务。
 
 ## 项目规则
 

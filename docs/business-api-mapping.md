@@ -1,6 +1,6 @@
 # 业务平台 API 映射
 
-> Server 接口与 `schema-form-shell/docs/business-platform/modules/` 模块文档对齐说明。  
+> Server 接口与 `shell/docs/business-platform/modules/` 模块文档对齐说明。  
 > 基础 CRUD 复用现有 `/api/*`；模块聚合走 `/api/business/*`。
 
 ## 1. 路由分层

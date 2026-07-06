@@ -35,7 +35,7 @@ const INDUSTRY_VALIDATION_RULES: Record<IndustryType, Array<{ field: string; rul
 
 export function createIndustryServer(): McpServer {
   const server = new McpServer({
-    name: 'schema-form-industry',
+    name: 'industry',
     version: '2.0.0',
   })
 

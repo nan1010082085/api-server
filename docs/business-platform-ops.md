@@ -3,7 +3,7 @@
 ## 部署与 Seed
 
 ```bash
-cd schema-form-server
+cd server
 pnpm install
 pnpm db:seed    # 同步 80+ 业务 Schema、菜单、字典、Flow、Agent 模板
 pnpm dev        # API :3000

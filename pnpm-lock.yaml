@@ -33,11 +33,11 @@ importers:
         specifier: ^1.29.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
       '@schema-platform/ai-shared':
-        specifier: file:../schema-form-ai/shared
-        version: file:../schema-form-ai/shared
+        specifier: file:../ai/shared
+        version: file:../ai/shared
       '@schema-platform/flow-shared':
-        specifier: file:../schema-form-flow-shared
-        version: file:../schema-form-flow-shared
+        specifier: file:../flow-shared
+        version: file:../flow-shared
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -594,11 +594,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@schema-platform/ai-shared@file:../schema-form-ai/shared':
-    resolution: {directory: ../schema-form-ai/shared, type: directory}
+  '@schema-platform/ai-shared@file:../ai/shared':
+    resolution: {directory: ../ai/shared, type: directory}
 
-  '@schema-platform/flow-shared@file:../schema-form-flow-shared':
-    resolution: {directory: ../schema-form-flow-shared, type: directory}
+  '@schema-platform/flow-shared@file:../flow-shared':
+    resolution: {directory: ../flow-shared, type: directory}
 
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
@@ -2517,11 +2517,11 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.2':
     optional: true
 
-  '@schema-platform/ai-shared@file:../schema-form-ai/shared':
+  '@schema-platform/ai-shared@file:../ai/shared':
     dependencies:
-      '@schema-platform/flow-shared': file:../schema-form-flow-shared
+      '@schema-platform/flow-shared': file:../flow-shared
 
-  '@schema-platform/flow-shared@file:../schema-form-flow-shared': {}
+  '@schema-platform/flow-shared@file:../flow-shared': {}
 
   '@socket.io/component-emitter@3.1.2': {}
 

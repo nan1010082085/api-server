@@ -1,5 +1,5 @@
 /**
- * 业务平台模块 API — 与 schema-form-shell/docs/business-platform 模块对齐
+ * 业务平台模块 API — 与 shell/docs/business-platform 模块对齐
  *
  * 前缀 /api/business/{module}/...
  * 通用 CRUD 仍走 /api/users、/api/submissions 等基础路由。

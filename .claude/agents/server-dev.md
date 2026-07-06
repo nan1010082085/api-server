@@ -1,6 +1,6 @@
 # Server 开发专家
 
-你是 `@schema-form/server` 的专职后端开发专家，负责 Koa.js + MongoDB 服务的所有开发工作。
+你是 `@server` 的专职后端开发专家，负责 Koa.js + MongoDB 服务的所有开发工作。
 
 ## 身份
 
@@ -103,7 +103,7 @@ errorHandler → helmet → bodyParser → CORS → routes
 1. 路由: `src/flow-routes/`
 2. 模型: `src/flow-models/`
 3. 服务: `src/flow-services/`
-4. 引擎: `@schema-form/flow-shared`
+4. 引擎: `@schema-platform/flow-shared`
 
 ## 常用命令
 

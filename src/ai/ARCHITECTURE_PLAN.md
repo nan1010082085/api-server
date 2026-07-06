@@ -56,17 +56,17 @@
 ### 2.1 三项目架构
 
 ```
-schema-form-platform/
+schema-platform/
 ├── packages/
-│   ├── editor/web/          # @schema-form/editor-web — 可视化设计器
-│   ├── flow/                # @schema-form/flow — 流程设计器 + 引擎
+│   ├── editor/web/          # @editor — 可视化设计器
+│   ├── flow/                # @flow — 流程设计器 + 引擎
 │   ├── shell/ — 主宿主
-│   ├── ai/                  # @schema-form/ai — AI 能力层（新建）
+│   ├── ai/                  # ai — AI 能力层（新建）
 │   │   ├── server/          # AI Agent 服务（从 server/ai/ 独立）
 │   │   ├── mcp/             # MCP Server 定义（内部专有）
 │   │   ├── shared/          # 共享类型 + Schema 适配层
 │   │   └── app/             # AI 对话前端（从 ai-app/ 迁入）
-│   ├── server/              # @schema-form/server — 纯后端 API
+│   ├── server/              # @server — 纯后端 API
 │   └── shared/              # @schema-form/shared — 共享类型
 ```
 
@@ -77,7 +77,7 @@ schema-form-platform/
 | Schema 类型同步 | pnpm workspace 直接引用 | 需发 npm 包 |
 | 开发体验 | 一个 PR 改全链路 | 多仓库协调 |
 | 部署 | 一个 CI 流水线 | 多套部署 |
-| AI 对 editor/flow 类型的依赖 | `import { Widget } from '@schema-form/editor-web'` | 需要发布 @types 包 |
+| AI 对 editor/flow 类型的依赖 | `import { Widget } from '@editor'` | 需要发布 @types 包 |
 
 **结论**：保持 monorepo，但将 AI 从 `server/ai/` 和 `ai-app/` 独立为 `packages/ai/`。
 
@@ -176,8 +176,8 @@ AI LLM 无法一次输出完整的 30+ 字段 Widget 结构，原因：
 ```typescript
 // packages/ai/shared/schemaAdapter.ts
 
-import type { Widget, SchemaType } from '@schema-form/editor-web/widgets/base/types'
-import type { AIMetadata, WidgetAIMetadata } from '@schema-form/shared-ai/types'
+import type { Widget, SchemaType } from '@editor/widgets/base/types'
+import type { AIMetadata, WidgetAIMetadata } from '@schema-platform/ai-shared/types'
 
 interface PartialWidget {
   type: string
@@ -502,8 +502,8 @@ export class SchemaAdapter {
 ```typescript
 // packages/ai/shared/flowAdapter.ts
 
-import type { FlowNodeData, FlowEdgeData, FlowGraph } from '@schema-form/flow/shared/types/graph'
-import type { BpmnNodeConfig, BpmnElementType } from '@schema-form/flow/shared/types/bpmn'
+import type { FlowNodeData, FlowEdgeData, FlowGraph } from '@flow/shared/types/graph'
+import type { BpmnNodeConfig, BpmnElementType } from '@flow/shared/types/bpmn'
 
 interface PartialFlowNode {
   id: string

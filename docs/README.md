@@ -1,6 +1,6 @@
 # Server 文档
 
-`@schema-form/server` — Koa.js + MongoDB 后端服务
+`@server` — Koa.js + MongoDB 后端服务
 
 ## 快速开始
 

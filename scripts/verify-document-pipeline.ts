@@ -3,7 +3,7 @@
  * 两条文档线现场验证脚本（需 MongoDB + 已 seed admin）
  *
  * 用法：
- *   cd schema-form-server
+ *   cd server
  *   AI_WEBHOOK_SKIP_HMAC=true pnpm exec tsx scripts/verify-document-pipeline.ts
  *
  * 环境变量：

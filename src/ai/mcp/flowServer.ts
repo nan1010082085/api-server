@@ -17,7 +17,7 @@ import {
 
 export function createFlowServer(): McpServer {
   const server = new McpServer({
-    name: 'schema-form-flows',
+    name: 'flows',
     version: '2.0.0',
   })
 

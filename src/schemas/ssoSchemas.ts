@@ -22,7 +22,8 @@ export const ssoRefreshTokenSchema = z.object({
 }).strict()
 
 export const ssoLogoutSchema = z.object({
-  client_id: z.string().min(1, 'client_id is required'),
+  client_id: z.string().min(1, 'client_id is required').optional(),
+  all_sessions: z.boolean().optional().default(false),
 }).strict()
 
 export type SsoAuthorizeQuery = z.infer<typeof ssoAuthorizeQuerySchema>

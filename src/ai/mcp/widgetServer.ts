@@ -11,7 +11,7 @@ import { handleWidgetQuery, handleWidgetValidate } from '../tools/toolHandlers.j
 
 export function createWidgetServer(): McpServer {
   const server = new McpServer({
-    name: 'schema-form-widgets',
+    name: 'widgets',
     version: '2.0.0',
   })
 

@@ -321,7 +321,7 @@ function buildGeneralSystemPrompt(): string {
     .map(([group, count]) => `${count} 种${group}组件`)
     .join('、')
 
-  return `你是 schema-form-platform 的 AI 助手。
+  return `你是 schema-platform 的 AI 助手。
 
 你有四个专家能力：
 
@@ -388,7 +388,7 @@ async function generalAgentNode(
 // Summarizer node
 // ────────────────────────────────────────────
 
-const SUMMARIZER_SYSTEM_PROMPT = `你是 schema-form-platform 的 AI 助手。你的任务是对专家智能体的执行结果进行总结。
+const SUMMARIZER_SYSTEM_PROMPT = `你是 schema-platform 的 AI 助手。你的任务是对专家智能体的执行结果进行总结。
 
 请以助手身份回答，简洁明了，突出重点，给出后续建议。`
 

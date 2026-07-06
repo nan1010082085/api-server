@@ -1,4 +1,4 @@
-# @schema-form/server
+# @server
 
 后端服务 -- Koa.js API + MongoDB + AI Agent + 流程引擎。
 
@@ -14,7 +14,7 @@ Schema Form Platform 的后端 API 服务，提供 Schema 存储与发布、用�
 | 数据库 | MongoDB + Mongoose 8 |
 | 认证 | JWT + bcryptjs |
 | AI | LangChain + LangGraph + DeepSeek |
-| 流程 | BPMN 引擎（@schema-form/flow-shared） |
+| 流程 | BPMN 引擎（@schema-platform/flow-shared） |
 | 校验 | Zod |
 | 实时通信 | Socket.IO |
 | 文件处理 | pdf-parse + mammoth + exceljs |
