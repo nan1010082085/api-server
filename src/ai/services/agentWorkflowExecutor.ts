@@ -19,7 +19,9 @@ import { normalizeToolName } from '@schema-platform/ai-shared/toolNames'
 import { getToolSync, ensureToolsReady, getToolsByNames } from '../tools/registry.js'
 import { getMetadata } from '../tools/toolHandlers.js'
 import { extractJsonFromResponse } from '../graph/agentBase.js'
-import { getDocumentWithText, reprocessDocumentFromStorage, analyzeDocumentVision } from './documentService.js'
+import { getDocumentWithText, reprocessDocumentFromStorage, analyzeDocumentVision, chunkText } from './documentService.js'
+import { processFile } from './fileService.js'
+import { extractNodeOutputError, nodeFailure } from './agentWorkflowNodeErrors.js'
 import { resolveWorkflowTemplate } from './agentWorkflowTemplateResolver.js'
 import {
   normalizeConversationTurns,
@@ -28,6 +30,7 @@ import {
   extractMessageFromContext,
   extractAssistantContent,
   resolveDocumentIdFromNodeData,
+  resolveDocumentStreamFromNodeData,
   type WorkflowConversationTurn,
 } from './agentWorkflowConversation.js'
 import type { StructuredTool } from '@langchain/core/tools'
@@ -52,9 +55,10 @@ interface WorkflowGraphNode {
       required?: boolean
     }>
     inheritUpstreamQuestions?: boolean
-    documentSource?: 'documentId' | 'inputField'
+    documentSource?: 'documentId' | 'inputField' | 'stream'
     documentId?: string
     inputField?: string
+    streamField?: string
     visionPrompt?: string
     memoryMode?: 'read' | 'append' | 'reset'
     memoryRole?: 'user' | 'assistant'
@@ -85,6 +89,53 @@ interface ExecuteParams {
   graph: WorkflowGraph
   input: Record<string, unknown>
   resumeFromWaiting?: boolean
+}
+
+interface NodeRunResult {
+  output: unknown
+  branch?: 'true' | 'false'
+  wait?: boolean
+  error?: string
+}
+
+const WORKFLOW_LLM_TIMEOUT_MS = Number(process.env.WORKFLOW_LLM_TIMEOUT_MS ?? 120_000)
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+async function waitForExecutionCancelled(executionId: string): Promise<void> {
+  while (true) {
+    if (await isExecutionCancelled(executionId)) {
+      throw new Error('用户手动停止')
+    }
+    await sleep(500)
+  }
+}
+
+async function invokeLLMWithGuard(
+  executionId: string,
+  llm: Awaited<ReturnType<typeof getLLM>>,
+  messages: BaseMessage[],
+): Promise<Awaited<ReturnType<typeof llm.invoke>>> {
+  const timeoutMs = Number.isFinite(WORKFLOW_LLM_TIMEOUT_MS) && WORKFLOW_LLM_TIMEOUT_MS > 0
+    ? WORKFLOW_LLM_TIMEOUT_MS
+    : 120_000
+
+  return Promise.race([
+    llm.invoke(messages),
+    sleep(timeoutMs).then(() => {
+      throw new Error(`LLM 调用超时（${Math.round(timeoutMs / 1000)}s）`)
+    }),
+    waitForExecutionCancelled(executionId),
+  ])
+}
+
+function resolveNodeError(result: NodeRunResult): string | null {
+  if (result.error?.trim()) return result.error.trim()
+  return extractNodeOutputError(result.output)
 }
 
 interface RuntimeContext {
@@ -172,12 +223,36 @@ async function finishExecution(
 ) {
   const execution = await AgentWorkflowExecutionModel.findById(executionId)
   if (!execution) return
+  if (execution.status === 'cancelled' && status !== 'cancelled') return
   const finishedAt = new Date()
   execution.status = status
   execution.finishedAt = finishedAt
   execution.durationMs = finishedAt.getTime() - execution.startedAt.getTime()
   if (error) execution.error = error
   await execution.save()
+}
+
+async function isExecutionCancelled(executionId: string): Promise<boolean> {
+  const execution = leanDoc<{ status?: string }>(
+    await AgentWorkflowExecutionModel.findById(executionId).select('status').lean(),
+  )
+  return execution?.status === 'cancelled'
+}
+
+async function stopExecutionIfCancelled(
+  executionId: string,
+  runningNodeId?: string,
+): Promise<boolean> {
+  if (!(await isExecutionCancelled(executionId))) return false
+  if (runningNodeId) {
+    const finishedAt = new Date()
+    await updateNodeRecord(executionId, runningNodeId, {
+      status: 'skipped',
+      finishedAt,
+      error: '用户手动停止',
+    })
+  }
+  return true
 }
 
 function getOutgoingEdges(graph: WorkflowGraph, nodeId: string): WorkflowGraphEdge[] {
@@ -248,6 +323,42 @@ function resolveTemplateInArgs(
   return result
 }
 
+function buildEmptyRagSearchOutput(query: string, warning?: string) {
+  const q = query.trim()
+  return {
+    success: true,
+    data: { total: 0, schemas: [] },
+    summary: q ? `没有找到与「${q}」语义相关的 Schema` : '没有找到语义相关的 Schema',
+    ...(warning ? { degraded: true, warning } : {}),
+  }
+}
+
+function normalizeRagToolOutput(
+  output: unknown,
+  args: Record<string, unknown>,
+): unknown {
+  if (typeof output === 'string') {
+    const trimmed = output.trim()
+    if (/^\d{3}\s+status code/i.test(trimmed)) {
+      return buildEmptyRagSearchOutput(String(args.query ?? ''), trimmed)
+    }
+    try {
+      return normalizeRagToolOutput(JSON.parse(trimmed), args)
+    } catch {
+      return output
+    }
+  }
+  if (!output || typeof output !== 'object') return output
+  const obj = output as Record<string, unknown>
+  if (obj.success === false && obj.recoverable === true) {
+    return buildEmptyRagSearchOutput(
+      String(args.query ?? ''),
+      typeof obj.error === 'string' ? obj.error : undefined,
+    )
+  }
+  return output
+}
+
 async function dispatchTool(
   toolName: string,
   rawArgs: Record<string, unknown>,
@@ -266,6 +377,10 @@ async function dispatchTool(
       const text = await res.text()
       let parsed: unknown = text
       try { parsed = JSON.parse(text) } catch { /* keep text */ }
+      if (!res.ok) {
+        const msg = typeof parsed === 'string' ? parsed : `HTTP ${res.status}`
+        return { output: { status: res.status, data: parsed }, error: msg }
+      }
       return { output: { status: res.status, data: parsed } }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -292,9 +407,16 @@ async function dispatchTool(
         output = rawResult
       }
     }
-    return { output }
+    if (normalized === 'rag__search') {
+      output = normalizeRagToolOutput(output, args)
+    }
+    const outputError = extractNodeOutputError(output)
+    return outputError ? { output, error: outputError } : { output }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    if (normalized === 'rag__search' && /^\d{3}\s+status code/i.test(msg)) {
+      return { output: buildEmptyRagSearchOutput(String(args.query ?? ''), msg) }
+    }
     return { output: { tool: toolName, error: msg }, error: msg }
   }
 }
@@ -570,16 +692,17 @@ async function dispatchAgent(
 async function runNode(
   node: WorkflowGraphNode,
   ctx: RuntimeContext,
-): Promise<{ output: unknown; branch?: 'true' | 'false'; wait?: boolean }> {
+): Promise<NodeRunResult> {
   const data = node.data ?? {}
 
   if (node.type === 'tool' || node.type.startsWith('tool-')) {
     const toolName = data.toolName?.trim() ?? ''
     if (!toolName) {
-      return { output: { error: '未选择工具' }, branch: undefined }
+      return nodeFailure('未选择工具')
     }
     const result = await dispatchTool(toolName, data.toolArgs ?? {}, ctx)
-    return { output: result.output }
+    const error = result.error ?? extractNodeOutputError(result.output) ?? undefined
+    return { output: result.output, error }
   }
 
   if (node.type.startsWith('agent-') || node.type === 'agent') {
@@ -612,6 +735,36 @@ async function runNode(
       return { output: { ...ctx.input } }
 
     case 'document-parse': {
+      const source = data.documentSource ?? 'inputField'
+      const streamFile = source === 'stream'
+        ? resolveDocumentStreamFromNodeData(data, ctx.input, ctx.lastOutput)
+        : null
+      if (source === 'stream' && !streamFile) {
+        const field = data.streamField?.trim() || 'file'
+        return nodeFailure(`未指定文件流（$input.${field}）`)
+      }
+      if (streamFile) {
+        const processed = await processFile(
+          streamFile.content,
+          streamFile.filename,
+          streamFile.mimetype,
+        )
+        const chunks = chunkText(processed.text)
+        return {
+          output: {
+            filename: processed.filename,
+            mimetype: processed.mimetype,
+            size: processed.size,
+            text: processed.text,
+            chunks,
+            extractionMethod: processed.extractionMethod,
+            hasOriginalFile: false,
+            textLength: processed.text.length,
+            source: 'stream',
+          },
+        }
+      }
+
       const documentId = resolveDocumentIdFromNodeData(
         data,
         (text) => resolveTemplate(text, ctx),
@@ -619,11 +772,11 @@ async function runNode(
         ctx.lastOutput,
       )
       if (!documentId) {
-        return { output: { error: '未指定文档 ID' } }
+        return nodeFailure('未指定文档 ID')
       }
       const doc = await getDocumentWithText(documentId)
       if (!doc) {
-        return { output: { error: `文档不存在: ${documentId}` } }
+        return nodeFailure(`文档不存在: ${documentId}`)
       }
 
       let text = doc.text as string
@@ -665,7 +818,7 @@ async function runNode(
         ctx.lastOutput,
       )
       if (!documentId) {
-        return { output: { error: '未指定图片 documentId' } }
+        return nodeFailure('未指定图片 documentId')
       }
       const visionPrompt = data.visionPrompt?.trim()
         ? resolveTemplate(data.visionPrompt, ctx)
@@ -675,7 +828,7 @@ async function runNode(
         userId: ctx.triggeredBy,
       })
       if (!result) {
-        return { output: { error: `图片不存在: ${documentId}` } }
+        return nodeFailure(`图片不存在: ${documentId}`)
       }
       return { output: result }
     }
@@ -707,7 +860,7 @@ async function runNode(
           : extractAssistantContent(ctx.lastOutput)
 
       if (!content) {
-        return { output: { error: '无可追加的对话内容' } }
+        return nodeFailure('无可追加的对话内容')
       }
 
       ctx.conversationHistory = trimConversationTurns(
@@ -754,7 +907,7 @@ async function runNode(
         new HumanMessage(prompt || JSON.stringify(ctx.lastOutput ?? ctx.input)),
       )
 
-      const response = await llm.invoke(messages)
+      const response = await invokeLLMWithGuard(ctx.executionId, llm, messages)
       const content = typeof response.content === 'string'
         ? response.content
         : JSON.stringify(response.content)
@@ -868,6 +1021,10 @@ export async function executeAgentWorkflow(params: ExecuteParams): Promise<void>
   }
 
   while (currentId) {
+    if (await stopExecutionIfCancelled(executionId)) {
+      return
+    }
+
     if (visited.has(currentId)) {
       await finishExecution(executionId, 'error', `检测到循环：节点 ${currentId}`)
       return
@@ -894,6 +1051,9 @@ export async function executeAgentWorkflow(params: ExecuteParams): Promise<void>
 
     try {
       const result = await runNode(node, ctx)
+      if (await stopExecutionIfCancelled(executionId, node.id)) {
+        return
+      }
       const finishedAt = new Date()
       const durationMs = finishedAt.getTime() - startedAt.getTime()
 
@@ -905,6 +1065,19 @@ export async function executeAgentWorkflow(params: ExecuteParams): Promise<void>
           output: result.output,
         })
         await finishExecution(executionId, 'waiting')
+        return
+      }
+
+      const nodeError = resolveNodeError(result)
+      if (nodeError) {
+        await updateNodeRecord(executionId, node.id, {
+          status: 'error',
+          finishedAt,
+          durationMs,
+          output: result.output,
+          error: nodeError,
+        })
+        await finishExecution(executionId, 'error', nodeError)
         return
       }
 
@@ -931,14 +1104,16 @@ export async function executeAgentWorkflow(params: ExecuteParams): Promise<void>
     } catch (err) {
       const finishedAt = new Date()
       const errorMessage = err instanceof Error ? err.message : String(err)
+      const cancelled = errorMessage === '用户手动停止'
+        || await isExecutionCancelled(executionId)
       logger.error({ msg: '[agentWorkflow] node error', nodeId: node.id, err })
       await updateNodeRecord(executionId, node.id, {
-        status: 'error',
+        status: cancelled ? 'skipped' : 'error',
         finishedAt,
         durationMs: finishedAt.getTime() - startedAt.getTime(),
         error: errorMessage,
       })
-      await finishExecution(executionId, 'error', errorMessage)
+      await finishExecution(executionId, cancelled ? 'cancelled' : 'error', errorMessage)
       return
     }
   }

@@ -7,14 +7,19 @@
  * 3. Incremental updates: re-index only when schema content changes
  * 4. Bulk re-index: rebuild all embeddings (for initial setup or data migration)
  *
- * Uses DeepSeek embedding API (4096 dimensions) and stores vectors in
- * MongoDB with application-level cosine similarity computation.
+ * Uses OpenAI-compatible embedding API and stores vectors in MongoDB
+ * with application-level cosine similarity computation.
+ *
+ * When embedding API is unavailable, semanticSearch falls back to keyword
+ * fuzzy matching (Jaccard) so RAG tools still return useful results.
  */
 
 import { createHash } from 'node:crypto'
 import { FormSchemaModel } from '../../models/FormSchema.js'
 import { SchemaEmbeddingModel } from '../../models/SchemaEmbedding.js'
-import { embedText, embedBatch } from './embeddingService.js'
+import { embedText, embedBatch, isEmbeddingConfigured } from './embeddingService.js'
+import { fuzzySearchSchemas } from './schemaService.js'
+import { logger } from '../../utils/logger.js'
 
 // ────────────────────────────────────────────
 // Content hash for change detection
@@ -258,9 +263,65 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dotProduct / denominator
 }
 
+async function keywordFallbackSearch(
+  query: string,
+  options: {
+    limit?: number
+    type?: 'form' | 'search_list'
+    minScore?: number
+  },
+): Promise<SearchResult[]> {
+  const { limit = 5, type, minScore = 10 } = options
+  const fuzzy = await fuzzySearchSchemas(query, limit * 3)
+  let candidates = fuzzy.data.schemas
+  if (type) {
+    candidates = candidates.filter((s) => s.type === type)
+  }
+  candidates = candidates.filter((s) => s.score >= minScore).slice(0, limit)
+  if (candidates.length === 0) return []
+
+  const ids = candidates.map((c) => c.id)
+  const schemas = await FormSchemaModel.find({ _id: { $in: ids } })
+    .select('_id editId name type json')
+    .lean() as Array<Record<string, unknown>>
+  const schemaById = new Map(schemas.map((s) => [String(s._id), s]))
+
+  const editIds = schemas.map((s) => String(s.editId))
+  const storedEmbeddings = await SchemaEmbeddingModel.find({ editId: { $in: editIds } })
+    .select('editId metadata')
+    .lean() as Array<Record<string, unknown>>
+  const metadataByEditId = new Map(
+    storedEmbeddings.map((doc) => [String(doc.editId), doc.metadata as SearchResult['metadata']]),
+  )
+
+  return candidates.map((candidate) => {
+    const schema = schemaById.get(candidate.id)
+    const editId = schema ? String(schema.editId) : ''
+    const storedMetadata = editId ? metadataByEditId.get(editId) : undefined
+    const features = schema
+      ? extractFeatures(String(schema.name), schema.json)
+      : null
+
+    return {
+      schemaId: candidate.id,
+      editId,
+      name: candidate.name,
+      type: candidate.type,
+      score: candidate.score,
+      metadata: storedMetadata ?? {
+        widgetTypes: features?.widgetTypes ?? [],
+        fieldNames: features?.fieldNames ?? [],
+        labels: features?.labels ?? [],
+        description: features?.description ?? '',
+      },
+    }
+  })
+}
+
 /**
  * Perform semantic search: embed the query, then find the most similar schemas.
  *
+ * Falls back to keyword fuzzy search when embedding API is unavailable.
  * Returns top-k results sorted by similarity score (0-100).
  */
 export async function semanticSearch(
@@ -273,8 +334,28 @@ export async function semanticSearch(
 ): Promise<SearchResult[]> {
   const { limit = 5, type, minScore = 10 } = options
 
-  // Embed the query
-  const { vector: queryVector } = await embedText(query)
+  if (!isEmbeddingConfigured()) {
+    logger.info({
+      msg: 'rag:semanticSearch:keyword_fallback',
+      reason: 'embedding_not_configured',
+      query: query.slice(0, 100),
+    })
+    return keywordFallbackSearch(query, { limit, type, minScore })
+  }
+
+  let queryVector: number[]
+  try {
+    const embedded = await embedText(query)
+    queryVector = embedded.vector
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    logger.warn({
+      msg: 'rag:semanticSearch:embedding_failed',
+      error: errorMessage,
+      query: query.slice(0, 100),
+    })
+    return keywordFallbackSearch(query, { limit, type, minScore })
+  }
 
   // Fetch all embeddings (filtered by type if specified)
   const filter: Record<string, unknown> = {}

@@ -12,7 +12,7 @@
  * - type: schema type (form | search_list)
  * - contentHash: hash of the schema content used for embedding,
  *                used to detect stale embeddings that need re-indexing
- * - embedding: vector array (4096 dimensions from deepseek-embedding)
+ * - embedding: vector array (dimensions depend on configured embedding model)
  * - metadata: extracted features (widget types, field names, labels)
  * - timestamps: auto createdAt / updatedAt
  */

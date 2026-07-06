@@ -80,9 +80,55 @@ export function extractAssistantContent(lastOutput: unknown): string {
   }
 }
 
+export interface WorkflowFilePayload {
+  filename: string
+  mimetype: string
+  content: Buffer
+}
+
+function readFieldValue(
+  field: string,
+  input: Record<string, unknown>,
+  lastOutput: unknown,
+): unknown {
+  const inputObj = input as Record<string, unknown>
+  const lastObj = (lastOutput ?? {}) as Record<string, unknown>
+  const body = inputObj.body as Record<string, unknown> | undefined
+  return lastObj[field] ?? inputObj[field] ?? body?.[field]
+}
+
+function decodeFileContent(raw: unknown): Buffer | null {
+  if (raw == null) return null
+  if (Buffer.isBuffer(raw)) return raw
+  if (raw instanceof Uint8Array) return Buffer.from(raw)
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+    const base64 = trimmed.includes(',') ? trimmed.split(',').pop() ?? '' : trimmed
+    try {
+      return Buffer.from(base64, 'base64')
+    } catch {
+      return Buffer.from(trimmed, 'utf-8')
+    }
+  }
+  return null
+}
+
+function parseWorkflowFilePayload(raw: unknown): WorkflowFilePayload | null {
+  if (!raw || typeof raw !== 'object') return null
+  const obj = raw as Record<string, unknown>
+  const filename = String(obj.filename ?? obj.name ?? 'upload.bin').trim() || 'upload.bin'
+  const mimetype = String(obj.mimetype ?? obj.mimeType ?? obj.contentType ?? 'application/octet-stream').trim()
+    || 'application/octet-stream'
+  const contentRaw = obj.content ?? obj.base64 ?? obj.data ?? obj.buffer
+  const content = decodeFileContent(contentRaw)
+  if (!content?.length) return null
+  return { filename, mimetype, content }
+}
+
 export function resolveDocumentIdFromNodeData(
   data: {
-    documentSource?: 'documentId' | 'inputField'
+    documentSource?: 'documentId' | 'inputField' | 'stream'
     documentId?: string
     inputField?: string
   },
@@ -91,13 +137,25 @@ export function resolveDocumentIdFromNodeData(
   lastOutput: unknown,
 ): string {
   const source = data.documentSource ?? 'inputField'
+  if (source === 'stream') return ''
   if (source === 'documentId') {
     return resolveTemplate(data.documentId ?? '').trim()
   }
   const field = data.inputField?.trim() || 'documentId'
-  const inputObj = input as Record<string, unknown>
-  const lastObj = (lastOutput ?? {}) as Record<string, unknown>
-  const body = inputObj.body as Record<string, unknown> | undefined
-  const raw = lastObj[field] ?? inputObj[field] ?? body?.[field]
+  const raw = readFieldValue(field, input, lastOutput)
   return raw != null ? String(raw).trim() : ''
+}
+
+export function resolveDocumentStreamFromNodeData(
+  data: {
+    documentSource?: 'documentId' | 'inputField' | 'stream'
+    streamField?: string
+  },
+  input: Record<string, unknown>,
+  lastOutput: unknown,
+): WorkflowFilePayload | null {
+  if ((data.documentSource ?? 'inputField') !== 'stream') return null
+  const field = data.streamField?.trim() || 'file'
+  const raw = readFieldValue(field, input, lastOutput)
+  return parseWorkflowFilePayload(raw)
 }

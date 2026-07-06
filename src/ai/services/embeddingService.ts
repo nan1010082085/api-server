@@ -1,30 +1,68 @@
 /**
- * Embedding Service — generates text embeddings via DeepSeek API.
+ * Embedding Service — generates text embeddings via OpenAI-compatible API.
  *
- * Uses the deepseek-embedding model (4096 dimensions).
- * Includes in-memory LRU cache to avoid redundant API calls.
+ * DeepSeek chat API key does NOT support embeddings (POST /v1/embeddings returns 404).
+ * Configure a dedicated embedding provider via EMBEDDING_* or OPENAI_API_KEY.
  */
 
 import OpenAI from 'openai'
 
-const EMBEDDING_MODEL = 'deepseek-embedding'
-const EMBEDDING_DIMENSIONS = 4096
 const MAX_CACHE_SIZE = 500
 
+interface EmbeddingClientConfig {
+  apiKey: string
+  baseURL: string
+  model: string
+}
+
 let client: OpenAI | null = null
+let clientConfig: EmbeddingClientConfig | null = null
+
+function resolveEmbeddingConfig(): EmbeddingClientConfig {
+  if (process.env.EMBEDDING_API_KEY) {
+    return {
+      apiKey: process.env.EMBEDDING_API_KEY,
+      baseURL: process.env.EMBEDDING_BASE_URL || 'https://api.openai.com/v1',
+      model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+    }
+  }
+
+  if (process.env.OPENAI_API_KEY) {
+    return {
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL || process.env.EMBEDDING_BASE_URL || 'https://api.openai.com/v1',
+      model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+    }
+  }
+
+  throw new Error(
+    'Embedding API 未配置：DeepSeek 仅提供对话模型，不提供 Embedding 接口。'
+    + '请设置 EMBEDDING_API_KEY + EMBEDDING_BASE_URL（或 OPENAI_API_KEY）以启用向量检索。',
+  )
+}
 
 function getClient(): OpenAI {
-  if (!client) {
-    const apiKey = process.env.DEEPSEEK_API_KEY
-    if (!apiKey) {
-      throw new Error('DEEPSEEK_API_KEY environment variable is required.')
-    }
+  const config = resolveEmbeddingConfig()
+  if (!client || !clientConfig
+    || clientConfig.apiKey !== config.apiKey
+    || clientConfig.baseURL !== config.baseURL
+    || clientConfig.model !== config.model) {
     client = new OpenAI({
-      baseURL: 'https://api.deepseek.com',
-      apiKey,
+      baseURL: config.baseURL,
+      apiKey: config.apiKey,
     })
+    clientConfig = config
   }
   return client
+}
+
+function getEmbeddingModel(): string {
+  return resolveEmbeddingConfig().model
+}
+
+function getDefaultDimensions(): number {
+  const configured = Number(process.env.EMBEDDING_DIMENSIONS)
+  return Number.isFinite(configured) && configured > 0 ? configured : 1536
 }
 
 // ────────────────────────────────────────────
@@ -36,7 +74,6 @@ const cache = new Map<string, number[]>()
 function cacheGet(key: string): number[] | undefined {
   const value = cache.get(key)
   if (value !== undefined) {
-    // Move to end (most recently used)
     cache.delete(key)
     cache.set(key, value)
   }
@@ -47,7 +84,6 @@ function cacheSet(key: string, value: number[]): void {
   if (cache.has(key)) {
     cache.delete(key)
   } else if (cache.size >= MAX_CACHE_SIZE) {
-    // Evict oldest entry
     const firstKey = cache.keys().next().value
     if (firstKey !== undefined) {
       cache.delete(firstKey)
@@ -65,16 +101,18 @@ export interface EmbeddingResult {
   dimensions: number
 }
 
+export function isEmbeddingConfigured(): boolean {
+  return Boolean(process.env.EMBEDDING_API_KEY || process.env.OPENAI_API_KEY)
+}
+
 /**
  * Generate embedding for a single text string.
- *
- * Results are cached by text hash to avoid redundant API calls
- * for the same content.
  */
 export async function embedText(text: string): Promise<EmbeddingResult> {
   const trimmed = text.trim()
+  const defaultDimensions = getDefaultDimensions()
   if (trimmed.length === 0) {
-    return { vector: new Array(EMBEDDING_DIMENSIONS).fill(0), dimensions: EMBEDDING_DIMENSIONS }
+    return { vector: new Array(defaultDimensions).fill(0), dimensions: defaultDimensions }
   }
 
   const cached = cacheGet(trimmed)
@@ -84,7 +122,7 @@ export async function embedText(text: string): Promise<EmbeddingResult> {
 
   const openai = getClient()
   const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
+    model: getEmbeddingModel(),
     input: trimmed,
   })
 
@@ -96,20 +134,16 @@ export async function embedText(text: string): Promise<EmbeddingResult> {
 
 /**
  * Generate embeddings for multiple texts in a single batch call.
- *
- * DeepSeek embedding API supports batch input (up to a reasonable limit).
- * Returns vectors in the same order as the input texts.
  */
 export async function embedBatch(texts: string[]): Promise<EmbeddingResult[]> {
   if (texts.length === 0) return []
 
-  // Check cache for all texts
+  const defaultDimensions = getDefaultDimensions()
   const results: (EmbeddingResult | null)[] = texts.map((t) => {
     const cached = cacheGet(t.trim())
     return cached ? { vector: cached, dimensions: cached.length } : null
   })
 
-  // Find indices that need API calls
   const uncachedIndices: number[] = []
   const uncachedTexts: string[] = []
   for (let i = 0; i < results.length; i++) {
@@ -119,11 +153,10 @@ export async function embedBatch(texts: string[]): Promise<EmbeddingResult[]> {
     }
   }
 
-  // Batch API call for uncached texts
   if (uncachedTexts.length > 0) {
     const openai = getClient()
     const response = await openai.embeddings.create({
-      model: EMBEDDING_MODEL,
+      model: getEmbeddingModel(),
       input: uncachedTexts,
     })
 
@@ -134,11 +167,10 @@ export async function embedBatch(texts: string[]): Promise<EmbeddingResult[]> {
     }
   }
 
-  // Fill in zero vectors for empty strings
-  return results.map((r, i) => {
+  return results.map((r) => {
     if (r) return r
-    return { vector: new Array(EMBEDDING_DIMENSIONS).fill(0), dimensions: EMBEDDING_DIMENSIONS }
+    return { vector: new Array(defaultDimensions).fill(0), dimensions: defaultDimensions }
   })
 }
 
-export { EMBEDDING_DIMENSIONS }
+export const EMBEDDING_DIMENSIONS = getDefaultDimensions()

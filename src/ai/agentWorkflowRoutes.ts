@@ -13,6 +13,7 @@
  * GET    /api/ai/workflow-executions
  * GET    /api/ai/workflow-executions/:id
  * POST   /api/ai/workflow-executions/:id/resume
+ * POST   /api/ai/workflow-executions/:id/cancel
  */
 
 import Router from '@koa/router'
@@ -33,6 +34,7 @@ import {
   getAgentWorkflowExecution,
   resumeAgentWorkflowExecution,
   continueAgentWorkflowExecution,
+  cancelAgentWorkflowExecution,
 } from './services/agentWorkflowService.js'
 
 const router = new Router({ prefix: '/api/ai' })
@@ -225,6 +227,22 @@ router.post('/workflow-executions/:id/continue', async (ctx) => {
   if (!data) {
     ctx.status = 404
     ctx.body = { success: false, error: { message: 'Execution not found' } }
+    return
+  }
+  ctx.body = { success: true, data }
+})
+
+router.post('/workflow-executions/:id/cancel', async (ctx) => {
+  if (rejectInvalidObjectId(ctx, ctx.params.id, 'execution id')) return
+  const reason = (ctx.request.body as { reason?: string })?.reason?.trim()
+  const data = await cancelAgentWorkflowExecution(
+    ctx.params.id,
+    getUserId(ctx),
+    reason || undefined,
+  )
+  if (!data) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Execution not found or not cancellable' } }
     return
   }
   ctx.body = { success: true, data }

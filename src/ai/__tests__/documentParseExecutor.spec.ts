@@ -1,75 +1,85 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-
-vi.mock('../models/agentWorkflow.js', () => ({
-  AgentWorkflowExecutionModel: {
-    updateOne: vi.fn(),
-    findById: vi.fn(),
-  },
-}))
-
-vi.mock('./documentService.js', () => ({
-  getDocumentWithText: vi.fn(),
-}))
-
-vi.mock('./llmCache.js', () => ({
-  getLLM: vi.fn(),
-}))
-
-vi.mock('../tools/registry.js', () => ({
-  ensureToolsReady: vi.fn(),
-  getToolSync: vi.fn(),
-  getToolsByNames: vi.fn(),
-}))
-
-import { getDocumentWithText } from './documentService.js'
-
-// 通过 executeAgentWorkflow 间接测试较重，此处直接验证 document-parse 分支逻辑
-// 抽取为可测纯函数风格（与 executor 内逻辑一致）
-function resolveDocumentId(
-  data: { documentSource?: string; documentId?: string; inputField?: string },
-  ctx: { input: Record<string, unknown>; lastOutput: unknown },
-): string {
-  const source = data.documentSource ?? 'inputField'
-  if (source === 'documentId') {
-    return String(data.documentId ?? '').trim()
-  }
-  const field = data.inputField?.trim() || 'documentId'
-  const inputObj = ctx.input
-  const lastObj = (ctx.lastOutput ?? {}) as Record<string, unknown>
-  const body = inputObj.body as Record<string, unknown> | undefined
-  const raw = lastObj[field] ?? inputObj[field] ?? body?.[field]
-  return raw != null ? String(raw) : ''
-}
+import { describe, it, expect } from 'vitest'
+import {
+  resolveDocumentIdFromNodeData,
+  resolveDocumentStreamFromNodeData,
+} from '../services/agentWorkflowConversation.js'
 
 describe('document-parse node resolution', () => {
-  beforeEach(() => {
-    vi.mocked(getDocumentWithText).mockReset()
-  })
-
   it('reads documentId from input field', () => {
-    const id = resolveDocumentId(
+    const id = resolveDocumentIdFromNodeData(
       { documentSource: 'inputField', inputField: 'documentId' },
-      { input: { documentId: 'abc123' }, lastOutput: {} },
+      (text) => text,
+      { documentId: 'abc123' },
+      {},
     )
     expect(id).toBe('abc123')
   })
 
   it('reads documentId from webhook body', () => {
-    const id = resolveDocumentId(
+    const id = resolveDocumentIdFromNodeData(
       { documentSource: 'inputField', inputField: 'documentId' },
-      { input: { body: { documentId: 'from-webhook' } }, lastOutput: {} },
+      (text) => text,
+      { body: { documentId: 'from-webhook' } },
+      {},
     )
     expect(id).toBe('from-webhook')
   })
 
   it('uses fixed documentId source', () => {
-    const id = resolveDocumentId(
+    const id = resolveDocumentIdFromNodeData(
       { documentSource: 'documentId', documentId: 'fixed-id' },
-      { input: {}, lastOutput: {} },
+      (text) => text,
+      {},
+      {},
     )
     expect(id).toBe('fixed-id')
+  })
+
+  it('returns empty id for stream source', () => {
+    const id = resolveDocumentIdFromNodeData(
+      { documentSource: 'stream', streamField: 'file' },
+      (text) => text,
+      { file: { filename: 'a.txt', mimetype: 'text/plain', content: 'aGVsbG8=' } },
+      {},
+    )
+    expect(id).toBe('')
+  })
+
+  it('reads file payload from stream field', () => {
+    const file = resolveDocumentStreamFromNodeData(
+      { documentSource: 'stream', streamField: 'file' },
+      {
+        file: {
+          filename: 'demo.txt',
+          mimetype: 'text/plain',
+          content: Buffer.from('hello', 'utf-8').toString('base64'),
+        },
+      },
+      {},
+    )
+    expect(file?.filename).toBe('demo.txt')
+    expect(file?.mimetype).toBe('text/plain')
+    expect(file?.content.toString('utf-8')).toBe('hello')
+  })
+
+  it('reads nested stream field from webhook body', () => {
+    const file = resolveDocumentStreamFromNodeData(
+      { documentSource: 'stream', streamField: 'upload' },
+      {
+        body: {
+          upload: {
+            filename: 'report.pdf',
+            mimetype: 'application/pdf',
+            base64: Buffer.from('%PDF', 'utf-8').toString('base64'),
+          },
+        },
+      },
+      {},
+    )
+    expect(file?.filename).toBe('report.pdf')
+    expect(file?.content.length).toBeGreaterThan(0)
   })
 })

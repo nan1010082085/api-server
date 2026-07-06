@@ -485,6 +485,40 @@ export async function resumeAgentWorkflowExecution(
   return getAgentWorkflowExecution(executionId, userId)
 }
 
+export async function cancelAgentWorkflowExecution(
+  executionId: string,
+  userId: string,
+  reason = '用户手动停止',
+) {
+  const execution = await AgentWorkflowExecutionModel.findOne({
+    _id: executionId,
+    triggeredBy: userId,
+    status: { $in: ['running', 'waiting'] },
+  })
+  if (!execution) return null
+
+  const finishedAt = new Date()
+  for (const record of execution.nodeRecords) {
+    if (record.status === 'running') {
+      record.status = 'skipped'
+      record.error = reason
+      record.finishedAt = finishedAt
+      if (record.startedAt) {
+        record.durationMs = finishedAt.getTime() - new Date(record.startedAt).getTime()
+      }
+    }
+  }
+
+  execution.status = 'cancelled'
+  execution.finishedAt = finishedAt
+  execution.durationMs = finishedAt.getTime() - execution.startedAt.getTime()
+  execution.error = reason
+  execution.markModified('nodeRecords')
+  await execution.save()
+
+  return toExecution(execution.toJSON() as unknown as Record<string, unknown>)
+}
+
 interface WebhookGraphNode {
   id: string
   type: string
