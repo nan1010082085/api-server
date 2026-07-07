@@ -258,7 +258,7 @@ export const AgentStateAnnotation = Annotation.Root({
     id: string
     conversationId: string
     currentAgent: ActiveAgent
-    /** 插件中心专家 id（无 legacyAgentKey 的专家走 pluginExpert 节点） */
+    /** 插件中心专家 id（LangGraph 统一走 pluginExpert 节点） */
     currentExpertId?: string
     /** 全局节点执行计数，用于死循环防护 */
     nodeExecutionCount: number

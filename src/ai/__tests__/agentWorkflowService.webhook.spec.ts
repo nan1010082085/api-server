@@ -86,32 +86,36 @@ describe('agentWorkflowService publish + webhook', () => {
 
   it('findPublishedWorkflowByWebhook returns secret from published graph', async () => {
     workflowFind.mockReturnValue({
-      lean: async () => [
-        {
-          _id: new mongoose.Types.ObjectId(),
-          name: 'Published',
-          createdBy: 'user1',
-          status: 'published',
-          publishedGraph: {
-            entryNodeId: 'wh-1',
-            nodes: [
-              {
-                id: 'wh-1',
-                type: 'webhook-trigger',
-                data: {
-                  webhookPath: '/verify-hook',
-                  webhookMethod: 'POST',
-                  webhookSecret: 'deadbeef',
+      select: () => ({
+        lean: async () => [
+          {
+            _id: new mongoose.Types.ObjectId(),
+            name: 'Published',
+            createdBy: 'user1',
+            status: 'published',
+            invokeKey: 'wf_testkey',
+            publishedGraph: {
+              entryNodeId: 'wh-1',
+              nodes: [
+                {
+                  id: 'wh-1',
+                  type: 'webhook-trigger',
+                  data: {
+                    webhookPath: '/verify-hook',
+                    webhookMethod: 'POST',
+                    webhookSecret: 'deadbeef',
+                  },
                 },
-              },
-            ],
+              ],
+            },
           },
-        },
-      ],
+        ],
+      }),
     })
 
     const match = await findPublishedWorkflowByWebhook('/verify-hook', 'POST')
     expect(match?.webhookSecret).toBe('deadbeef')
+    expect(match?.invokeKey).toBe('wf_testkey')
     expect(match?.createdBy).toBe('user1')
   })
 })

@@ -20,6 +20,7 @@ import {
 } from '../models/agentWorkflow.js'
 import { executeAgentWorkflow } from './agentWorkflowExecutor.js'
 import { ensureWebhookSecretsInGraph } from './agentWorkflowWebhookUtils.js'
+import { generateInvokeKey, maskInvokeKey, verifyWorkflowInvokeKey } from './agentWorkflowInvoke.js'
 import { resolveCompleteCallback, dispatchWorkflowCompleteCallback } from './agentWorkflowCompleteCallback.js'
 import { logger } from '../../utils/logger.js'
 import { docId, refId, toObjectId } from '../../utils/objectId.js'
@@ -167,7 +168,9 @@ export async function createAgentWorkflow(
 }
 
 export async function getAgentWorkflow(id: string, userId: string) {
-  const doc = await AgentWorkflowModel.findOne({ _id: id, createdBy: userId }).lean()
+  const doc = await AgentWorkflowModel.findOne({ _id: id, createdBy: userId })
+    .select('+invokeKey')
+    .lean()
   if (!doc) return null
   const json = doc as unknown as Record<string, unknown>
 
@@ -176,10 +179,16 @@ export async function getAgentWorkflow(id: string, userId: string) {
     status: 'running',
   })
 
+  const slug = (json.slug as string) ?? null
+  const invokeKey = (json.invokeKey as string) ?? null
+
   return {
     ...toSummary(json, runningCount > 0),
     draftGraph: json.draftGraph,
     onCompleteWebhook: (json.onCompleteWebhook as { url: string; secret?: string } | null) ?? null,
+    slug,
+    invokeKeyMasked: invokeKey ? maskInvokeKey(invokeKey) : null,
+    invokePath: slug ? `/api/ai/workflows/invoke/${slug}` : null,
   }
 }
 
@@ -289,12 +298,16 @@ export async function publishAgentWorkflow(id: string, userId: string) {
       String(workflow._id),
     )
   }
+  if (!workflow.invokeKey?.trim()) {
+    workflow.invokeKey = generateInvokeKey()
+  }
   await workflow.save()
 
   return {
     publishId,
     version: publishVersion,
     slug: workflow.slug ?? null,
+    invokeKey: workflow.invokeKey ?? null,
   }
 }
 
@@ -604,7 +617,7 @@ export async function findPublishedWorkflowByWebhook(path: string, method: strin
   const normalizedPath = normalizeWebhookPath(path)
   const normalizedMethod = method.toUpperCase()
 
-  const workflows = await AgentWorkflowModel.find({ status: 'published' }).lean()
+  const workflows = await AgentWorkflowModel.find({ status: 'published' }).select('+invokeKey').lean()
   for (const workflow of workflows) {
     const graph = workflow.publishedGraph as WebhookGraph | null
     if (!graph?.nodes?.length) continue
@@ -621,11 +634,32 @@ export async function findPublishedWorkflowByWebhook(path: string, method: strin
           entryNodeId: graph.entryNodeId ?? node.id,
           nodeId: node.id,
           webhookSecret: node.data?.webhookSecret?.trim() || undefined,
+          invokeKey: (workflow.invokeKey as string | undefined)?.trim() || undefined,
         }
       }
     }
   }
   return null
+}
+
+export async function getAgentWorkflowExecutionByInvokeKey(
+  executionId: string,
+  invokeKey: string | undefined,
+  tenantId = '000000',
+) {
+  const doc = await AgentWorkflowExecutionModel.findById(executionId).lean()
+  if (!doc) return null
+
+  const workflow = await AgentWorkflowModel.findById(
+    (doc as unknown as Record<string, unknown>).workflowId,
+  )
+    .select('+invokeKey')
+    .lean()
+  if (!workflow) return null
+  if ((workflow.tenantId as string) !== tenantId) return null
+  if (!verifyWorkflowInvokeKey(workflow.invokeKey as string | undefined, invokeKey)) return null
+
+  return toExecution(doc as unknown as Record<string, unknown>)
 }
 
 // 保持向后兼容（旧测试引用）

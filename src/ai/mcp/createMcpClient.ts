@@ -5,6 +5,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { McpServerDeclaration } from '../plugins/types.js'
 import { resolveBuiltinMcpFactory } from './builtinFactories.js'
+import { resolveCustomMcpFactory } from './customMcpFactory.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
@@ -20,9 +21,20 @@ async function createInternalClient(factory: () => McpServer): Promise<Client> {
 
 export async function createMcpClient(decl: McpServerDeclaration): Promise<Client> {
   if (decl.transport === 'inmemory') {
+    const factoryModule = decl.factoryModule?.trim()
+    if (factoryModule) {
+      const factory = await resolveCustomMcpFactory(factoryModule, decl.factoryExport)
+      if (!factory) {
+        throw new Error(
+          `[mcpBridge] custom factory not found in "${factoryModule}" export "${decl.factoryExport ?? 'createMcpServer'}"`,
+        )
+      }
+      return createInternalClient(factory)
+    }
+
     const builtin = decl.builtin?.trim()
     if (!builtin) {
-      throw new Error(`[mcpBridge] inmemory server ${decl.id} missing builtin`)
+      throw new Error(`[mcpBridge] inmemory server ${decl.id} missing builtin or factoryModule`)
     }
     const factory = await resolveBuiltinMcpFactory(builtin)
     if (!factory) {

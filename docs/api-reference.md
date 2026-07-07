@@ -1132,27 +1132,37 @@ MCP (Model Context Protocol) SSE 传输。
 
 ## 36. AI 核心
 
-### `POST /api/ai/chat`
+### Chat 流式对话（WebSocket）
 
-SSE 流式对话（LangGraph streamEvents，多 Agent 路由）。
+Chat UI 通过 Socket.IO 流式对话，不走 HTTP SSE。
 
-**请求体**:
-```json
-{
-  "message": "帮我创建一个请假表单",
-  "conversationId": "optional_thread_id"
-}
-```
+| 事件 | 方向 | 说明 |
+|------|------|------|
+| `chat:send` | Client → Server | 发送消息，启动 LangGraph 流 |
+| `chat:event` | Server → Client | 流式事件（text、tool_call、schema、flow、done 等） |
+| `chat:resume` | Client → Server | HITL 中断后恢复 |
+| `chat:cancel` | Client → Server | 取消当前流 |
 
-**SSE 事件类型**: thinking, text, tool_call, schema, flow, diff, error
+实现：`server/src/ai/chatStreamHandler.ts` + `chatStreamRunner.ts`。
+
+### Agent Workflow 执行进度（WebSocket）
+
+平台内执行（Chat、设计器、执行详情/列表）通过 Socket.IO 推送进度：
+
+| 事件 | 方向 | 说明 |
+|------|------|------|
+| `workflow:subscribe` | Client → Server | 订阅 `workflow:{executionId}` 房间 |
+| `workflow:event` | Server → Client | 执行快照（status、nodeRecords、streamingOutput） |
+| `workflow:unsubscribe` | Client → Server | 取消订阅 |
+| `workflow:error` | Server → Client | 订阅失败（无权限、执行不存在） |
+
+启动执行仍走 REST：`POST /api/ai/workflows/:id/execute`（可传 `trigger: chat|manual|...`）。
+
+实现：`server/src/ai/workflowStreamHandler.ts` + `workflowExecutionPush.ts`。
 
 ### `GET /api/ai/chat/interrupt/:threadId`
 
-检查 HITL 中断状态。
-
-### `POST /api/ai/chat/resume`
-
-恢复 HITL 中断（确认/取消）。
+检查 HITL 中断状态（REST 查询，恢复走 `chat:resume` WebSocket）。
 
 ### `POST /api/ai/publish`
 
@@ -1522,28 +1532,40 @@ Provider 列表及策略。
 
 Webhook 触发：`POST /api/ai/webhooks/*path`（HMAC `X-Webhook-Signature`）。
 
-插件 Registry（设计器）：`GET /api/ai/plugins` — 返回 experts / tools / mcpServers 配置快照。
+插件 Registry（设计器）：`GET /api/ai/plugins` — 返回 experts / tools / mcpServers 配置快照。详见 [`ai/docs/plugin.md`](../../ai/docs/plugin.md)。
 
 ---
 
-## Agent Workflow Open API（API Key）
+## Agent Workflow 外部集成（invoke）
 
-> 完整说明见仓库 `ai/docs/design/workflow-open-api.md`；OpenAPI spec：`server/openapi/workflow-open.yaml`
+> **唯一外部入口**：`POST /api/ai/workflows/invoke/:slugOrId`（按 slug 或 workflow `_id`）。  
+> `/api/ai/open/*` 已在基线 1.0 **删除**。详见 [`ai/docs/sdk.md`](../../ai/docs/sdk.md)、[`ai/docs/design/workflow-open-api.md`](../../ai/docs/design/workflow-open-api.md)。
 
-**鉴权**：`X-API-Key: sk_xxx` 或 `Authorization: Bearer sk_xxx`，需权限 `workflow:execute`。
+**鉴权**：`X-Workflow-Key: wf-...`（与 workflow 发布时生成的 `invokeKey` 一致）。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/ai/open/workflows/:id/execute` | 按 ID 执行已发布 workflow |
-| POST | `/api/ai/open/workflows/by-slug/:slug/execute` | 按 slug 执行 |
-| GET | `/api/ai/open/workflow-executions/:id` | 查询状态 |
-| GET | `/api/ai/open/workflow-executions/:id/stream` | SSE 进度 |
-| POST | `/api/ai/open/workflow-executions/:id/resume` | HITL 恢复 |
-| POST | `/api/ai/open/workflow-executions/:id/cancel` | 取消 |
+| POST | `/api/ai/workflows/invoke/:slugOrId` | 执行已发布 workflow（202 + executionId） |
+| GET | `/api/ai/workflows/invoke/executions/:executionId` | 按 invoke key 查询执行状态 |
 
-Query：`async=true`（立即返回 pollUrl）、`version=yyyymmddhhmmss`（历史版本）。  
-Header：`Idempotency-Key`（24h 幂等）。  
-Body 可选：`callbackUrl` / `callbackSecret` 覆盖 workflow 级 `onCompleteWebhook`。
+**Header**：
+
+| Header | 说明 |
+|---|---|
+| `X-Workflow-Key` | 必填，workflow 级调用密钥 |
+| `X-Tenant-Id` | 可选，默认 `000000` |
+
+**Body**（JSON，均可选）：
+
+| 字段 | 说明 |
+|---|---|
+| `input` | 工作流输入对象 |
+| `trigger` | `manual` \| `webhook` \| `chat` \| `api`（默认 `api`） |
+| `callbackUrl` / `callbackSecret` | 覆盖 workflow 级 `onCompleteWebhook` |
+
+**管理面**（JWT）：`POST /api/ai/workflows/:id/execute` 与 ai-app 设计器测试执行相同；所有者持钥等价 invoke。
+
+**待办（Phase A）**：用户平台 Key（`sk-...`）经 `X-API-Key` 调用同一 invoke 入口。
 
 ---
 

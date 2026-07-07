@@ -1,8 +1,8 @@
 /**
  * AI Chat 流式执行核心逻辑
  *
- * 从 routes.ts 提取的 LangGraph streamEvents 处理循环。
- * HTTP SSE 和 WebSocket 共用此模块，仅通过 send/onDone/onError 回调区分传输层。
+ * LangGraph streamEvents 处理循环，由 WebSocket chatStreamHandler 调用。
+ * 通过 send / onDone / onError 回调推送 chat:event。
  */
 
 import { HumanMessage } from '@langchain/core/messages'
@@ -37,6 +37,10 @@ const KEY_STREAM_EVENT_TYPES = new Set([
   'tool_call_start',
   'tool_call_end',
   'tool_error',
+  'thinker_start',
+  'thinker_complete',
+  'quality_check_start',
+  'quality_check_complete',
   'update_schema',
   'update_flow',
   'schema_complete',
@@ -124,7 +128,7 @@ export interface StreamHandle {
 // ────────────────────────────────────────────
 
 /**
- * 执行一次完整的 chat 流。HTTP 和 WebSocket 都调用此函数。
+ * 执行一次完整的 chat 流。WebSocket chat:send 调用此函数。
  *
  * @param request  - 聊天请求参数
  * @param send     - 发送事件到客户端的回调
@@ -343,6 +347,20 @@ async function runChatStream(
     send(event)
   }
 
+  function sendSchemaComplete(schema: unknown, description: string): void {
+    sendEvent({ type: 'quality_check_start' })
+    const issues: string[] = []
+    if (Array.isArray(schema)) {
+      for (const item of schema) {
+        if (!item || typeof item !== 'object') continue
+        const w = item as Record<string, unknown>
+        if (!w.label && !w.title) issues.push('组件缺少 label')
+      }
+    }
+    sendEvent({ type: 'quality_check_complete', passed: issues.length === 0, issues })
+    sendEvent({ type: 'schema_complete', schema, description })
+  }
+
   const graphStartTime = Date.now()
 
   try {
@@ -372,6 +390,9 @@ async function runChatStream(
           }
 
           // 原有节点事件
+          if (nodeName === 'router') {
+            sendEvent({ type: 'thinker_start' })
+          }
           if (['editor', 'flow', 'page', 'general', 'summarizer'].includes(nodeName)) {
             currentAgent = nodeName === 'summarizer' ? 'general' : nodeName as typeof currentAgent
             sendEvent({ type: 'agent_switch', agent: currentAgent })
@@ -413,6 +434,13 @@ async function runChatStream(
           if (nodeName === 'router') {
             const output = event.data?.output as Record<string, unknown> | undefined
             const taskGroup = output?.task as Record<string, unknown> | undefined
+            const routedAgent = (output?.session as Record<string, unknown> | undefined)?.currentAgent
+              ?? (output?.currentAgent as string | undefined)
+            sendEvent({
+              type: 'thinker_complete',
+              agent: typeof routedAgent === 'string' ? routedAgent : undefined,
+              hasTaskChain: Boolean(taskGroup?.chain && Array.isArray(taskGroup.chain) && taskGroup.chain.length > 0),
+            })
             if (taskGroup?.chain && Array.isArray(taskGroup.chain) && taskGroup.chain.length > 0) {
               const steps = taskGroup.chain as Array<{ agent: string; description: string; status: string }>
               sendEvent({
@@ -617,7 +645,7 @@ async function runChatStream(
             const payload = pendingPayloads.get(toolRunId)
             if (payload) {
               accumulatedSchema = payload as Record<string, unknown>[]
-              sendEvent({ type: 'schema_complete', schema: payload, description: accumulatedContent })
+              sendSchemaComplete(payload, accumulatedContent)
               const v = await createVersion({
                 conversationId: convo._id, messageId: toolRunId, type: 'schema',
                 content: payload as Record<string, unknown>[], description: '生成 Schema',
@@ -646,7 +674,7 @@ async function runChatStream(
             const result = toolResult as Record<string, unknown> | undefined
             const resultData = result?.data as Record<string, unknown> | undefined
             if (resultData?.widgets) {
-              sendEvent({ type: 'schema_complete', schema: resultData.widgets, description: (resultData.summary as string) ?? '' })
+              sendSchemaComplete(resultData.widgets, (resultData.summary as string) ?? '')
               const v = await createVersion({
                 conversationId: convo._id, messageId: toolRunId, type: 'schema',
                 content: resultData.widgets as Record<string, unknown>[], description: (resultData.summary as string) ?? '生成 Schema',
@@ -661,7 +689,7 @@ async function runChatStream(
             const result = toolResult as Record<string, unknown> | undefined
             const resultData = result?.data as Record<string, unknown> | undefined
             if (widgetsPayload) {
-              sendEvent({ type: 'schema_complete', schema: widgetsPayload, description: (resultData?.description as string) ?? '' })
+              sendSchemaComplete(widgetsPayload, (resultData?.description as string) ?? '')
               if (resultData?.diff) {
                 sendEvent({ type: 'schema_diff', diff: resultData.diff, description: (resultData?.description as string) ?? '' })
               }
@@ -724,7 +752,7 @@ async function runChatStream(
           } else if (parsed.type === 'schema_update' && parsed.widgets) {
             const adaptedWidgets = adaptWidgets(parsed.widgets)
             accumulatedSchema = adaptedWidgets
-            sendEvent({ type: 'schema_complete', schema: adaptedWidgets, description: accumulatedContent.replace(/<[\s\S]*?<\/schema>/, '').trim().slice(0, 200) })
+            sendSchemaComplete(adaptedWidgets, accumulatedContent.replace(/<[\s\S]*?<\/schema>/, '').trim().slice(0, 200))
             const v = await createVersion({ conversationId: convo._id, messageId: `text-${Date.now()}`, type: 'schema', content: adaptedWidgets, description: 'AI 生成 Schema' })
             sendEvent({ type: 'version_created', versionId: v._id, version: v.version })
           }

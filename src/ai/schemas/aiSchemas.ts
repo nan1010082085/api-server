@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 // ────────────────────────────────────────────
-// POST /api/ai/chat request schema
+// WebSocket chat:send 请求体校验（chatStreamHandler）
 // ────────────────────────────────────────────
 export const chatRequestSchema = z.object({
   conversationId: z.string().uuid('Invalid conversationId format').optional(),

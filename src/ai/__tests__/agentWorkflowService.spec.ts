@@ -84,17 +84,19 @@ describe('agentWorkflowService serializers', () => {
 
   it('getAgentWorkflow maps lean _id to id', async () => {
     workflowFindOne.mockReturnValue({
-      lean: async () => ({
-        _id: '507f1f77bcf86cd799439012',
-        name: 'Detail',
-        description: '',
-        status: 'draft',
-        version: '20260701090000',
-        publishId: null,
-        publishedVersion: null,
-        draftGraph: { entryNodeId: 'trigger-1', nodes: [], edges: [] },
-        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      select: () => ({
+        lean: async () => ({
+          _id: '507f1f77bcf86cd799439012',
+          name: 'Detail',
+          description: '',
+          status: 'draft',
+          version: '20260701090000',
+          publishId: null,
+          publishedVersion: null,
+          draftGraph: { entryNodeId: 'trigger-1', nodes: [], edges: [] },
+          updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }),
       }),
     })
     executionCount.mockResolvedValue(0)

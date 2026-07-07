@@ -76,7 +76,10 @@ export function copyPackLayers(srcPackDir: string, targetPluginsDir: string): vo
     if (!existsSync(srcLayer)) continue
     const destLayer = path.join(targetPluginsDir, layer)
     mkdirSync(destLayer, { recursive: true })
-    for (const file of readdirSync(srcLayer).filter((f) => f.endsWith('.json'))) {
+    for (const file of readdirSync(srcLayer)) {
+      const isJson = file.endsWith('.json')
+      const isSkillAsset = layer === 'skills' && file.endsWith('.md')
+      if (!isJson && !isSkillAsset) continue
       cpSync(path.join(srcLayer, file), path.join(destLayer, file))
     }
   }

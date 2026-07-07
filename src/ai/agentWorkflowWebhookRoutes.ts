@@ -3,8 +3,10 @@
  *
  * POST/GET /api/ai/webhooks/*path
  *
- * 鉴权：HMAC-SHA256（与 BPMN Webhook 一致），请求头 X-Webhook-Signature: sha256=<hex>
- * 开发环境可设 AI_WEBHOOK_SKIP_HMAC=true 跳过验签。
+ * 鉴权（任一通过即可）：
+ * - X-Workflow-Key：与 workflow.invokeKey 一致（统一调用模型）
+ * - X-Webhook-Signature: sha256=<hex>：节点 webhookSecret 或 workflow.invokeKey 的 HMAC
+ * 开发环境可设 AI_WEBHOOK_SKIP_HMAC=true 跳过 HMAC 验签（仍需 Key 或跳过全部）。
  */
 
 import Router from '@koa/router'
@@ -18,9 +20,43 @@ import {
   verifyWebhookHmac,
   shouldSkipWebhookHmac,
 } from './services/agentWorkflowWebhookUtils.js'
+import {
+  verifyWorkflowInvokeKey,
+  verifyWebhookSignatureWithInvokeKey,
+  readWorkflowKeyFromContext,
+  WORKFLOW_KEY_HEADER,
+} from './services/agentWorkflowInvoke.js'
 import { logger } from '../utils/logger.js'
 
 const router = new Router({ prefix: '/api/ai/webhooks' })
+
+function isWebhookAuthorized(
+  match: { webhookSecret?: string; invokeKey?: string },
+  ctx: { get: (name: string) => string },
+  payload: string,
+): boolean {
+  const workflowKey = readWorkflowKeyFromContext(ctx as Parameters<typeof readWorkflowKeyFromContext>[0])
+  if (verifyWorkflowInvokeKey(match.invokeKey, workflowKey)) {
+    return true
+  }
+
+  if (shouldSkipWebhookHmac()) {
+    return true
+  }
+
+  const signatureHeader = ctx.get('X-Webhook-Signature')
+  const nodeSecret = match.webhookSecret?.trim()
+
+  if (nodeSecret && verifyWebhookHmac(nodeSecret, signatureHeader, payload)) {
+    return true
+  }
+
+  if (match.invokeKey && verifyWebhookSignatureWithInvokeKey(match.invokeKey, signatureHeader, payload)) {
+    return true
+  }
+
+  return false
+}
 
 async function handleWebhook(ctx: {
   method: string
@@ -41,19 +77,22 @@ async function handleWebhook(ctx: {
     return
   }
 
-  const secret = match.webhookSecret
-  if (secret && !shouldSkipWebhookHmac()) {
-    const payload = buildWebhookSignaturePayload(
-      httpMethod,
-      ctx.request.body,
-      ctx.request.query ?? {},
-    )
-    const signatureHeader = ctx.get('X-Webhook-Signature')
-    if (!verifyWebhookHmac(secret, signatureHeader, payload)) {
-      ctx.status = 401
-      ctx.body = { success: false, error: { message: 'Invalid or missing X-Webhook-Signature' } }
-      return
+  const payload = buildWebhookSignaturePayload(
+    httpMethod,
+    ctx.request.body,
+    ctx.request.query ?? {},
+  )
+
+  if (!isWebhookAuthorized(match, ctx, payload)) {
+    ctx.status = 401
+    ctx.body = {
+      success: false,
+      error: {
+        message: `Invalid auth: set ${WORKFLOW_KEY_HEADER} or X-Webhook-Signature`,
+        code: 'invalid_webhook_auth',
+      },
     }
+    return
   }
 
   const input: Record<string, unknown> = {

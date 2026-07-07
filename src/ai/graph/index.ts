@@ -15,9 +15,8 @@ export { checkpointer } from './checkpointer.js'
 export { AgentStateAnnotation } from './state.js'
 export type { AIConversationState, AgentStateUpdate, ActiveAgent, TaskStep, AIContext } from './state.js'
 
-// Nodes
-export { editorAgentNode } from './editorAgent.js'
-export { flowAgentNode } from './flowAgent.js'
+// LangGraph expert node
+export { pluginExpertAgentNode } from './pluginExpertAgent.js'
 
 // Shared utilities (used by tools and schemaGenerator)
 export {

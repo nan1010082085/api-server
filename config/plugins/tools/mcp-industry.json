@@ -1,6 +1,6 @@
 {
   "tools": [
-    { "name": "industry__search_templates", "kind": "mcp", "source": "platform.industry", "argsHint": "{\"keyword\":\"病历\",\"industry\":\"medical\",\"type\":\"form\"}" },
-    { "name": "industry__validate_form", "kind": "mcp", "source": "platform.industry", "argsHint": "{\"widgets\":[],\"industry\":\"medical\"}" }
+    { "name": "industry__search_templates", "kind": "mcp", "label": "搜索行业模板", "category": "mcp-industry", "source": "platform.industry", "argsHint": "{\"keyword\":\"病历\",\"industry\":\"medical\",\"type\":\"form\"}" },
+    { "name": "industry__validate_form", "kind": "mcp", "label": "校验行业表单", "category": "mcp-industry", "source": "platform.industry", "argsHint": "{\"widgets\":[],\"industry\":\"medical\"}" }
   ]
 }

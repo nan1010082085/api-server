@@ -25,8 +25,10 @@ export interface IAgentWorkflow {
   publishedVersion?: string | null
   /** 已发布版本对应的 graph 快照 */
   publishedGraph?: Record<string, unknown> | null
-  /** 执行完成后 POST 结果的回调 URL（Open API / 外部集成） */
+  /** 执行完成后 POST 结果的回调 URL */
   onCompleteWebhook?: { url: string; secret?: string } | null
+  /** 统一调用密钥：POST /api/ai/workflows/invoke/:slug + X-Workflow-Key */
+  invokeKey?: string | null
   /** 兼容旧数据：已发布版本 ObjectId */
   currentVersionId?: mongoose.Types.ObjectId | null
   createdBy: string
@@ -69,6 +71,7 @@ const agentWorkflowSchema = new mongoose.Schema(
       },
       default: null,
     },
+    invokeKey: { type: String, default: null, select: false },
     currentVersionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'AgentWorkflowVersion',

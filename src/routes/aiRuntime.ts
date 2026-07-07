@@ -1,84 +1,51 @@
-/**
- * AI Runtime 路由 — 运行时 AI 智能决策
- *
- * 三项目关联：
- * - Flow: 在流程执行中调用 AI 进行智能决策
- * - Editor: 在审批界面展示 AI 建议
- * - AI: 提供智能分析和预测
- */
 import Router from '@koa/router'
 import { authMiddleware } from '../middleware/auth.js'
 import { buildApprovalSuggestion } from '../services/approvalSuggestionService.js'
 import { buildDailyDigest } from '../services/dailyDigestService.js'
 import { getCurrentTenantId } from '../middleware/tenantContext.js'
+import {
+  evaluateSimpleCondition,
+  predictApprovalOutcome,
+  scoreAssigneeCandidates,
+} from '../services/aiRuntimeRules.js'
 
 const requireAuth = authMiddleware({ required: true })
 
 const router = new Router({ prefix: '/api/ai/runtime' })
 
-/**
- * 智能指派人推荐
- */
 router.post('/recommend-assignee', requireAuth, async (ctx) => {
-  const { task, context } = ctx.request.body as any
-
-  // TODO: 调用 AI 模型进行智能推荐
-  // 暂时返回基于规则的推荐
-  const recommendations = []
-
-  if (task.candidateUsers?.length > 0) {
-    for (const userId of task.candidateUsers) {
-      recommendations.push({
-        userId,
-        userName: userId,
-        score: 0.8,
-        reason: '候选人列表中的用户',
-      })
-    }
+  const { task, context } = ctx.request.body as {
+    task?: { candidateUsers?: string[] }
+    context?: { workload?: Record<string, number> }
   }
+
+  const candidates = task?.candidateUsers ?? []
+  const recommendations = scoreAssigneeCandidates(candidates, context ?? {})
 
   ctx.body = recommendations
 })
 
-/**
- * 条件表达式评估
- */
 router.post('/evaluate-condition', requireAuth, async (ctx) => {
-  const { expression, variables } = ctx.request.body as any
-
-  // TODO: 调用 AI 模型进行复杂条件评估
-  // 暂时返回 true
-  ctx.body = { result: true }
-})
-
-/**
- * 预测审批结果
- */
-router.post('/predict-outcome', requireAuth, async (ctx) => {
-  const { task, formData } = ctx.request.body as any
-
-  // TODO: 基于历史数据预测
-  // 暂时返回默认预测
-  ctx.body = {
-    passProbability: 75,
-    estimatedDuration: 24,
-    riskFactors: [],
+  const { expression, variables } = ctx.request.body as {
+    expression?: string
+    variables?: Record<string, unknown>
   }
+
+  ctx.body = { result: evaluateSimpleCondition(expression ?? '', variables ?? {}) }
 })
 
-/**
- * 异常检测
- */
-router.post('/detect-anomaly', requireAuth, async (ctx) => {
-  const { instance, tasks } = ctx.request.body as any
+router.post('/predict-outcome', requireAuth, async (ctx) => {
+  const { formData } = ctx.request.body as { formData?: Record<string, unknown> }
+  ctx.body = predictApprovalOutcome(formData ?? {})
+})
 
-  // TODO: 分析流程执行状态，检测异常
-  // 暂时检查超时
+router.post('/detect-anomaly', requireAuth, async (ctx) => {
+  const { tasks } = ctx.request.body as { tasks?: Array<{ status?: string; createdAt?: string; nodeName?: string; nodeId?: string }> }
   const now = new Date()
-  const pendingTasks = tasks.filter((t: any) => t.status === 'pending' || t.status === 'claimed')
+  const pendingTasks = (tasks ?? []).filter((t) => t.status === 'pending' || t.status === 'claimed')
 
   for (const task of pendingTasks) {
-    const createdAt = new Date(task.createdAt)
+    const createdAt = new Date(task.createdAt ?? 0)
     const hoursDiff = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60)
 
     if (hoursDiff > 48) {
@@ -115,7 +82,6 @@ router.post('/approval-suggestion', requireAuth, async (ctx) => {
   ctx.body = result
 })
 
-/** A-06 — 每日工作摘要（规则版） */
 router.get('/daily-digest', requireAuth, async (ctx) => {
   const userId = (ctx.state.user as { id?: string })?.id
   const tenantId = getCurrentTenantId(ctx)

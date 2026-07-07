@@ -36,6 +36,11 @@ import {
   continueAgentWorkflowExecution,
   cancelAgentWorkflowExecution,
 } from './services/agentWorkflowService.js'
+import {
+  generateInvokeKey,
+  maskInvokeKey,
+} from './services/agentWorkflowInvoke.js'
+import { AgentWorkflowModel } from './models/agentWorkflow.js'
 
 const router = new Router({ prefix: '/api/ai' })
 
@@ -174,14 +179,51 @@ router.get('/workflows/:id/versions/:version', async (ctx) => {
 
 router.post('/workflows/:id/execute', async (ctx) => {
   if (rejectInvalidObjectId(ctx, ctx.params.id, 'workflow id')) return
-  const input = (ctx.request.body as { input?: Record<string, unknown> })?.input ?? {}
-  const data = await startAgentWorkflowExecution(ctx.params.id, getUserId(ctx), input)
+  const body = ctx.request.body as {
+    input?: Record<string, unknown>
+    trigger?: 'manual' | 'webhook' | 'chat' | 'api'
+  }
+  const input = body?.input ?? {}
+  const trigger = body?.trigger ?? 'manual'
+  const userId = getUserId(ctx)
+
+  // 平台内：JWT 所有者执行（含草稿测试）。与统一入口 invoke+key 共用 startAgentWorkflowExecution。
+  const data = await startAgentWorkflowExecution(ctx.params.id, userId, input, { trigger })
   if (!data) {
     ctx.status = 404
     ctx.body = { success: false, error: { message: 'Workflow not found' } }
     return
   }
   ctx.body = { success: true, data }
+})
+
+router.post('/workflows/:id/rotate-invoke-key', async (ctx) => {
+  if (rejectInvalidObjectId(ctx, ctx.params.id, 'workflow id')) return
+  const workflow = await AgentWorkflowModel.findOne({
+    _id: ctx.params.id,
+    createdBy: getUserId(ctx),
+  }).select('+invokeKey slug status tenantId')
+  if (!workflow) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Workflow not found' } }
+    return
+  }
+  if (workflow.status !== 'published') {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: '仅已发布工作流可轮换调用密钥' } }
+    return
+  }
+  workflow.invokeKey = generateInvokeKey()
+  await workflow.save()
+  const slug = workflow.slug ?? null
+  ctx.body = {
+    success: true,
+    data: {
+      invokeKey: workflow.invokeKey,
+      invokeKeyMasked: maskInvokeKey(workflow.invokeKey ?? ''),
+      invokePath: slug ? `/api/ai/workflows/invoke/${slug}` : null,
+    },
+  }
 })
 
 router.get('/workflow-executions', async (ctx) => {

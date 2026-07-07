@@ -1,0 +1,6 @@
+{
+  "id": "platform.reply-zh",
+  "label": "中文回复",
+  "content": "默认使用简体中文回复；技术术语可保留英文。",
+  "enabled": true
+}

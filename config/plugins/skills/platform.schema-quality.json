@@ -1,0 +1,6 @@
+{
+  "id": "platform.schema-quality",
+  "label": "Schema 质量规范",
+  "content": "生成表单 Schema 时：字段命名用 camelCase；每个输入组件必须有 label；必填项设置 required；避免重复 field id。",
+  "enabled": true
+}

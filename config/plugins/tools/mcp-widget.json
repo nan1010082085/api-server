@@ -1,6 +1,6 @@
 {
   "tools": [
-    { "name": "widget__query", "kind": "mcp", "source": "platform.widget", "argsHint": "{\"category\":\"form\"}" },
-    { "name": "widget__validate", "kind": "mcp", "source": "platform.widget", "argsHint": "{\"widgets\":[]}" }
+    { "name": "widget__query", "kind": "mcp", "label": "查询组件", "category": "mcp-widget", "source": "platform.widget", "argsHint": "{\"category\":\"form\"}" },
+    { "name": "widget__validate", "kind": "mcp", "label": "校验组件 Schema", "category": "mcp-widget", "source": "platform.widget", "argsHint": "{\"widgets\":[]}" }
   ]
 }

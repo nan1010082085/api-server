@@ -7,7 +7,7 @@
  * Nodes:
  * - router: routing decisions (explicit mode, task chain, or LLM analysis)
  * - taskChain: task chain progression management
- * - editor/flow/page/general: expert agents
+ * - pluginExpert: 唯一专家执行节点（Registry + 领域上下文）
  * - allTools: tool execution
  * - afterTools: post-tool collaboration extraction
  * - summarizer: multi-step result summary
@@ -17,17 +17,14 @@ import { StateGraph, END, START, BaseCheckpointSaver } from '@langchain/langgrap
 import { ToolNode } from '@langchain/langgraph/prebuilt'
 import { AIMessage, AIMessageChunk, SystemMessage, HumanMessage, ToolMessage } from '@langchain/core/messages'
 import { AgentStateAnnotation } from './state.js'
-import { editorAgentNode } from './editorAgent.js'
-import { flowAgentNode } from './flowAgent.js'
-import { pageAgentNode } from './pageAgent.js'
 import { pluginExpertAgentNode } from './pluginExpertAgent.js'
+import { sessionForAgent } from './resolveGraphExpert.js'
 import { getAllToolsSync, getToolsByNames } from '../tools/registry.js'
 import { checkpointer } from './checkpointer.js'
 import { getLLM } from '../services/llmCache.js'
 import { getModelForTask, resolveUserModel } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { extractAgentContext } from './contextCarrier.js'
-import { getMetadata } from '../tools/toolHandlers.js'
 import { ROUTER_SYSTEM_PROMPT } from '@schema-platform/ai-shared/promptBuilder'
 import { logger } from '../../utils/logger.js'
 import { requirementAnalyzerNode, routeAfterRequirementAnalyzer } from './requirementAnalyzer.js'
@@ -141,8 +138,15 @@ async function routerNode(
 
   if (state.context.source === 'editor' || state.context.source === 'flow' || state.context.source === 'page') {
     const agent = state.context.source
-    console.log(`[router] 显式模式 source=${agent}, 直接路由到 agentSelector`)
-    return { session: { ...state.session, currentAgent: agent, nodeExecutionCount: nextCount }, task: { ...state.task, type: 'generate_simple' }, tools: { ...state.tools, needsTool: true } }
+    console.log(`[router] 显式模式 source=${agent}, 路由到 pluginExpert`)
+    return {
+      session: sessionForAgent(
+        { ...state.session, nodeExecutionCount: nextCount },
+        agent,
+      ),
+      task: { ...state.task, type: 'generate_simple' },
+      tools: { ...state.tools, needsTool: true },
+    }
   }
 
   if (state.task.chain.length > 0) {
@@ -170,7 +174,11 @@ async function routerNode(
           { agent: 'page' as const, description: '生成业务页面', status: 'pending' as const },
           { agent: 'flow' as const, description: '生成审批流程', status: 'pending' as const },
         ]
-    return { session: { ...state.session, currentAgent: chain[0].agent }, task: { ...state.task, type: 'generate_simple', chain, currentStepIndex: 0 }, tools: { ...state.tools, needsTool: true } }
+    return {
+      session: sessionForAgent(state.session, chain[0].agent),
+      task: { ...state.task, type: 'generate_simple', chain, currentStepIndex: 0 },
+      tools: { ...state.tools, needsTool: true },
+    }
   }
 
   const routed = resolveRoutedExpert({
@@ -182,12 +190,11 @@ async function routerNode(
     if (routedKey && routedKey !== 'general') {
       console.log(`[router] pluginRegistry match -> ${routedKey} (${routed.id})`)
       return {
-        session: {
-          ...state.session,
-          currentAgent: routedKey,
-          currentExpertId: undefined,
-          nodeExecutionCount: nextCount,
-        },
+        session: sessionForAgent(
+          { ...state.session, nodeExecutionCount: nextCount },
+          routedKey,
+          routed.id,
+        ),
         task: {
           ...state.task,
           type: 'generate_simple',
@@ -203,12 +210,11 @@ async function routerNode(
     }
     console.log(`[router] pluginRegistry custom expert -> ${routed.id}`)
     return {
-      session: {
-        ...state.session,
-        currentAgent: 'general',
-        currentExpertId: routed.id,
-        nodeExecutionCount: nextCount,
-      },
+      session: sessionForAgent(
+        { ...state.session, nodeExecutionCount: nextCount },
+        'general',
+        routed.id,
+      ),
       task: {
         ...state.task,
         type: 'generate_simple',
@@ -220,13 +226,20 @@ async function routerNode(
   }
 
   if (isGeneral) {
-    console.log(`[router] 通用问候 -> general`)
-    return { session: { ...state.session, currentAgent: 'general' }, task: { ...state.task, type: 'general' }, tools: { ...state.tools, needsTool: false } }
+    console.log(`[router] 通用问候 -> platform.general`)
+    return {
+      session: sessionForAgent(state.session, 'general'),
+      task: { ...state.task, type: 'general' },
+      tools: { ...state.tools, needsTool: false },
+    }
   }
 
-  // 无法快匹：交给 requirementAnalyzer 做深度分析
   console.log(`[router] 交给 requirementAnalyzer 深度分析`)
-  return { session: { ...state.session, currentAgent: 'general' }, task: { ...state.task, type: 'general' }, tools: { ...state.tools, needsTool: false } }
+  return {
+    session: sessionForAgent(state.session, 'general'),
+    task: { ...state.task, type: 'general' },
+    tools: { ...state.tools, needsTool: false },
+  }
 }
 
 // ────────────────────────────────────────────
@@ -278,7 +291,7 @@ async function taskChainNode(
     console.log(`[taskChain] 协作请求: 插入 ${targetAgent} 步骤到位置 ${currentIndex + 1}`)
 
     return {
-      session: { ...state.session, currentAgent: targetAgent as 'editor' | 'flow' | 'page' },
+      session: sessionForAgent(state.session, targetAgent as 'editor' | 'flow' | 'page'),
       task: { ...state.task, type: 'generate_simple', chain: finalChain, currentStepIndex: currentIndex + 1 },
       tools: { ...state.tools, needsTool: true },
       interaction: {
@@ -294,7 +307,11 @@ async function taskChainNode(
 
   if (currentIndex >= state.task.chain.length) {
     console.log(`[taskChain] 所有步骤完成, 路由到 summarizer`)
-    return { session: { ...state.session, currentAgent: 'general' }, task: { ...state.task, type: 'summarize' }, tools: { ...state.tools, needsTool: false } }
+    return {
+      session: sessionForAgent(state.session, 'general'),
+      task: { ...state.task, type: 'summarize' },
+      tools: { ...state.tools, needsTool: false },
+    }
   }
 
   // Extract context from the previous step (if any) and carry it forward
@@ -337,89 +354,9 @@ async function taskChainNode(
   console.log(`[taskChain] 执行步骤 ${currentIndex}: ${currentStep.agent} - ${currentStep.description}`)
 
   return {
-    session: { ...state.session, currentAgent: currentStep.agent as 'editor' | 'flow' | 'page' },
+    session: sessionForAgent(state.session, currentStep.agent as 'editor' | 'flow' | 'page'),
     task: { ...state.task, type: 'generate_simple', chain: updatedChain, currentStepIndex: currentIndex },
     tools: { ...state.tools, needsTool: true },
-  }
-}
-
-// ────────────────────────────────────────────
-// General agent node
-// ────────────────────────────────────────────
-
-function buildGeneralSystemPrompt(): string {
-  const metadata = getMetadata()
-  const widgetCount = metadata.widgets.length
-  const flowNodeCount = metadata.flowNodes.length
-
-  const widgetGroups = new Map<string, number>()
-  for (const w of metadata.widgets) {
-    widgetGroups.set(w.group, (widgetGroups.get(w.group) ?? 0) + 1)
-  }
-  const widgetSummary = [...widgetGroups.entries()]
-    .map(([group, count]) => `${count} 种${group}组件`)
-    .join('、')
-
-  return `你是 schema-platform 的 AI 助手。
-
-你有四个专家能力：
-
-1. **Editor 专家**：表单/UI 生成 — 精通 ${widgetCount} 种组件（${widgetSummary}），能生成高质量的表单和页面 Schema
-2. **Page 专家**：业务页面配置 — 专精统计卡片、详情页、数据列表、搜索列表、仪表盘等业务页面
-3. **Flow 专家**：流程/BPMN 生成 — 精通 ${flowNodeCount} 种 BPMN 节点，能生成审批流程、工作流
-4. **Workflow 专家**：工作流编排 — 能创建完整的工作流，关联表单 Schema 和流程定义，配置数据更新规则
-
-请用友好、专业的语气回答用户问题。如果用户问你能做什么，引导他们描述具体需求。`
-}
-
-async function generalAgentNode(
-  state: typeof AgentStateAnnotation.State,
-): Promise<Partial<typeof AgentStateAnnotation.State>> {
-  const model = await getLLM({
-    model: resolveUserModel(state.interaction.preferences, getModelForTask('analyze')),
-    temperature: 0.7,
-    maxTokens: 2048,
-  })
-  const systemPrompt = buildGeneralSystemPrompt()
-
-  const lastUserMessage = [...state.messages]
-    .reverse()
-    .find((m) => m.constructor.name === 'HumanMessage')
-
-  const userContent = lastUserMessage
-    ? (typeof lastUserMessage.content === 'string' ? lastUserMessage.content : JSON.stringify(lastUserMessage.content))
-    : '你好'
-
-  console.log(`[generalAgent] 开始执行, messages=${state.messages.length}`)
-
-  const result = await callLLMWithFallback('generalAgent', async () => {
-    const stream = await model.stream([
-      new SystemMessage(systemPrompt),
-      new HumanMessage(userContent),
-    ])
-
-    let content = ''
-    let reasoningContent = ''
-    for await (const chunk of stream) {
-      const chunkContent = typeof chunk.content === 'string' ? chunk.content : ''
-      const chunkReasoning = (chunk as any).additional_kwargs?.reasoning_content ?? (chunk as any).reasoning_content
-      if (chunkContent) content += chunkContent
-      if (chunkReasoning) reasoningContent += chunkReasoning
-    }
-
-    console.log(`[generalAgent] LLM 调用完成, contentLength=${content.length}, reasoningLength=${reasoningContent.length}`)
-
-    const response = new AIMessage({
-      content: reasoningContent ? `<think>${reasoningContent}</think>\n\n${content}` : content,
-    })
-
-    return { messages: [response] }
-  })
-
-  const messages = 'messages' in result ? result.messages : [new AIMessage({ content: '⚠️ AI 处理异常，请重试' })]
-  return {
-    messages,
-    session: { ...state.session, currentAgent: 'general' },
   }
 }
 
@@ -485,7 +422,7 @@ ${taskResults || '无'}
 
   return {
     messages: [response],
-    session: { ...state.session, currentAgent: 'general' },
+    session: sessionForAgent(state.session, 'general'),
   }
 }
 
@@ -496,20 +433,13 @@ ${taskResults || '无'}
 export function routeAfterRouter(
   state: typeof AgentStateAnnotation.State,
 ): string {
-  if (state.context.source === 'editor' || state.context.source === 'flow' || state.context.source === 'page') {
-    console.log(`[routeAfterRouter] 显式模式 -> ${state.context.source}`)
-    return state.context.source
-  }
-
   if (state.task.chain.length > 0) {
     console.log(`[routeAfterRouter] 任务链 -> taskChain (step=${state.task.currentStepIndex}/${state.task.chain.length})`)
     return 'taskChain'
   }
 
-  // router 已完成 LLM 分析，直接路由到 currentAgent
-  const agent = state.session.currentAgent
-  console.log(`[routeAfterRouter] 自动模式 -> ${agent}`)
-  return agent
+  console.log(`[routeAfterRouter] -> pluginExpert (agent=${state.session.currentAgent})`)
+  return 'pluginExpert'
 }
 
 export function routeAfterTaskChain(
@@ -522,14 +452,8 @@ export function routeAfterTaskChain(
     return 'summarizer'
   }
 
-  if (state.session.currentExpertId) return 'pluginExpert'
-  if (state.session.currentAgent === 'editor') return 'editor'
-  if (state.session.currentAgent === 'flow') return 'flow'
-  if (state.session.currentAgent === 'page') return 'page'
-  if (state.session.currentAgent === 'general') return 'general'
-
-  console.warn(`[routeAfterTaskChain] 未知的 currentAgent="${state.session.currentAgent}", 路由到 END`)
-  return END
+  console.log(`[routeAfterTaskChain] -> pluginExpert (agent=${state.session.currentAgent})`)
+  return 'pluginExpert'
 }
 
 export function afterAgent(
@@ -661,9 +585,8 @@ export function afterToolsRoute(
     return 'summarizer'
   }
 
-  if (state.session.currentExpertId) return 'pluginExpert'
-  console.log(`[afterToolsRoute] -> ${state.session.currentAgent} (显式模式)`)
-  return state.session.currentAgent
+  console.log(`[afterToolsRoute] -> pluginExpert (agent=${state.session.currentAgent})`)
+  return 'pluginExpert'
 }
 
 // ────────────────────────────────────────────
@@ -677,14 +600,9 @@ const V2_CONFIG = {
 }
 
 const builder = new StateGraph(AgentStateAnnotation)
-  // 原有节点
   .addNode('router', routerNode)
   .addNode('taskChain', taskChainNode)
-  .addNode('editor', editorAgentNode)
-  .addNode('flow', flowAgentNode)
-  .addNode('page', pageAgentNode)
   .addNode('pluginExpert', pluginExpertAgentNode)
-  .addNode('general', generalAgentNode)
   .addNode('allTools', allToolNodeWithErrorHandling)
   .addNode('afterTools', afterToolsNode)
   .addNode('summarizer', summarizerNode)
@@ -720,14 +638,8 @@ const builder = new StateGraph(AgentStateAnnotation)
   // taskChain 之后
   .addConditionalEdges('taskChain', routeAfterTaskChain)
 
-  // agent 之后
-  .addConditionalEdges('editor', afterAgent)
-  .addConditionalEdges('flow', afterAgent)
-  .addConditionalEdges('page', afterAgent)
+  // agent 之后（统一 pluginExpert）
   .addConditionalEdges('pluginExpert', afterAgent)
-
-  // general 直接结束
-  .addEdge('general', END)
 
   // 工具调用链
   .addEdge('allTools', 'afterTools')

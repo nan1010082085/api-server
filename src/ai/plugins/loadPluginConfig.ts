@@ -1,16 +1,11 @@
 /**
  * 从配置文件加载并合并插件清单。
  *
- * 推荐：config/plugins/{mcp,tools,experts,skills}/ 分文件目录（见 config/plugins/README.md）
- *
  * 加载顺序（后者覆盖同 id / name）：
- * 1. config/plugins/ 分目录
- * 2. config/ai-plugins.builtin.json（废弃，兼容）
- * 3. config/ai-plugins.json
- * 4. config/plugins/local/ 分目录
- * 5. config/plugins/tenants/{AI_PLUGIN_TENANT_ID}/（可选，专租户部署）
- * 6. config/ai-plugins.local.json
- * 7. AI_PLUGIN_CONFIG_PATH（文件或同结构目录）
+ * 1. config/plugins/{mcp,tools,experts,skills}/
+ * 2. config/plugins/local/
+ * 3. config/plugins/tenants/{AI_PLUGIN_TENANT_ID}/（可选）
+ * 4. AI_PLUGIN_CONFIG_PATH（文件或同结构目录）
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
@@ -86,7 +81,7 @@ export function loadPluginDirectory(dir: string, label: string): PluginManifest 
       } else if (layer === 'experts') {
         manifest.experts = [...(manifest.experts ?? []), raw as ExpertDeclaration]
       } else if (layer === 'skills') {
-        manifest.skills = [...(manifest.skills ?? []), raw as SkillDeclaration]
+        manifest.skills = [...(manifest.skills ?? []), resolveSkillInline(raw as SkillDeclaration, layerDir)]
       }
 
       logger.info({ msg: '[pluginRegistry] loaded plugin file', label, layer, file })
@@ -119,6 +114,19 @@ function mergeManifests(base: PluginManifest, patch: PluginManifest): PluginMani
   }
 }
 
+function resolveSkillInline(skill: SkillDeclaration, layerDir: string): SkillDeclaration {
+  if (skill.content?.trim() || !skill.file) return skill
+  const filePath = path.isAbsolute(skill.file)
+    ? skill.file
+    : path.join(layerDir, skill.file)
+  if (!existsSync(filePath)) {
+    logger.warn({ msg: '[pluginRegistry] skill file not found', skillId: skill.id, filePath })
+    return skill
+  }
+  const content = readFileSync(filePath, 'utf8')
+  return { ...skill, content }
+}
+
 function resolveSkillFiles(manifest: PluginManifest, configDir: string): PluginManifest {
   const skills = (manifest.skills ?? []).map((skill) => {
     if (skill.content?.trim() || !skill.file) return skill
@@ -145,7 +153,7 @@ function applyConfigPath(merged: PluginManifest, configPath: string): PluginMani
   return fileManifest ? mergeManifests(merged, fileManifest) : merged
 }
 
-export function loadPluginRegistry(): PluginRegistry {
+export function loadPluginRegistry(runtimeTenantId?: string): PluginRegistry {
   const configDir = resolvePluginConfigDir()
   const pluginsRoot = path.join(configDir, 'plugins')
   const localRoot = path.join(pluginsRoot, 'local')
@@ -154,30 +162,12 @@ export function loadPluginRegistry(): PluginRegistry {
 
   merged = mergeManifests(merged, loadPluginDirectory(pluginsRoot, 'plugins'))
 
-  const legacyPaths = [
-    path.join(configDir, 'ai-plugins.builtin.json'),
-    path.join(configDir, 'ai-plugins.json'),
-  ]
-  for (const filePath of legacyPaths) {
-    const manifest = readManifestFile(filePath)
-    if (!manifest) continue
-    merged = mergeManifests(merged, manifest)
-    logger.info({ msg: '[pluginRegistry] loaded legacy manifest', filePath })
-  }
-
   merged = mergeManifests(merged, loadPluginDirectory(localRoot, 'plugins/local'))
 
-  const tenantId = process.env.AI_PLUGIN_TENANT_ID?.trim()
+  const tenantId = runtimeTenantId?.trim() || process.env.AI_PLUGIN_TENANT_ID?.trim()
   if (tenantId) {
     const tenantRoot = path.join(pluginsRoot, 'tenants', tenantId)
     merged = mergeManifests(merged, loadPluginDirectory(tenantRoot, `plugins/tenants/${tenantId}`))
-  }
-
-  const localFile = path.join(configDir, 'ai-plugins.local.json')
-  const localManifest = readManifestFile(localFile)
-  if (localManifest) {
-    merged = mergeManifests(merged, localManifest)
-    logger.info({ msg: '[pluginRegistry] loaded legacy manifest', filePath: localFile })
   }
 
   if (process.env.AI_PLUGIN_CONFIG_PATH) {

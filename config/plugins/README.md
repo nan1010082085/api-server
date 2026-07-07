@@ -1,5 +1,7 @@
 # 插件中心配置目录
 
+> **完整文档**（架构、运行时、待办）：[`ai/docs/plugin.md`](../../../ai/docs/plugin.md)
+
 按类型分目录存放，**每个 MCP / Expert / Skill 一个 JSON 文件**；工具按域分组（`tools/mcp-schema.json` 等）。
 
 ```
@@ -16,13 +18,11 @@ plugins/
 
 ## 加载顺序（后者覆盖同 id / name）
 
-1. `config/plugins/` 下各子目录
-2. `config/ai-plugins.builtin.json`（**已废弃**，兼容旧部署）
-3. `config/ai-plugins.json`（环境级叠加）
-4. `config/plugins/local/`（本机分文件覆盖）
-5. `config/plugins/tenants/{AI_PLUGIN_TENANT_ID}/`（专租户部署时）
-6. `config/ai-plugins.local.json`（本机单文件覆盖）
-7. `AI_PLUGIN_CONFIG_PATH` 环境变量
+1. `config/plugins/{mcp,tools,experts,skills}/`
+2. `config/plugins/local/`（本机覆盖，建议 gitignore）
+3. `config/plugins/tenants/{AI_PLUGIN_TENANT_ID}/`（专租户部署时）
+4. **请求内租户**（多租户 SaaS）：`getPluginRegistry()` 自动读取 `tenantStorage`，合并 `plugins/tenants/{tenantId}/`（LRU 缓存 32 份）
+5. `AI_PLUGIN_CONFIG_PATH` 环境变量（文件或同结构目录）
 
 修改 `plugins/local/` 后开发态可 **SIGHUP 热重载** 或自动监听（`AI_PLUGIN_WATCH=1`）；生产默认需 `kill -HUP` 或重启。
 
@@ -46,7 +46,7 @@ pnpm plugin:validate
 
 | 类型 | 操作 |
 |------|------|
-| MCP | 在 `mcp/` 新增 `{id}.json`，transport 选 inmemory / stdio / sse |
+| MCP | 在 `mcp/` 新增 `{id}.json`，transport 选 inmemory / stdio / sse；inmemory 自定义用 `factoryModule` |
 | Tool | 在对应 `tools/mcp-*.json` 或 `langgraph.json` 追加条目 |
 | Skill | 在 `skills/` 新增 `{id}.json`，或 `file` 指向 Markdown |
 | Expert | 在 `experts/` 新增 `{id}.json`，引用 tools / skills |

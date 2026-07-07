@@ -1,5 +1,5 @@
 {
   "tools": [
-    { "name": "rag__search", "kind": "mcp", "source": "platform.rag", "argsHint": "{\"query\":\"{{$input.message}}\",\"limit\":5}" }
+    { "name": "rag__search", "kind": "mcp", "label": "智能匹配", "category": "mcp-rag", "source": "platform.rag", "argsHint": "{\"query\":\"{{$input.message}}\",\"limit\":5}" }
   ]
 }

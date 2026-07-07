@@ -179,7 +179,7 @@ POST /v1/embeddings
 
 ### 5.3 ragContextRetriever 自动注入
 
-Agent 节点（editorAgent / flowAgent / pageAgent）在调用 LLM 前，自动执行 RAG 检索：
+`pluginExpert` 节点在调用 LLM 前，按专家类型经 `expertUserContext` 注入领域上下文，并自动执行 RAG 检索：
 
 ```typescript
 const { context } = await retrieveRagContext(userMessage, { topK: 3, minScore: 15 })

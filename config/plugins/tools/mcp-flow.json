@@ -1,9 +1,9 @@
 {
   "tools": [
-    { "name": "flow__search", "kind": "mcp", "source": "platform.flow", "argsHint": "{\"keyword\":\"审批\",\"limit\":5}" },
-    { "name": "flow__get_detail", "kind": "mcp", "source": "platform.flow", "argsHint": "{\"flowId\":\"<id>\"}" },
-    { "name": "flow__get_node_schema", "kind": "mcp", "source": "platform.flow", "argsHint": "{\"flowId\":\"<id>\",\"nodeId\":\"<nodeId>\"}" },
-    { "name": "flow__search_users", "kind": "mcp", "source": "platform.flow", "argsHint": "{\"keyword\":\"张三\",\"limit\":20}" },
-    { "name": "flow__validate", "kind": "mcp", "source": "platform.flow", "argsHint": "{\"flow\":{\"nodes\":[],\"edges\":[]}}" }
+    { "name": "flow__search", "kind": "mcp", "label": "搜索流程", "category": "mcp-flow", "source": "platform.flow", "argsHint": "{\"keyword\":\"审批\",\"limit\":5}" },
+    { "name": "flow__get_detail", "kind": "mcp", "label": "获取流程详情", "category": "mcp-flow", "source": "platform.flow", "argsHint": "{\"flowId\":\"<id>\"}" },
+    { "name": "flow__get_node_schema", "kind": "mcp", "label": "获取流程节点表单", "category": "mcp-flow", "source": "platform.flow", "argsHint": "{\"flowId\":\"<id>\",\"nodeId\":\"<nodeId>\"}" },
+    { "name": "flow__search_users", "kind": "mcp", "label": "搜索用户", "category": "mcp-flow", "source": "platform.flow", "argsHint": "{\"keyword\":\"张三\",\"limit\":20}" },
+    { "name": "flow__validate", "kind": "mcp", "label": "校验流程", "category": "mcp-flow", "source": "platform.flow", "argsHint": "{\"flow\":{\"nodes\":[],\"edges\":[]}}" }
   ]
 }

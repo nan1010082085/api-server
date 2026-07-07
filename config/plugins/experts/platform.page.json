@@ -4,6 +4,7 @@
   "description": "业务页面布局生成",
   "legacyAgentKey": "page",
   "dynamicPrompt": "page",
+  "skills": ["platform.page-layout", "platform.reply-zh"],
   "tools": [
     "schema__search",
     "schema__get_detail",

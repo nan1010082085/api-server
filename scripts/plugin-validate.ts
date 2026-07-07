@@ -42,14 +42,8 @@ function collectJsonFiles(dir: string): string[] {
 function validateJsonParseable(): void {
   const configDir = resolvePluginConfigDir()
   const pluginsDir = path.join(configDir, 'plugins')
-  const legacyFiles = [
-    path.join(configDir, 'ai-plugins.builtin.json'),
-    path.join(configDir, 'ai-plugins.json'),
-    path.join(configDir, 'ai-plugins.local.json'),
-  ]
 
-  for (const file of [...legacyFiles, ...collectJsonFiles(pluginsDir)]) {
-    if (!existsSync(file)) continue
+  for (const file of collectJsonFiles(pluginsDir)) {
     try {
       JSON.parse(readFileSync(file, 'utf8'))
     } catch (err) {

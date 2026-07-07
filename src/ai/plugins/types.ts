@@ -1,6 +1,6 @@
 /**
  * 插件中心类型 — Expert / Skill / Tool / MCP 四层能力声明。
- * 配置来源：ai-plugins.builtin.json + 可选覆盖文件（见 loadPluginConfig）。
+ * 配置来源：config/plugins/ 分目录（见 loadPluginConfig）。
  */
 
 export type PluginRuntime = 'langgraph' | 'workflow'
@@ -9,12 +9,25 @@ export type ToolKind = 'mcp' | 'graph' | 'http'
 
 export type McpTransport = 'inmemory' | 'stdio' | 'sse'
 
+export type PluginToolCategory =
+  | 'mcp-schema'
+  | 'mcp-flow'
+  | 'mcp-widget'
+  | 'mcp-rag'
+  | 'mcp-industry'
+  | 'langgraph'
+  | 'workflow'
+
 /** LangGraph 路由用 legacy 键，与 graph 节点名 / session.currentAgent 对齐 */
 export type LegacyAgentKey = 'editor' | 'flow' | 'page' | 'general' | 'router'
 
 export interface PluginToolDeclaration {
   name: string
   kind: ToolKind
+  /** 前端 Plugin Center / 设计器展示名 */
+  label?: string
+  /** 设计器 Palette 分组，如 mcp-schema / langgraph */
+  category?: PluginToolCategory
   description?: string
   /** JSON 参数示例，供设计器 ToolNodePanel 展示 */
   argsHint?: string
@@ -27,6 +40,10 @@ export interface McpServerDeclaration {
   transport: McpTransport
   /** inmemory 内置域：schema | flow | widget | rag | industry */
   builtin?: string
+  /** inmemory 自定义工厂模块（相对 server 根或绝对路径） */
+  factoryModule?: string
+  /** factoryModule 导出的工厂函数名，默认 createMcpServer */
+  factoryExport?: string
   /** stdio */
   command?: string
   args?: string[]

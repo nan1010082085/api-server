@@ -43,14 +43,12 @@ describe('graph assembly', () => {
 })
 
 describe('routeAfterRouter', () => {
-  it('routes to editor for explicit editor mode', () => {
-    const state = makeState({ context: { source: 'editor', turnCount: 1 } })
-    expect(routeAfterRouter(state)).toBe('editor')
-  })
-
-  it('routes to flow for explicit flow mode', () => {
-    const state = makeState({ context: { source: 'flow', turnCount: 1 } })
-    expect(routeAfterRouter(state)).toBe('flow')
+  it('routes to pluginExpert when no active task chain', () => {
+    const state = makeState({
+      context: { source: 'editor', turnCount: 1 },
+      session: { id: '', conversationId: '', currentAgent: 'editor', currentExpertId: 'platform.editor' },
+    })
+    expect(routeAfterRouter(state)).toBe('pluginExpert')
   })
 
   it('routes to taskChain when task chain is active', () => {
@@ -67,14 +65,12 @@ describe('routeAfterRouter', () => {
     expect(routeAfterRouter(state)).toBe('taskChain')
   })
 
-  it('routes to currentAgent for auto mode with no task chain', () => {
-    // In auto mode, routerNode sets currentAgent via keyword/LLM analysis,
-    // then routeAfterRouter returns that agent directly.
+  it('routes to pluginExpert for auto mode with no task chain', () => {
     const state = makeState({
       context: { source: 'standalone', turnCount: 1 },
-      session: { id: '', conversationId: '', currentAgent: 'editor' },
+      session: { id: '', conversationId: '', currentAgent: 'editor', currentExpertId: 'platform.editor' },
     })
-    expect(routeAfterRouter(state)).toBe('editor')
+    expect(routeAfterRouter(state)).toBe('pluginExpert')
   })
 })
 
@@ -87,60 +83,12 @@ describe('routeAfterTaskChain', () => {
     expect(routeAfterTaskChain(state)).toBe('summarizer')
   })
 
-  it('routes to editor when currentAgent is editor', () => {
+  it('routes to pluginExpert for active expert step', () => {
     const state = makeState({
-      session: { id: '', conversationId: '', currentAgent: 'editor' },
+      session: { id: '', conversationId: '', currentAgent: 'editor', currentExpertId: 'platform.editor' },
       task: { type: 'generate_simple', chain: [{ agent: 'editor', description: 'test', status: 'running' }], currentStepIndex: 0, intermediateResults: [], currentVersion: 0 },
     })
-    expect(routeAfterTaskChain(state)).toBe('editor')
-  })
-
-  it('routes to flow when currentAgent is flow', () => {
-    const state = makeState({
-      session: { id: '', conversationId: '', currentAgent: 'flow' },
-    })
-    expect(routeAfterTaskChain(state)).toBe('flow')
-  })
-
-  it('routes to END for unknown agent', () => {
-    const state = makeState({
-      session: { id: '', conversationId: '', currentAgent: 'unknown' as any },
-    })
-    expect(routeAfterTaskChain(state)).toBe(END)
-  })
-})
-
-describe('routeAfterRouter (auto mode agent routing)', () => {
-  it('routes to editor when currentAgent is editor', () => {
-    const state = makeState({
-      context: { source: 'standalone', turnCount: 1 },
-      session: { id: '', conversationId: '', currentAgent: 'editor' },
-    })
-    expect(routeAfterRouter(state)).toBe('editor')
-  })
-
-  it('routes to flow when currentAgent is flow', () => {
-    const state = makeState({
-      context: { source: 'standalone', turnCount: 1 },
-      session: { id: '', conversationId: '', currentAgent: 'flow' },
-    })
-    expect(routeAfterRouter(state)).toBe('flow')
-  })
-
-  it('routes to general when currentAgent is general', () => {
-    const state = makeState({
-      context: { source: 'standalone', turnCount: 1 },
-      session: { id: '', conversationId: '', currentAgent: 'general' },
-    })
-    expect(routeAfterRouter(state)).toBe('general')
-  })
-
-  it('routes to page when currentAgent is page', () => {
-    const state = makeState({
-      context: { source: 'standalone', turnCount: 1 },
-      session: { id: '', conversationId: '', currentAgent: 'page' },
-    })
-    expect(routeAfterRouter(state)).toBe('page')
+    expect(routeAfterTaskChain(state)).toBe('pluginExpert')
   })
 })
 
@@ -313,12 +261,12 @@ describe('afterToolsRoute', () => {
     expect(afterToolsRoute(state)).toBe('summarizer')
   })
 
-  it('returns currentAgent for explicit mode', () => {
+  it('returns pluginExpert when idle after tools in explicit mode', () => {
     const state = makeState({
-      session: { id: '', conversationId: '', currentAgent: 'editor' },
+      session: { id: '', conversationId: '', currentAgent: 'editor', currentExpertId: 'platform.editor' },
       context: { source: 'editor', turnCount: 1 },
     })
-    expect(afterToolsRoute(state)).toBe('editor')
+    expect(afterToolsRoute(state)).toBe('pluginExpert')
   })
 
   it('prefers collaboration request over task chain routing', () => {
@@ -353,7 +301,6 @@ describe('afterToolsRoute', () => {
 
 describe('tool error handling', () => {
   it('extractPendingToolCalls identifies tool calls from AIMessage', () => {
-    // Verify the state structure used by allToolNodeWithErrorHandling
     const aiMessage = new AIMessage({
       content: '',
       tool_calls: [
@@ -366,7 +313,6 @@ describe('tool error handling', () => {
       session: { id: 's1', conversationId: 'conv-1', currentAgent: 'editor' },
     })
 
-    // The AIMessage with tool_calls should be the last message
     const lastMsg = state.messages[state.messages.length - 1]
     expect(lastMsg).toBeInstanceOf(AIMessage)
     const tc = (lastMsg as AIMessage).tool_calls
@@ -376,7 +322,6 @@ describe('tool error handling', () => {
   })
 
   it('logger.error is called with ai:thinker:error on tool failure', () => {
-    // Verify the logger interface accepts the ai:thinker:error format
     const loggerModule = import('../../utils/logger.js')
     return loggerModule.then(({ logger }) => {
       const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -404,9 +349,6 @@ describe('tool error handling', () => {
   })
 
   it('error ToolMessage matches the original tool_call id', () => {
-    // When a tool fails, the error ToolMessage should have the same
-    // tool_call_id as the original AIMessage tool_call, so the frontend
-    // can associate the error with the correct tool card.
     const toolCallId = 'call-abc-123'
     const toolMessage = new ToolMessage({
       content: JSON.stringify({ success: false, error: 'tool rag__search failed', recoverable: true }),

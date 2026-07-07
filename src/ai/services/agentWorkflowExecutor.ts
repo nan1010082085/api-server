@@ -24,6 +24,7 @@ import { getDocumentWithText, reprocessDocumentFromStorage, analyzeDocumentVisio
 import { processFile, performVisionAnalysis, isImageType } from './fileService.js'
 import { extractNodeOutputError, nodeFailure } from './agentWorkflowNodeErrors.js'
 import { dispatchWorkflowCompleteCallback } from './agentWorkflowCompleteCallback.js'
+import { pushWorkflowExecutionUpdate, clearWorkflowExecutionPush } from '../workflowExecutionPush.js'
 import { resolveWorkflowApiFile } from './agentWorkflowFileFetch.js'
 import { resolveWorkflowTemplate } from './agentWorkflowTemplateResolver.js'
 import {
@@ -183,6 +184,7 @@ async function setStreamingOutput(
       },
     },
   )
+  pushWorkflowExecutionUpdate(executionId)
 }
 
 async function clearStreamingOutput(executionId: string): Promise<void> {
@@ -307,6 +309,7 @@ async function appendNodeRecord(
     { _id: executionId },
     { $push: { nodeRecords: record } },
   )
+  pushWorkflowExecutionUpdate(executionId, { immediate: true })
 }
 
 async function updateNodeRecord(
@@ -321,6 +324,7 @@ async function updateNodeRecord(
   Object.assign(execution.nodeRecords[idx], patch)
   execution.markModified('nodeRecords')
   await execution.save()
+  pushWorkflowExecutionUpdate(executionId, { immediate: true })
 }
 
 async function finishExecution(
@@ -338,6 +342,8 @@ async function finishExecution(
   if (error) execution.error = error
   execution.streamingOutput = undefined
   await execution.save()
+  clearWorkflowExecutionPush(executionId)
+  pushWorkflowExecutionUpdate(executionId, { immediate: true })
 
   if (status === 'success' || status === 'error' || status === 'cancelled') {
     void dispatchWorkflowCompleteCallback(
@@ -601,25 +607,12 @@ function resolveHitlQuestions(
 
 const AGENT_MAX_TOOL_ROUNDS = 3
 
-const EXPERT_NODE_AGENT_MAP: Record<string, string> = {
-  'agent-editor': 'editor',
-  'agent-flow': 'flow',
-  'agent-page': 'page',
-  'agent-general': 'general',
-}
-
 const VALID_AGENT_TYPES = new Set(['editor', 'flow', 'page', 'general'])
 
 function resolveAgentTargetFromNode(node: WorkflowGraphNode): string | null {
   if (node.type === 'expert') {
     const expertId = node.data?.expertId?.trim()
     return expertId || null
-  }
-  const mapped = EXPERT_NODE_AGENT_MAP[node.type]
-  if (mapped) return mapped
-  if (node.type === 'agent') {
-    const t = node.data?.agentType ?? 'general'
-    return t === 'auto' ? null : t
   }
   return null
 }
@@ -737,7 +730,7 @@ async function runNode(
 ): Promise<NodeRunResult> {
   const data = node.data ?? {}
 
-  if (node.type === 'tool' || node.type.startsWith('tool-')) {
+  if (node.type === 'tool') {
     const toolName = data.toolName?.trim() ?? ''
     if (!toolName) {
       return nodeFailure('未选择工具')
@@ -747,7 +740,7 @@ async function runNode(
     return { output: result.output, error }
   }
 
-  if (node.type.startsWith('agent-') || node.type === 'agent' || node.type === 'expert') {
+  if (node.type === 'agent-intent' || node.type === 'expert') {
     const agentInput = data.prompt?.trim() ? resolveTemplate(data.prompt, ctx) : ctx.lastOutput
 
     if (node.type === 'agent-intent') {
@@ -764,7 +757,10 @@ async function runNode(
       }
     }
 
-    const agentType = resolveAgentTargetFromNode(node) ?? data.agentType ?? 'general'
+    const agentType = resolveAgentTargetFromNode(node)
+    if (!agentType) {
+      return nodeFailure('专家节点未选择插件专家')
+    }
     const result = await dispatchAgent(agentType, agentInput, ctx)
     return { output: result.output }
   }
