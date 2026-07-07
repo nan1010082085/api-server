@@ -201,8 +201,14 @@ export async function indexSchema(schemaId: string): Promise<IndexResult> {
   const editId = String(schema.editId ?? '')
   const contentHash = computeContentHash(name, json)
 
-  const existing = await SchemaEmbeddingModel.findOne({ editId, entityKind: 'schema' }).lean() as Record<string, unknown> | null
-  if (existing && existing.contentHash === contentHash) {
+  const existing = await SchemaEmbeddingModel.findOne({ editId }).lean() as Record<string, unknown> | null
+  if (existing && existing.entityKind === 'flow') {
+    throw new Error(`editId ${editId} is already used by a flow embedding`)
+  }
+  if (existing && existing.contentHash === contentHash && existing.schemaId === normalizedSchemaId) {
+    if (existing.entityKind !== 'schema') {
+      await SchemaEmbeddingModel.updateOne({ editId }, { entityKind: 'schema' })
+    }
     return { schemaId: normalizedSchemaId, action: 'skipped' }
   }
 
@@ -255,8 +261,14 @@ export async function indexFlowDefinition(flowId: string): Promise<IndexResult> 
   const editId = flowEditId(normalizedFlowId)
   const contentHash = computeFlowContentHash(name, description, graph)
 
-  const existing = await SchemaEmbeddingModel.findOne({ editId, entityKind: 'flow' }).lean() as Record<string, unknown> | null
+  const existing = await SchemaEmbeddingModel.findOne({ editId: flowEditId(normalizedFlowId) }).lean() as Record<string, unknown> | null
+  if (existing && existing.entityKind && existing.entityKind !== 'flow') {
+    throw new Error(`editId flow:${normalizedFlowId} conflicts with schema embedding`)
+  }
   if (existing && existing.contentHash === contentHash) {
+    if (existing.entityKind !== 'flow') {
+      await SchemaEmbeddingModel.updateOne({ editId: flowEditId(normalizedFlowId) }, { entityKind: 'flow' })
+    }
     return { schemaId: normalizedFlowId, action: 'skipped' }
   }
 
@@ -320,24 +332,32 @@ export async function reindexAll(): Promise<ReindexStats> {
     flowsErrors: 0,
   }
 
-  for (const schema of schemas) {
-    try {
-      const result = await indexSchema(String(schema._id))
-      stats[result.action]++
-    } catch {
-      stats.errors++
-    }
+  const SCHEMA_CHUNK = 5
+  for (let i = 0; i < schemas.length; i += SCHEMA_CHUNK) {
+    const chunk = schemas.slice(i, i + SCHEMA_CHUNK)
+    await Promise.all(chunk.map(async (schema) => {
+      try {
+        const result = await indexSchema(String(schema._id))
+        stats[result.action]++
+      } catch {
+        stats.errors++
+      }
+    }))
   }
 
-  for (const flow of flows) {
-    try {
-      const result = await indexFlowDefinition(String(flow._id))
-      if (result.action === 'created') stats.flowsCreated++
-      else if (result.action === 'updated') stats.flowsUpdated++
-      else stats.flowsSkipped++
-    } catch {
-      stats.flowsErrors++
-    }
+  const FLOW_CHUNK = 5
+  for (let i = 0; i < flows.length; i += FLOW_CHUNK) {
+    const chunk = flows.slice(i, i + FLOW_CHUNK)
+    await Promise.all(chunk.map(async (flow) => {
+      try {
+        const result = await indexFlowDefinition(String(flow._id))
+        if (result.action === 'created') stats.flowsCreated++
+        else if (result.action === 'updated') stats.flowsUpdated++
+        else stats.flowsSkipped++
+      } catch {
+        stats.flowsErrors++
+      }
+    }))
   }
 
   return stats
