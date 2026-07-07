@@ -650,14 +650,15 @@ export async function getAgentWorkflowExecutionByInvokeKey(
   const doc = await AgentWorkflowExecutionModel.findById(executionId).lean()
   if (!doc) return null
 
-  const workflow = await AgentWorkflowModel.findById(
+  const workflowDoc = await AgentWorkflowModel.findById(
     (doc as unknown as Record<string, unknown>).workflowId,
   )
     .select('+invokeKey')
     .lean()
-  if (!workflow) return null
-  if ((workflow.tenantId as string) !== tenantId) return null
-  if (!verifyWorkflowInvokeKey(workflow.invokeKey as string | undefined, invokeKey)) return null
+  if (!workflowDoc || Array.isArray(workflowDoc)) return null
+  const workflow = workflowDoc as { tenantId?: string; invokeKey?: string }
+  if (workflow.tenantId !== tenantId) return null
+  if (!verifyWorkflowInvokeKey(workflow.invokeKey, invokeKey)) return null
 
   return toExecution(doc as unknown as Record<string, unknown>)
 }

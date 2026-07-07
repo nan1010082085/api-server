@@ -8,7 +8,7 @@
  */
 
 import Router from '@koa/router'
-import { tenantContextMiddleware } from '../../middleware/tenantContext.js'
+import { tenantContextMiddleware } from '../middleware/tenantContext.js'
 import {
   invokePublishedWorkflow,
   WorkflowInvokeError,

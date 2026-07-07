@@ -1,8 +1,8 @@
 import Router from '@koa/router'
 import { authMiddleware } from '../middleware/auth.js'
 import { getPluginRegistry } from './plugins/index.js'
-import { PLUGIN_PACK_LAYERS, type PluginLocalLayer } from './plugins/pluginPack.js'
-import { writePluginLocalJson } from './plugins/pluginLocalWrite.js'
+import { PLUGIN_PACK_LAYERS } from './plugins/pluginPack.js'
+import { writePluginLocalJson, type PluginLocalLayer } from './plugins/pluginLocalWrite.js'
 
 const router = new Router({ prefix: '/api/ai/plugins' })
 

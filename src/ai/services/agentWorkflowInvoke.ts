@@ -47,6 +47,7 @@ export async function findPublishedWorkflowForInvoke(
 ) {
   const trimmed = slugOrId.trim()
   const tenant = tenantId?.trim() || '000000'
+  const slugLower = trimmed.toLowerCase()
 
   if (isValidObjectId(trimmed)) {
     return AgentWorkflowModel.findOne({
@@ -58,7 +59,7 @@ export async function findPublishedWorkflowForInvoke(
 
   return AgentWorkflowModel.findOne({
     tenantId: tenant,
-    slug: trimmed.toLowerCase(),
+    slug: slugLower,
     status: 'published',
     publishedGraph: { $exists: true, $ne: null },
   }).select('+invokeKey')
