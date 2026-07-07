@@ -55,7 +55,8 @@ export class PluginRegistry {
   listExperts(opts: { runtime?: PluginRuntime } = {}): ExpertDeclaration[] {
     const items = [...this.experts.values()]
     if (!opts.runtime) return items
-    return items.filter((e) => !e.runtime?.length || e.runtime.includes(opts.runtime))
+    const runtime = opts.runtime
+    return items.filter((e) => !e.runtime?.length || e.runtime.includes(runtime))
   }
 
   getSkill(id: string): SkillDeclaration | undefined {

@@ -1,36 +1,7 @@
 {
   "version": 1,
-  "mcpServers": [
-    {
-      "id": "example.external-kb",
-      "transport": "sse",
-      "url": "https://your-kb.example.com/mcp",
-      "namespace": "kb__",
-      "enabled": false
-    }
-  ],
-  "skills": [
-    {
-      "id": "example.support-tone",
-      "label": "客服语气",
-      "content": "请使用简洁、专业的客服语气回答。",
-      "enabled": false
-    }
-  ],
-  "experts": [
-    {
-      "id": "example.support",
-      "label": "示例客服专家",
-      "description": "挂载外部知识库 MCP 的示例（默认禁用）",
-      "systemPrompt": "你是企业客服助手，优先使用知识库工具检索后再回答。",
-      "skills": ["example.support-tone"],
-      "tools": ["rag__search", "kb__search"],
-      "routing": {
-        "keywords": ["客服", "工单", "support"],
-        "priority": 5
-      },
-      "runtime": ["langgraph", "workflow"],
-      "enabled": false
-    }
-  ]
+  "mcpServers": [],
+  "tools": [],
+  "skills": [],
+  "experts": []
 }

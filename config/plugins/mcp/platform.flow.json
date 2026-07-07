@@ -1,0 +1,6 @@
+{
+  "id": "platform.flow",
+  "transport": "inmemory",
+  "builtin": "flow",
+  "namespace": "flow__"
+}

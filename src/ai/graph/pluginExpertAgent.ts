@@ -10,6 +10,7 @@ import {
   truncateMessagesForLangGraph,
   resolveUserModel,
   getModelForTask,
+  type TaskType,
 } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { retrieveRagContext } from './ragContextRetriever.js'
@@ -38,7 +39,7 @@ export async function pluginExpertAgentNode(
 
   const systemPrompt = await buildExpertSystemPrompt(expert)
   const tools = getExpertTools(expert)
-  const taskName = expert.model?.task ?? 'generate_complex'
+  const taskName = (expert.model?.task ?? 'generate_complex') as TaskType
 
   const model = (await getLLM({
     model: resolveUserModel(state.interaction.preferences, getModelForTask(taskName)),

@@ -1,0 +1,6 @@
+{
+  "id": "platform.schema",
+  "transport": "inmemory",
+  "builtin": "schema",
+  "namespace": "schema__"
+}

@@ -1,0 +1,27 @@
+{
+  "id": "platform.editor",
+  "label": "Editor 专家",
+  "description": "表单 Schema 生成、校验与更新",
+  "legacyAgentKey": "editor",
+  "dynamicPrompt": "editor",
+  "tools": [
+    "schema__search",
+    "schema__get_detail",
+    "schema__search_published",
+    "schema__fuzzy_search",
+    "schema__find_flow_references",
+    "schema__validate_widgets",
+    "widget__query",
+    "rag__search",
+    "update_schema",
+    "generate_schema",
+    "request_collaboration"
+  ],
+  "routing": {
+    "keywords": ["表单", "schema", "form", "字段", "组件", "widget", "输入框"],
+    "contextSources": ["editor", "standalone"],
+    "priority": 10
+  },
+  "model": { "temperature": 0.7, "maxTokens": 8192, "task": "generate_complex" },
+  "runtime": ["langgraph", "workflow"]
+}

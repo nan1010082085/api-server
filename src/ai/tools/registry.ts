@@ -10,9 +10,17 @@
  */
 
 import type { StructuredTool } from '@langchain/core/tools'
-import { initPluginRegistry } from '../plugins/index.js'
+import { initPluginRegistry, getPluginRegistry } from '../plugins/registrySingleton.js'
 import { initMcpBridge } from '../mcp/bridge.js'
 import { langgraphOnlyTools, LANGGRAPH_ONLY_TOOL_NAMES } from './langgraphTools.js'
+import { buildHttpStructuredTool } from './httpToolExecutor.js'
+
+function loadHttpToolsFromRegistry(): StructuredTool[] {
+  return getPluginRegistry()
+    .listToolDeclarations()
+    .filter((t) => t.kind === 'http')
+    .map((t) => buildHttpStructuredTool(t.name, t.description))
+}
 
 // ────────────────────────────────────────────
 // 状态
@@ -26,14 +34,15 @@ const _readyPromise: Promise<void> = (async () => {
   try {
     initPluginRegistry()
     const mcpTools = await initMcpBridge()
-    _allTools = [...mcpTools, ...langgraphOnlyTools]
+    const httpTools = loadHttpToolsFromRegistry()
+    _allTools = [...mcpTools, ...langgraphOnlyTools, ...httpTools]
     _toolMap = new Map(_allTools.map((t) => [t.name, t]))
     _ready = true
   } catch (err) {
     // 桥接完全失败时退化为仅 LangGraph 专有工具，保证 Chat 可降级
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[toolsRegistry] init failed, falling back to langgraph-only tools: ${message}`)
-    _allTools = [...langgraphOnlyTools]
+    _allTools = [...langgraphOnlyTools, ...loadHttpToolsFromRegistry()]
     _toolMap = new Map(_allTools.map((t) => [t.name, t]))
     _ready = true
   }
@@ -80,9 +89,37 @@ export function isLanggraphOnlyTool(name: string): boolean {
   return LANGGRAPH_ONLY_TOOL_NAMES.has(name)
 }
 
+/** 判断工具名是否属于 Registry 声明的 HTTP 工具。 */
+export function isHttpTool(name: string): boolean {
+  return getPluginRegistry().getToolDeclaration(name)?.kind === 'http'
+}
+
 /** 判断工具名是否属于 MCP 桥接工具。 */
 export function isMcpTool(name: string): boolean {
-  return _ready && _toolMap.has(name) && !LANGGRAPH_ONLY_TOOL_NAMES.has(name)
+  return _ready && _toolMap.has(name) && !LANGGRAPH_ONLY_TOOL_NAMES.has(name) && !isHttpTool(name)
+}
+
+/**
+ * 热重载：重建 Registry 与 MCP / HTTP 工具表。
+ * 调用方须先 resetPluginRegistry()，或由 reloadPluginCenter() 统一编排。
+ */
+export async function reloadToolsRegistry(): Promise<{ toolCount: number }> {
+  initPluginRegistry()
+  try {
+    const mcpTools = await initMcpBridge()
+    const httpTools = loadHttpToolsFromRegistry()
+    _allTools = [...mcpTools, ...langgraphOnlyTools, ...httpTools]
+    _toolMap = new Map(_allTools.map((t) => [t.name, t]))
+    _ready = true
+    return { toolCount: _allTools.length }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[toolsRegistry] reload failed, falling back to langgraph-only tools: ${message}`)
+    _allTools = [...langgraphOnlyTools, ...loadHttpToolsFromRegistry()]
+    _toolMap = new Map(_allTools.map((t) => [t.name, t]))
+    _ready = true
+    return { toolCount: _allTools.length }
+  }
 }
 
 // ────────────────────────────────────────────

@@ -87,6 +87,9 @@ const PERMISSION_DEFINITIONS: Array<{ code: string; name: string; module: string
   { code: 'apikey:edit', name: '编辑 API Key', module: 'system', description: '修改 API Key 状态' },
   { code: 'apikey:delete', name: '删除 API Key', module: 'system', description: '删除 API Key' },
 
+  // ── Agent Workflow (开放 API) ──
+  { code: 'workflow:execute', name: '执行 Agent Workflow', module: 'ai', description: '通过 Open API 触发已发布 Workflow' },
+
   // ── Webhook (Webhook) ──
   { code: 'webhook:view', name: '查看 Webhook', module: 'webhook', description: '查看 Webhook 列表和详情' },
   { code: 'webhook:create', name: '创建 Webhook', module: 'webhook', description: '创建新 Webhook' },

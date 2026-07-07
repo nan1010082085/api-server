@@ -1,0 +1,6 @@
+{
+  "id": "platform.industry",
+  "transport": "inmemory",
+  "builtin": "industry",
+  "namespace": "industry__"
+}

@@ -35,12 +35,19 @@ describe('pluginRegistry', () => {
     expect(matched[0]?.legacyAgentKey).toBe('flow')
   })
 
-  it('merges override manifest from AI_PLUGIN_CONFIG_PATH', () => {
-    const overridePath = path.join(configDir, 'ai-plugins.local.json.example')
-    process.env.AI_PLUGIN_CONFIG_PATH = overridePath
+  it('merges override manifest from AI_PLUGIN_CONFIG_PATH directory', () => {
+    const overrideDir = path.join(configDir, 'plugins/local.example')
+    process.env.AI_PLUGIN_CONFIG_PATH = overrideDir
     resetPluginRegistry()
     const registry = loadPluginRegistry()
     expect(registry.getExpert('example.support')).toBeUndefined()
     expect(registry.getExpert('platform.editor')).toBeDefined()
+  })
+
+  it('loads split plugin directory files', () => {
+    const registry = loadPluginRegistry()
+    expect(registry.getMcpServer('platform.schema')).toBeDefined()
+    expect(registry.getToolDeclaration('schema__search')).toBeDefined()
+    expect(registry.getExpert('platform.flow')).toBeDefined()
   })
 })

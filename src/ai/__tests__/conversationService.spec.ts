@@ -61,11 +61,11 @@ describe('createConversation', () => {
     const result = await createConversation({ source: 'standalone' })
 
     expect(mockModel.create).toHaveBeenCalledWith({
-      _id: 'mock-uuid-1234',
       source: 'standalone',
       schemaId: undefined,
       flowId: undefined,
       nodeId: undefined,
+      version: undefined,
       messages: [],
       activeAgent: 'router',
     })

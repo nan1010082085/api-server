@@ -20,8 +20,14 @@ import {
 } from '../models/agentWorkflow.js'
 import { executeAgentWorkflow } from './agentWorkflowExecutor.js'
 import { ensureWebhookSecretsInGraph } from './agentWorkflowWebhookUtils.js'
+import { resolveCompleteCallback, dispatchWorkflowCompleteCallback } from './agentWorkflowCompleteCallback.js'
 import { logger } from '../../utils/logger.js'
 import { docId, refId, toObjectId } from '../../utils/objectId.js'
+import {
+  slugifyWorkflowName,
+  isValidWorkflowSlug,
+  ensureUniqueWorkflowSlug,
+} from '../utils/workflowSlug.js'
 
 const MAX_VERSIONS = 20
 
@@ -61,6 +67,7 @@ function toSummary(doc: Record<string, unknown>, hasRunningExecution = false) {
   return {
     id: docId(doc),
     name: doc.name as string,
+    slug: (doc.slug as string) ?? null,
     description: (doc.description as string) ?? '',
     status: doc.status as string,
     version: (doc.version as string) ?? '',
@@ -87,7 +94,7 @@ function toNodeRecord(doc: Record<string, unknown>) {
   }
 }
 
-function toExecution(doc: Record<string, unknown>) {
+export function toExecution(doc: Record<string, unknown>) {
   return {
     id: docId(doc),
     workflowId: refId(doc.workflowId) ?? '',
@@ -142,10 +149,14 @@ export async function createAgentWorkflow(
   name: string,
   description = '',
   templateId: AgentWorkflowTemplateId = 'blank',
+  tenantId = '000000',
 ) {
   const draftGraph = createAgentWorkflowGraphByTemplate(templateId)
+  const slug = await ensureUniqueWorkflowSlug(tenantId, slugifyWorkflowName(name))
   const doc = await AgentWorkflowModel.create({
+    tenantId,
     name,
+    slug,
     description,
     draftGraph,
     version: generateVersion(),
@@ -168,13 +179,20 @@ export async function getAgentWorkflow(id: string, userId: string) {
   return {
     ...toSummary(json, runningCount > 0),
     draftGraph: json.draftGraph,
+    onCompleteWebhook: (json.onCompleteWebhook as { url: string; secret?: string } | null) ?? null,
   }
 }
 
 export async function updateAgentWorkflow(
   id: string,
   userId: string,
-  patch: { name?: string; description?: string; draftGraph?: Record<string, unknown> },
+  patch: {
+    name?: string
+    slug?: string
+    description?: string
+    draftGraph?: Record<string, unknown>
+    onCompleteWebhook?: { url: string; secret?: string } | null
+  },
 ) {
   // 推入当前状态作为版本快照，再应用变更（与可视化编辑器一致）
   const existing = await AgentWorkflowModel.findOne({ _id: id, createdBy: userId }).lean()
@@ -185,6 +203,19 @@ export async function updateAgentWorkflow(
   if (patch.name !== undefined) $set.name = patch.name
   if (patch.description !== undefined) $set.description = patch.description
   if (patch.draftGraph !== undefined) $set.draftGraph = patch.draftGraph
+  if (patch.onCompleteWebhook !== undefined) $set.onCompleteWebhook = patch.onCompleteWebhook
+
+  if (patch.slug !== undefined) {
+    const trimmed = patch.slug.trim().toLowerCase()
+    if (!isValidWorkflowSlug(trimmed)) {
+      throw new Error('slug 格式无效：仅允许小写字母、数字和连字符')
+    }
+    $set.slug = await ensureUniqueWorkflowSlug(
+      (existingJson.tenantId as string) ?? '000000',
+      trimmed,
+      id,
+    )
+  }
 
   // 仅在 draftGraph 变更时推快照 + 升版本号
   const pushVersion =
@@ -251,11 +282,19 @@ export async function publishAgentWorkflow(id: string, userId: string) {
   workflow.publishId = publishId
   workflow.publishedVersion = publishVersion
   workflow.publishedGraph = graphWithSecrets
+  if (!workflow.slug) {
+    workflow.slug = await ensureUniqueWorkflowSlug(
+      workflow.tenantId,
+      slugifyWorkflowName(workflow.name),
+      String(workflow._id),
+    )
+  }
   await workflow.save()
 
   return {
     publishId,
     version: publishVersion,
+    slug: workflow.slug ?? null,
   }
 }
 
@@ -329,7 +368,11 @@ export async function startAgentWorkflowExecution(
   workflowId: string,
   userId: string,
   input: Record<string, unknown> = {},
-  opts: { trigger?: 'manual' | 'webhook' | 'chat' } = {},
+  opts: {
+    trigger?: 'manual' | 'webhook' | 'chat' | 'api'
+    callbackUrl?: string
+    callbackSecret?: string
+  } = {},
 ) {
   const workflow = await AgentWorkflowModel.findOne({ _id: workflowId, createdBy: userId })
   if (!workflow) return null
@@ -342,6 +385,11 @@ export async function startAgentWorkflowExecution(
     ? workflow.publishedVersion ?? workflow.version ?? ''
     : workflow.version ?? ''
 
+  const callback = resolveCompleteCallback(workflow, {
+    callbackUrl: opts.callbackUrl,
+    callbackSecret: opts.callbackSecret,
+  })
+
   const execution = await AgentWorkflowExecutionModel.create({
     workflowId: workflow._id,
     workflowName: workflow.name,
@@ -351,6 +399,8 @@ export async function startAgentWorkflowExecution(
     trigger: opts.trigger ?? 'manual',
     nodeRecords: [],
     triggeredBy: userId,
+    completeCallbackUrl: callback.url ?? null,
+    completeCallbackSecret: callback.secret ?? null,
   })
 
   const executionId = String(execution._id)
@@ -521,6 +571,10 @@ export async function cancelAgentWorkflowExecution(
   execution.error = reason
   execution.markModified('nodeRecords')
   await execution.save()
+
+  void dispatchWorkflowCompleteCallback(
+    execution.toObject() as Parameters<typeof dispatchWorkflowCompleteCallback>[0],
+  )
 
   return toExecution(execution.toJSON() as unknown as Record<string, unknown>)
 }

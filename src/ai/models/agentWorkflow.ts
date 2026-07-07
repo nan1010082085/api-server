@@ -10,6 +10,8 @@ import { tenantPlugin } from '../../middleware/tenantPlugin.js'
 export interface IAgentWorkflow {
   tenantId: string
   name: string
+  /** 租户内唯一，供 Open API by-slug 执行 */
+  slug?: string | null
   description: string
   status: 'draft' | 'published' | 'archived'
   draftGraph: Record<string, unknown>
@@ -23,6 +25,8 @@ export interface IAgentWorkflow {
   publishedVersion?: string | null
   /** 已发布版本对应的 graph 快照 */
   publishedGraph?: Record<string, unknown> | null
+  /** 执行完成后 POST 结果的回调 URL（Open API / 外部集成） */
+  onCompleteWebhook?: { url: string; secret?: string } | null
   /** 兼容旧数据：已发布版本 ObjectId */
   currentVersionId?: mongoose.Types.ObjectId | null
   createdBy: string
@@ -45,6 +49,7 @@ const agentWorkflowSchema = new mongoose.Schema(
   {
     tenantId: { type: String, default: '000000', index: true },
     name: { type: String, required: true },
+    slug: { type: String, default: null, index: true },
     description: { type: String, default: '' },
     status: {
       type: String,
@@ -57,6 +62,13 @@ const agentWorkflowSchema = new mongoose.Schema(
     publishId: { type: String, default: null, index: true },
     publishedVersion: { type: String, default: null },
     publishedGraph: { type: mongoose.Schema.Types.Mixed, default: null },
+    onCompleteWebhook: {
+      type: {
+        url: { type: String, required: true },
+        secret: { type: String },
+      },
+      default: null,
+    },
     currentVersionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'AgentWorkflowVersion',
@@ -82,6 +94,7 @@ const agentWorkflowSchema = new mongoose.Schema(
 agentWorkflowSchema.index({ name: 1 })
 agentWorkflowSchema.index({ status: 1 })
 agentWorkflowSchema.index({ createdBy: 1 })
+agentWorkflowSchema.index({ tenantId: 1, slug: 1 }, { unique: true, sparse: true })
 agentWorkflowSchema.plugin(tenantPlugin)
 
 export const AgentWorkflowModel =
@@ -157,7 +170,7 @@ export interface IAgentWorkflowExecution {
   /** 执行的版本号 (yyyymmddhhmmss) */
   version: string
   status: 'running' | 'success' | 'error' | 'waiting' | 'cancelled'
-  trigger: 'manual' | 'chat' | 'webhook'
+  trigger: 'manual' | 'chat' | 'webhook' | 'api'
   startedAt: Date
   finishedAt?: Date
   durationMs?: number
@@ -172,6 +185,8 @@ export interface IAgentWorkflowExecution {
     text: string
     updatedAt: string
   } | null
+  completeCallbackUrl?: string | null
+  completeCallbackSecret?: string | null
 }
 
 const executionSchema = new mongoose.Schema(
@@ -193,7 +208,7 @@ const executionSchema = new mongoose.Schema(
     },
     trigger: {
       type: String,
-      enum: ['manual', 'chat', 'webhook'],
+      enum: ['manual', 'chat', 'webhook', 'api'],
       default: 'manual',
     },
     startedAt: { type: Date, default: Date.now },
@@ -222,6 +237,8 @@ const executionSchema = new mongoose.Schema(
       },
       default: null,
     },
+    completeCallbackUrl: { type: String, default: null },
+    completeCallbackSecret: { type: String, default: null },
   },
   {
     timestamps: true,

@@ -1506,6 +1506,47 @@ Provider 列表及策略。
 
 ---
 
+## Agent Workflow（平台内 JWT）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/ai/workflows` | 列表 |
+| POST | `/api/ai/workflows` | 创建 |
+| GET | `/api/ai/workflows/:id` | 详情（含 slug、onCompleteWebhook） |
+| PUT | `/api/ai/workflows/:id` | 更新（name / slug / onCompleteWebhook / draftGraph） |
+| POST | `/api/ai/workflows/:id/publish` | 发布 |
+| POST | `/api/ai/workflows/:id/execute` | 测试执行 |
+| GET | `/api/ai/workflow-executions/:id` | 执行详情 |
+| POST | `/api/ai/workflow-executions/:id/resume` | HITL 恢复 |
+| POST | `/api/ai/workflow-executions/:id/cancel` | 取消 |
+
+Webhook 触发：`POST /api/ai/webhooks/*path`（HMAC `X-Webhook-Signature`）。
+
+插件 Registry（设计器）：`GET /api/ai/plugins` — 返回 experts / tools / mcpServers 配置快照。
+
+---
+
+## Agent Workflow Open API（API Key）
+
+> 完整说明见仓库 `ai/docs/design/workflow-open-api.md`；OpenAPI spec：`server/openapi/workflow-open.yaml`
+
+**鉴权**：`X-API-Key: sk_xxx` 或 `Authorization: Bearer sk_xxx`，需权限 `workflow:execute`。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/ai/open/workflows/:id/execute` | 按 ID 执行已发布 workflow |
+| POST | `/api/ai/open/workflows/by-slug/:slug/execute` | 按 slug 执行 |
+| GET | `/api/ai/open/workflow-executions/:id` | 查询状态 |
+| GET | `/api/ai/open/workflow-executions/:id/stream` | SSE 进度 |
+| POST | `/api/ai/open/workflow-executions/:id/resume` | HITL 恢复 |
+| POST | `/api/ai/open/workflow-executions/:id/cancel` | 取消 |
+
+Query：`async=true`（立即返回 pollUrl）、`version=yyyymmddhhmmss`（历史版本）。  
+Header：`Idempotency-Key`（24h 幂等）。  
+Body 可选：`callbackUrl` / `callbackSecret` 覆盖 workflow 级 `onCompleteWebhook`。
+
+---
+
 ## 附录: ID 格式说明
 
 所有资源的 `_id` 字段均为 MongoDB ObjectId（24 位十六进制字符串），如 `685faa86c32e0839b4f9de6f`。

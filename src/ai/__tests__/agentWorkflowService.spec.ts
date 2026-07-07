@@ -107,6 +107,7 @@ describe('agentWorkflowService serializers', () => {
   })
 
   it('createAgentWorkflow returns summary with version timestamp', async () => {
+    workflowFindOne.mockReturnValue({ lean: async () => null })
     workflowCreate.mockImplementation((doc) => ({
       toJSON: () => ({
         _id: '507f1f77bcf86cd799439020',
@@ -124,14 +125,21 @@ describe('agentWorkflowService serializers', () => {
 
   it('publishAgentWorkflow reuses existing publishId and returns version string', async () => {
     const save = vi.fn()
-    workflowFindOne.mockReturnValue({
-      _id: '507f1f77bcf86cd799439012',
-      name: 'Detail',
-      status: 'draft',
-      version: '20260701090000',
-      publishId: 'existing-uuid',
-      draftGraph: { entryNodeId: 't1', nodes: [], edges: [] },
-      save,
+    workflowFindOne.mockImplementation((filter: Record<string, unknown>) => {
+      if (filter._id) {
+        return {
+          _id: '507f1f77bcf86cd799439012',
+          name: 'Detail',
+          slug: 'detail',
+          tenantId: '000000',
+          status: 'draft',
+          version: '20260701090000',
+          publishId: 'existing-uuid',
+          draftGraph: { entryNodeId: 't1', nodes: [], edges: [] },
+          save,
+        }
+      }
+      return { lean: async () => null }
     })
 
     const result = await publishAgentWorkflow('507f1f77bcf86cd799439012', 'user1')

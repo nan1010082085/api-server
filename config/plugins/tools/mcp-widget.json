@@ -1,0 +1,6 @@
+{
+  "tools": [
+    { "name": "widget__query", "kind": "mcp", "source": "platform.widget", "argsHint": "{\"category\":\"form\"}" },
+    { "name": "widget__validate", "kind": "mcp", "source": "platform.widget", "argsHint": "{\"widgets\":[]}" }
+  ]
+}

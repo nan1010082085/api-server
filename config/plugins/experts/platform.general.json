@@ -1,0 +1,14 @@
+{
+  "id": "platform.general",
+  "label": "General 助手",
+  "description": "通用问答与平台能力介绍",
+  "legacyAgentKey": "general",
+  "dynamicPrompt": "general",
+  "tools": [],
+  "routing": {
+    "contextSources": ["standalone"],
+    "priority": 0
+  },
+  "model": { "temperature": 0.7, "maxTokens": 2048, "task": "analyze" },
+  "runtime": ["langgraph", "workflow"]
+}

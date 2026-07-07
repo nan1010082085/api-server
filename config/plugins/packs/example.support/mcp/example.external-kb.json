@@ -1,0 +1,7 @@
+{
+  "id": "example.external-kb",
+  "transport": "sse",
+  "url": "https://your-kb.example.com/mcp",
+  "namespace": "kb__",
+  "enabled": false
+}

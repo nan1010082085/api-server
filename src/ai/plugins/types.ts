@@ -16,6 +16,8 @@ export interface PluginToolDeclaration {
   name: string
   kind: ToolKind
   description?: string
+  /** JSON 参数示例，供设计器 ToolNodePanel 展示 */
+  argsHint?: string
   /** graph 工具由 langgraphTools 提供；mcp 由 MCP Server 发现 */
   source?: string
 }
@@ -82,4 +84,12 @@ export interface PluginManifest {
   tools?: PluginToolDeclaration[]
   skills?: SkillDeclaration[]
   experts?: ExpertDeclaration[]
+}
+
+/** 插件包根 manifest.json（pack / install 用） */
+export interface PluginPackManifest {
+  id: string
+  name: string
+  version: string
+  description?: string
 }

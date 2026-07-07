@@ -64,13 +64,18 @@ describe('agentWorkflowService publish + webhook', () => {
     const workflow = {
       _id: '507f1f77bcf86cd799439012',
       name: 'WF',
+      slug: 'wf',
+      tenantId: '000000',
       status: 'draft',
       version: '20260701090000',
       publishId: null,
       draftGraph,
       save,
     }
-    workflowFindOne.mockReturnValue(workflow)
+    workflowFindOne.mockImplementation((filter: Record<string, unknown>) => {
+      if (filter._id) return workflow
+      return { lean: async () => null }
+    })
 
     await publishAgentWorkflow('507f1f77bcf86cd799439012', 'user1')
 

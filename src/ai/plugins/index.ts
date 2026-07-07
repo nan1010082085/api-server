@@ -2,26 +2,7 @@
  * 插件中心 — 配置文件驱动的 Expert / Skill / Tool / MCP 目录。
  */
 
-import { loadPluginRegistry } from './loadPluginConfig.js'
-import type { PluginRegistry } from './registry.js'
-
-let _registry: PluginRegistry | null = null
-
-export function getPluginRegistry(): PluginRegistry {
-  if (!_registry) {
-    _registry = loadPluginRegistry()
-  }
-  return _registry
-}
-
-/** 测试或热重载时重置 */
-export function resetPluginRegistry(): void {
-  _registry = null
-}
-
-export function initPluginRegistry(): PluginRegistry {
-  return getPluginRegistry()
-}
+export { getPluginRegistry, resetPluginRegistry, initPluginRegistry } from './registrySingleton.js'
 
 export type {
   ExpertDeclaration,
@@ -35,7 +16,9 @@ export type {
   ToolKind,
 } from './types.js'
 export { PluginRegistry } from './registry.js'
-export { loadPluginRegistry, resolvePluginConfigDir } from './loadPluginConfig.js'
+export { loadPluginRegistry, resolvePluginConfigDir, loadPluginDirectory } from './loadPluginConfig.js'
+export { reloadPluginCenter, startPluginConfigWatch } from './pluginReload.js'
+export type { PluginReloadResult } from './pluginReload.js'
 export { resolveExpertSystemPrompt } from './resolveExpertPrompt.js'
 export { resolveRoutedExpert, buildExpertCatalogForPrompt, expertToLegacyAgentKey } from './resolveRouterExpert.js'
 export { runExpertLoop } from './runExpertLoop.js'

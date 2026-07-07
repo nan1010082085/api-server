@@ -208,9 +208,11 @@ async function resolveDocumentIdUpload(
   return loadDocumentFilePayload(documentId, userId)
 }
 
+export type DocumentSourceKind = 'documentId' | 'inputField' | 'stream' | 'api'
+
 export function resolveDocumentIdFromNodeData(
   data: {
-    documentSource?: 'documentId' | 'inputField' | 'stream'
+    documentSource?: DocumentSourceKind
     documentId?: string
     inputField?: string
   },
@@ -234,7 +236,7 @@ export function resolveDocumentIdFromNodeData(
 
 export function resolveDocumentStreamFromNodeData(
   data: {
-    documentSource?: 'documentId' | 'inputField' | 'stream'
+    documentSource?: DocumentSourceKind
     streamField?: string
   },
   input: Record<string, unknown>,
@@ -254,7 +256,7 @@ export function resolveDocumentStreamFromNodeData(
  */
 export async function resolveWorkflowUploadFile(
   data: {
-    documentSource?: 'documentId' | 'inputField' | 'stream'
+    documentSource?: DocumentSourceKind
     streamField?: string
   },
   input: Record<string, unknown>,

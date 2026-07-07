@@ -1,5 +1,5 @@
 import Router from '@koa/router'
-import { authMiddleware } from '../../middleware/auth.js'
+import { authMiddleware } from '../middleware/auth.js'
 import { getPluginRegistry } from './plugins/index.js'
 
 const router = new Router({ prefix: '/api/ai/plugins' })

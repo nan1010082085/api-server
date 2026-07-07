@@ -29,6 +29,7 @@ export async function seedRoles(): Promise<void> {
       'flow:view', 'flow:create', 'flow:edit', 'flow:delete', 'flow:design', 'flow:approve', 'flow:monitor', 'flow:publish', 'flow:start',
       'tenant:view', 'tenant:create', 'tenant:edit', 'tenant:delete',
       'apikey:view', 'apikey:create', 'apikey:edit', 'apikey:delete',
+      'workflow:execute',
       'webhook:view', 'webhook:create', 'webhook:edit', 'webhook:delete',
     ]
 

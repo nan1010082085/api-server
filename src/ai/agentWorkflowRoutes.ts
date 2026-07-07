@@ -98,16 +98,26 @@ router.put('/workflows/:id', async (ctx) => {
   if (rejectInvalidObjectId(ctx, ctx.params.id, 'workflow id')) return
   const body = ctx.request.body as {
     name?: string
+    slug?: string
     description?: string
     draftGraph?: Record<string, unknown>
+    onCompleteWebhook?: { url: string; secret?: string } | null
   }
-  const data = await updateAgentWorkflow(ctx.params.id, getUserId(ctx), body)
-  if (!data) {
-    ctx.status = 404
-    ctx.body = { success: false, error: { message: 'Workflow not found' } }
-    return
+  try {
+    const data = await updateAgentWorkflow(ctx.params.id, getUserId(ctx), body)
+    if (!data) {
+      ctx.status = 404
+      ctx.body = { success: false, error: { message: 'Workflow not found' } }
+      return
+    }
+    ctx.body = { success: true, data }
+  } catch (err) {
+    ctx.status = 422
+    ctx.body = {
+      success: false,
+      error: { message: err instanceof Error ? err.message : 'Update failed' },
+    }
   }
-  ctx.body = { success: true, data }
 })
 
 router.delete('/workflows/:id', async (ctx) => {

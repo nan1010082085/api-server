@@ -3,10 +3,21 @@
  */
 
 import type { StructuredTool } from '@langchain/core/tools'
+import { createRequire } from 'module'
 import { getPluginRegistry, resolveExpertSystemPrompt } from './index.js'
 import { runExpertLoop } from './runExpertLoop.js'
 import type { ExpertDeclaration, LegacyAgentKey } from './types.js'
-import { getToolsByNames } from '../tools/registry.js'
+
+const require = createRequire(import.meta.url)
+
+let getToolsByNamesFn: ((names: string[]) => StructuredTool[]) | undefined
+
+function resolveToolsByNames(names: string[]): StructuredTool[] {
+  if (!getToolsByNamesFn) {
+    getToolsByNamesFn = require('../tools/registry.js').getToolsByNames
+  }
+  return getToolsByNamesFn!(names)
+}
 
 export interface ExpertRef {
   expertId?: string
@@ -34,7 +45,7 @@ export async function buildExpertSystemPrompt(
 
 export function getExpertTools(expert: ExpertDeclaration): StructuredTool[] {
   const toolNames = getPluginRegistry().resolveExpertToolNames(expert.id)
-  return getToolsByNames(toolNames)
+  return resolveToolsByNames(toolNames)
 }
 
 export interface RunRegisteredExpertParams {

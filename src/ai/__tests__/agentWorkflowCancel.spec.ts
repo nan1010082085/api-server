@@ -41,6 +41,24 @@ describe('cancelAgentWorkflowExecution', () => {
       ],
       markModified: vi.fn(),
       save: executionSave.mockResolvedValue(undefined),
+      toObject: function (this: typeof execution) {
+        return {
+          _id: this._id,
+          workflowId: this.workflowId,
+          workflowName: this.workflowName,
+          version: this.version,
+          status: this.status,
+          trigger: this.trigger,
+          startedAt: this.startedAt,
+          finishedAt: this.finishedAt,
+          durationMs: this.durationMs,
+          nodeRecords: this.nodeRecords,
+          error: this.error,
+          tenantId: '000000',
+          versionId: null,
+          triggeredBy: 'user1',
+        }
+      },
       toJSON: () => ({
         _id: 'exec-1',
         workflowId: 'wf-1',

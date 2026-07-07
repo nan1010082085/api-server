@@ -5,7 +5,10 @@ const DEFAULT_TIMEOUT = 30_000 // 30 seconds
 export function timeoutMiddleware(ms: number = DEFAULT_TIMEOUT): Middleware {
   return async (ctx, next) => {
     // Skip timeout for SSE endpoints — they are long-lived streams
-    const isSSE = ctx.path.includes('/chat') || ctx.path.includes('/resume')
+    const isSSE =
+      ctx.path.includes('/chat') ||
+      ctx.path.includes('/resume') ||
+      ctx.path.includes('/open/workflow-executions/') && ctx.path.endsWith('/stream')
     if (isSSE) {
       await next()
       return

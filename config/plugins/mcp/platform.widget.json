@@ -1,0 +1,6 @@
+{
+  "id": "platform.widget",
+  "transport": "inmemory",
+  "builtin": "widget",
+  "namespace": "widget__"
+}

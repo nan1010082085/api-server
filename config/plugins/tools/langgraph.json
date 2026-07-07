@@ -1,0 +1,11 @@
+{
+  "tools": [
+    { "name": "update_schema", "kind": "graph", "argsHint": "{\"widgets\":[],\"summary\":\"更新说明\"}" },
+    { "name": "generate_schema", "kind": "graph", "argsHint": "{\"requirement\":\"创建一个请假申请表单\"}" },
+    { "name": "update_flow", "kind": "graph", "argsHint": "{\"flow\":{\"nodes\":[],\"edges\":[]},\"summary\":\"更新说明\"}" },
+    { "name": "save_and_bind_schema", "kind": "graph", "argsHint": "{\"flowId\":\"<id>\",\"nodeId\":\"<nodeId>\",\"widgets\":[]}" },
+    { "name": "bind_schema_to_flow_node", "kind": "graph", "argsHint": "{\"flowId\":\"<id>\",\"nodeId\":\"<nodeId>\",\"schemaId\":\"<id>\"}" },
+    { "name": "request_collaboration", "kind": "graph", "argsHint": "{\"targetAgent\":\"editor\",\"reason\":\"需要生成表单\"}" },
+    { "name": "rag_index", "kind": "graph", "argsHint": "{\"schemaId\":\"<id>\"}" }
+  ]
+}

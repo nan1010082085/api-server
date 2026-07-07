@@ -71,6 +71,24 @@ async function start() {
   process.on('SIGTERM', () => shutdown('SIGTERM'))
   process.on('SIGINT', () => shutdown('SIGINT'))
 
+  process.on('SIGHUP', () => {
+    import('./ai/plugins/pluginReload.js')
+      .then(({ reloadPluginCenter }) => reloadPluginCenter())
+      .then((result) => {
+        console.log(
+          `[server] Plugin center reloaded: ${result.toolCount} tools, `
+          + `${result.mcpServerCount} MCP servers, ${result.expertCount} experts`,
+        )
+      })
+      .catch((err) => {
+        console.error('[server] Plugin reload failed:', err instanceof Error ? err.message : String(err))
+      })
+  })
+
+  import('./ai/plugins/pluginReload.js')
+    .then(({ startPluginConfigWatch }) => startPluginConfigWatch())
+    .catch(() => { /* optional watch */ })
+
   return server
 }
 

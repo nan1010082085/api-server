@@ -1,0 +1,6 @@
+{
+  "id": "example.support",
+  "name": "Example Support Plugin",
+  "version": "1.0.0",
+  "description": "Demo plugin pack with expert, skill and external MCP declaration"
+}

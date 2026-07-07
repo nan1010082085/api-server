@@ -15,7 +15,7 @@ import { buildPageSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
 import { getMetadata } from '../services/metadataService.js'
 import { getPluginRegistry } from '../plugins/index.js'
 import { buildExpertSystemPrompt, getExpertTools } from '../plugins/dispatchExpert.js'
-import { truncateMessagesForLangGraph, resolveUserModel, getModelForTask, formatPreferencesForPrompt } from './agentBase.js'
+import { truncateMessagesForLangGraph, resolveUserModel, getModelForTask, formatPreferencesForPrompt, type TaskType } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { buildContextInjection, type AgentContextPayload } from './contextCarrier.js'
 import { retrieveRagContext } from './ragContextRetriever.js'
@@ -143,7 +143,7 @@ export async function pageAgentNode(
   const userContent = buildContextMessage(state) + ragContext.context
 
   const model = (await getLLM({
-    model: resolveUserModel(state.interaction.preferences, getModelForTask(expert.model?.task ?? 'generate_complex')),
+    model: resolveUserModel(state.interaction.preferences, getModelForTask((expert.model?.task ?? 'generate_complex') as TaskType)),
     temperature: expert.model?.temperature ?? 0.7,
     maxTokens: expert.model?.maxTokens ?? 8192,
   })).bindTools(getExpertTools(expert))

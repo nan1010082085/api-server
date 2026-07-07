@@ -1,0 +1,5 @@
+{
+  "tools": [
+    { "name": "rag__search", "kind": "mcp", "source": "platform.rag", "argsHint": "{\"query\":\"{{$input.message}}\",\"limit\":5}" }
+  ]
+}

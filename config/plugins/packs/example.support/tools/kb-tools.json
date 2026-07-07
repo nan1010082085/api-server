@@ -1,0 +1,5 @@
+{
+  "tools": [
+    { "name": "kb__search", "kind": "mcp", "source": "example.external-kb", "argsHint": "{\"query\":\"{{$input.message}}\",\"limit\":5}" }
+  ]
+}

@@ -14,7 +14,10 @@
     "db:down": "docker compose -f docker-compose.yml down",
     "db:seed": "tsx scripts/seed.ts",
     "db:fix-seed": "tsx scripts/fix-seed-data.ts",
-    "db:migrate-id": "tsx scripts/migrate-to-objectid.ts"
+    "db:migrate-id": "tsx scripts/migrate-to-objectid.ts",
+    "plugin:validate": "tsx scripts/plugin-validate.ts",
+    "plugin:pack": "tsx scripts/plugin-pack.ts",
+    "plugin:install": "tsx scripts/plugin-install.ts"
   },
   "dependencies": {
     "@koa/cors": "^5.0.0",

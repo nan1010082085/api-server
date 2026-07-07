@@ -6,6 +6,7 @@
 
 import { HumanMessage, SystemMessage, AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages'
 import { AgentWorkflowExecutionModel } from '../models/agentWorkflow.js'
+import type { IAgentWorkflowExecution } from '../models/agentWorkflow.js'
 import { getLLM } from './llmCache.js'
 import { logger } from '../../utils/logger.js'
 import { leanDoc } from '../../utils/leanDoc.js'
@@ -13,7 +14,8 @@ import {
   ROUTER_SYSTEM_PROMPT,
 } from '@schema-platform/ai-shared/promptBuilder'
 import { normalizeToolName } from '@schema-platform/ai-shared/toolNames'
-import { getToolSync, ensureToolsReady, getToolsByNames } from '../tools/registry.js'
+import { getToolSync, ensureToolsReady, getToolsByNames, isHttpTool } from '../tools/registry.js'
+import { executeHttpRequest } from '../tools/httpToolExecutor.js'
 import { getPluginRegistry } from '../plugins/index.js'
 import { runRegisteredExpert } from '../plugins/dispatchExpert.js'
 import type { LegacyAgentKey } from '../plugins/types.js'
@@ -21,6 +23,7 @@ import { extractJsonFromResponse } from '../graph/agentBase.js'
 import { getDocumentWithText, reprocessDocumentFromStorage, analyzeDocumentVision, chunkText } from './documentService.js'
 import { processFile, performVisionAnalysis, isImageType } from './fileService.js'
 import { extractNodeOutputError, nodeFailure } from './agentWorkflowNodeErrors.js'
+import { dispatchWorkflowCompleteCallback } from './agentWorkflowCompleteCallback.js'
 import { resolveWorkflowApiFile } from './agentWorkflowFileFetch.js'
 import { resolveWorkflowTemplate } from './agentWorkflowTemplateResolver.js'
 import {
@@ -77,6 +80,7 @@ interface WorkflowGraphNode {
     maxHistoryTurns?: number
     useConversationHistory?: boolean
     appendAssistantReply?: boolean
+    expertId?: string
   }
 }
 
@@ -133,7 +137,7 @@ function sleep(ms: number): Promise<void> {
   })
 }
 
-async function waitForExecutionCancelled(executionId: string): Promise<void> {
+async function waitForExecutionCancelled(executionId: string): Promise<never> {
   while (true) {
     if (await isExecutionCancelled(executionId)) {
       throw new Error('用户手动停止')
@@ -151,7 +155,7 @@ async function invokeLLMWithGuard(
     ? WORKFLOW_LLM_TIMEOUT_MS
     : 120_000
 
-  return Promise.race([
+  return Promise.race<Awaited<ReturnType<typeof llm.invoke>>>([
     llm.invoke(messages),
     sleep(timeoutMs).then(() => {
       throw new Error(`LLM 调用超时（${Math.round(timeoutMs / 1000)}s）`)
@@ -227,7 +231,7 @@ async function streamLLMWithGuard(
     return content
   }
 
-  return Promise.race([
+  return Promise.race<string>([
     streamTask(),
     sleep(timeoutMs).then(() => {
       throw new Error(`LLM 调用超时（${Math.round(timeoutMs / 1000)}s）`)
@@ -334,6 +338,12 @@ async function finishExecution(
   if (error) execution.error = error
   execution.streamingOutput = undefined
   await execution.save()
+
+  if (status === 'success' || status === 'error' || status === 'cancelled') {
+    void dispatchWorkflowCompleteCallback(
+      execution.toObject() as IAgentWorkflowExecution & { _id: unknown },
+    )
+  }
 }
 
 async function isExecutionCancelled(executionId: string): Promise<boolean> {
@@ -471,25 +481,15 @@ async function dispatchTool(
   const args = resolveTemplateInArgs(rawArgs ?? {}, ctx)
   const normalized = normalizeToolName(toolName)
 
-  if (normalized === 'http_request') {
-    try {
-      const method = String(args.method ?? 'GET').toUpperCase()
-      const url = String(args.url ?? '')
-      const headers = (args.headers as Record<string, string>) ?? {}
-      const body = args.body != null ? JSON.stringify(args.body) : undefined
-      const res = await fetch(url, { method, headers, body })
-      const text = await res.text()
-      let parsed: unknown = text
-      try { parsed = JSON.parse(text) } catch { /* keep text */ }
-      if (!res.ok) {
-        const msg = typeof parsed === 'string' ? parsed : `HTTP ${res.status}`
-        return { output: { status: res.status, data: parsed }, error: msg }
+  if (isHttpTool(normalized)) {
+    const result = await executeHttpRequest(args as Parameters<typeof executeHttpRequest>[0])
+    if (result.error) {
+      return {
+        output: { tool: toolName, ...result.output, error: result.error },
+        error: result.error,
       }
-      return { output: { status: res.status, data: parsed } }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      return { output: { tool: toolName, error: msg }, error: msg }
     }
+    return { output: result.output }
   }
 
   try {

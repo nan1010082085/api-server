@@ -191,7 +191,11 @@ async function routerNode(
         task: {
           ...state.task,
           type: 'generate_simple',
-          chain: [{ agent: routedKey, description: routed.label, status: 'pending' }],
+          chain: [{
+            agent: routedKey as 'editor' | 'flow' | 'page',
+            description: routed.label,
+            status: 'pending' as const,
+          }],
           currentStepIndex: 0,
         },
         tools: { ...state.tools, needsTool: true },

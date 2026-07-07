@@ -1,0 +1,6 @@
+{
+  "id": "platform.rag",
+  "transport": "inmemory",
+  "builtin": "rag",
+  "namespace": "rag__"
+}

@@ -86,8 +86,13 @@ export async function runExpertLoop(params: RunExpertLoopParams): Promise<RunExp
   }
 
   const lastMsg = messages[messages.length - 1]
-  const content = lastMsg && typeof (lastMsg as AIMessage).content === 'string'
-    ? (lastMsg as AIMessage).content
-    : 'Agent 达到最大工具调用轮次'
-  return { text: content, truncated: true }
+  const rawContent = lastMsg ? (lastMsg as AIMessage).content : undefined
+  const content = typeof rawContent === 'string'
+    ? rawContent
+    : Array.isArray(rawContent)
+      ? rawContent
+          .map((part) => (typeof part === 'string' ? part : (part as { text?: string }).text ?? ''))
+          .join('')
+      : 'Agent 达到最大工具调用轮次'
+  return { text: content || 'Agent 达到最大工具调用轮次', truncated: true }
 }

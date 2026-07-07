@@ -1,0 +1,11 @@
+{
+  "tools": [
+    { "name": "schema__search", "kind": "mcp", "source": "platform.schema", "argsHint": "{\"keyword\":\"表单\",\"limit\":5}" },
+    { "name": "schema__get_detail", "kind": "mcp", "source": "platform.schema", "argsHint": "{\"schemaId\":\"<id>\"}" },
+    { "name": "schema__search_published", "kind": "mcp", "source": "platform.schema", "argsHint": "{\"keyword\":\"表单\",\"limit\":5}" },
+    { "name": "schema__fuzzy_search", "kind": "mcp", "source": "platform.schema", "argsHint": "{\"query\":\"请假申请\",\"limit\":5}" },
+    { "name": "schema__validate", "kind": "mcp", "source": "platform.schema", "argsHint": "{\"schema\":{}}" },
+    { "name": "schema__find_flow_references", "kind": "mcp", "source": "platform.schema", "argsHint": "{\"schemaId\":\"<id>\"}" },
+    { "name": "schema__validate_widgets", "kind": "mcp", "source": "platform.schema", "argsHint": "{\"widgets\":[]}" }
+  ]
+}

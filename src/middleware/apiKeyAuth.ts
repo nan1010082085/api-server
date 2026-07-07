@@ -19,13 +19,22 @@ export interface ApiKeyAuthState {
  */
 export function apiKeyAuthMiddleware(): Middleware {
   return async (ctx, next) => {
-    const apiKey = ctx.get('X-API-Key')
+    let apiKey = ctx.get('X-API-Key')
+    if (!apiKey) {
+      const authHeader = ctx.get('Authorization')
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.slice(7).trim()
+        if (token.startsWith('sk_')) {
+          apiKey = token
+        }
+      }
+    }
 
     if (!apiKey) {
       ctx.status = 401
       ctx.body = {
         success: false,
-        error: { message: 'X-API-Key header is required.' },
+        error: { message: 'X-API-Key or Bearer sk_* token is required.', code: 'invalid_api_key' },
       }
       return
     }
@@ -36,7 +45,7 @@ export function apiKeyAuthMiddleware(): Middleware {
       ctx.status = 401
       ctx.body = {
         success: false,
-        error: { message: 'Invalid API key.' },
+        error: { message: 'Invalid API key.', code: 'invalid_api_key' },
       }
       return
     }
@@ -45,7 +54,7 @@ export function apiKeyAuthMiddleware(): Middleware {
       ctx.status = 401
       ctx.body = {
         success: false,
-        error: { message: 'API key is disabled.' },
+        error: { message: 'API key is disabled.', code: 'invalid_api_key' },
       }
       return
     }
@@ -54,7 +63,7 @@ export function apiKeyAuthMiddleware(): Middleware {
       ctx.status = 401
       ctx.body = {
         success: false,
-        error: { message: 'API key has expired.' },
+        error: { message: 'API key has expired.', code: 'invalid_api_key' },
       }
       return
     }

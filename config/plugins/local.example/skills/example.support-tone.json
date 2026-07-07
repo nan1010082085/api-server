@@ -1,0 +1,6 @@
+{
+  "id": "example.support-tone",
+  "label": "客服语气",
+  "content": "请使用简洁、专业的客服语气回答。",
+  "enabled": false
+}

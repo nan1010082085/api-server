@@ -1,0 +1,29 @@
+{
+  "id": "platform.flow",
+  "label": "Flow 专家",
+  "description": "BPMN 流程生成、校验与更新",
+  "legacyAgentKey": "flow",
+  "dynamicPrompt": "flow",
+  "tools": [
+    "flow__search",
+    "flow__get_detail",
+    "flow__get_node_schema",
+    "flow__search_users",
+    "flow__validate",
+    "schema__search",
+    "schema__get_detail",
+    "rag__search",
+    "update_flow",
+    "generate_schema",
+    "save_and_bind_schema",
+    "bind_schema_to_flow_node",
+    "request_collaboration"
+  ],
+  "routing": {
+    "keywords": ["流程", "审批", "流转", "bpmn", "flow", "节点", "工作流"],
+    "contextSources": ["flow", "standalone"],
+    "priority": 10
+  },
+  "model": { "temperature": 0.7, "maxTokens": 8192, "task": "generate_complex" },
+  "runtime": ["langgraph", "workflow"]
+}

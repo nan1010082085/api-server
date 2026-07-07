@@ -7,36 +7,12 @@
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { StructuredTool } from '@langchain/core/tools'
 import { logger } from '../../utils/logger.js'
-import { getPluginRegistry } from '../plugins/index.js'
-import type { McpServerDeclaration } from '../plugins/types.js'
-import { resolveBuiltinMcpFactory } from './builtinFactories.js'
-
-// ────────────────────────────────────────────
-// 内部客户端
-// ────────────────────────────────────────────
-
-/**
- * 创建 MCP 内部客户端（InMemoryTransport 直连，不经 SSE）。
- * 每个 server 实例独占一对 transport，避免跨 server 状态污染。
- */
-async function createInternalClient(factory: () => McpServer): Promise<Client> {
-  const server = factory()
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  await server.connect(serverTransport)
-
-  const client = new Client(
-    { name: 'langgraph-internal', version: '1.0.0' },
-  )
-  await client.connect(clientTransport)
-
-  return client
-}
+import { getPluginRegistry } from '../plugins/registrySingleton.js'
+import { createMcpClient } from './createMcpClient.js'
 
 // ────────────────────────────────────────────
 // 工具转换
@@ -84,56 +60,6 @@ async function convertMcpTools(client: Client): Promise<StructuredTool[]> {
   })
 }
 
-// ────────────────────────────────────────────
-// 初始化入口
-// ────────────────────────────────────────────
-
-/**
- * 按插件中心声明创建 MCP Client。
- */
-async function createClientForDeclaration(decl: McpServerDeclaration): Promise<Client> {
-  if (decl.transport === 'inmemory') {
-    const builtin = decl.builtin?.trim()
-    if (!builtin) {
-      throw new Error(`[mcpBridge] inmemory server ${decl.id} missing builtin`)
-    }
-    const factory = await resolveBuiltinMcpFactory(builtin)
-    if (!factory) {
-      throw new Error(`[mcpBridge] unknown builtin "${builtin}" for ${decl.id}`)
-    }
-    return createInternalClient(factory)
-  }
-
-  if (decl.transport === 'stdio') {
-    if (!decl.command?.trim()) {
-      throw new Error(`[mcpBridge] stdio server ${decl.id} missing command`)
-    }
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
-    const transport = new StdioClientTransport({
-      command: decl.command,
-      args: decl.args ?? [],
-    })
-    const client = new Client({ name: `plugin-${decl.id}`, version: '1.0.0' })
-    await client.connect(transport)
-    return client
-  }
-
-  if (decl.transport === 'sse') {
-    if (!decl.url?.trim()) {
-      throw new Error(`[mcpBridge] sse server ${decl.id} missing url`)
-    }
-    const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js')
-    const transport = new SSEClientTransport(new URL(decl.url), {
-      requestInit: decl.headers ? { headers: decl.headers } : undefined,
-    })
-    const client = new Client({ name: `plugin-${decl.id}`, version: '1.0.0' })
-    await client.connect(transport)
-    return client
-  }
-
-  throw new Error(`[mcpBridge] unsupported transport for ${decl.id}`)
-}
-
 /**
  * 初始化插件中心声明的全部 MCP Server，返回 LangGraph 可用的工具数组。
  *
@@ -147,7 +73,7 @@ export async function initMcpBridge(): Promise<StructuredTool[]> {
   const results = await Promise.all(
     servers.map(async (decl) => {
       try {
-        const client = await createClientForDeclaration(decl)
+        const client = await createMcpClient(decl)
         const tools = await convertMcpTools(client)
         logger.info({ msg: `[mcpBridge] ${decl.id} loaded ${tools.length} tools`, transport: decl.transport })
         return tools
