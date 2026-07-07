@@ -103,6 +103,12 @@ function toExecution(doc: Record<string, unknown>) {
     conversationHistory: doc.conversationHistory as Array<{ role: string; content: string; at?: string }> | undefined,
     parentExecutionId: (doc.parentExecutionId as string) ?? null,
     error: doc.error as string | undefined,
+    streamingOutput: doc.streamingOutput as {
+      nodeId: string
+      nodeType: string
+      text: string
+      updatedAt: string
+    } | null | undefined,
   }
 }
 

@@ -8,6 +8,7 @@ import { initWebhookDispatcher } from './services/webhookDispatcher.js'
 import { initSubmissionFlowBridge } from './services/submissionFlowBridge.js'
 import { initFlowSubmissionStatusBridge } from './services/flowSubmissionStatusBridge.js'
 import { runBusinessSeeds } from './utils/runBusinessSeeds.js'
+import { scheduleRagStartupSync } from './ai/services/ragIndexScheduler.js'
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10)
 
@@ -19,6 +20,8 @@ async function start() {
   } catch (err) {
     console.error('[seed] Business seed failed:', err instanceof Error ? err.message : String(err))
   }
+
+  scheduleRagStartupSync()
 
   initWebhookDispatcher()
   initSubmissionFlowBridge()

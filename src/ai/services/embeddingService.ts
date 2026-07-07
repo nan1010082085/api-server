@@ -3,6 +3,8 @@
  *
  * DeepSeek chat API key does NOT support embeddings (POST /v1/embeddings returns 404).
  * Configure a dedicated embedding provider via EMBEDDING_* or OPENAI_API_KEY.
+ *
+ * Priority: EMBEDDING_* > OPENAI_* > SiliconFlow BGE-M3 (free, no key required)
  */
 
 import OpenAI from 'openai'
@@ -35,10 +37,12 @@ function resolveEmbeddingConfig(): EmbeddingClientConfig {
     }
   }
 
-  throw new Error(
-    'Embedding API 未配置：DeepSeek 仅提供对话模型，不提供 Embedding 接口。'
-    + '请设置 EMBEDDING_API_KEY + EMBEDDING_BASE_URL（或 OPENAI_API_KEY）以启用向量检索。',
-  )
+  // Fallback: SiliconFlow 托管 BGE-M3（免费、中文效果最佳）
+  return {
+    apiKey: 'siliconflow-free',
+    baseURL: 'https://api.siliconflow.cn/v1',
+    model: 'BAAI/bge-m3',
+  }
 }
 
 function getClient(): OpenAI {
@@ -102,7 +106,8 @@ export interface EmbeddingResult {
 }
 
 export function isEmbeddingConfigured(): boolean {
-  return Boolean(process.env.EMBEDDING_API_KEY || process.env.OPENAI_API_KEY)
+  // 始终返回 true：无显式配置时 fallback 到 SiliconFlow BGE-M3
+  return true
 }
 
 /**

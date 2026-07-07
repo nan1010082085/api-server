@@ -1,6 +1,7 @@
 import mongoose from 'mongoose'
 import type { FlowGraph, FlowGraphMetadata } from '@schema-platform/flow-shared'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
+import { scheduleFlowRagIndex } from '../ai/services/ragIndexScheduler.js'
 
 export interface IFlowVersion {
   tenantId: string
@@ -38,6 +39,10 @@ const flowVersionSchema = new mongoose.Schema(
 flowVersionSchema.index({ definitionId: 1, version: -1 }, { unique: true })
 
 flowVersionSchema.plugin(tenantPlugin)
+
+flowVersionSchema.post('save', function (doc: IFlowVersion & { definitionId: string }) {
+  scheduleFlowRagIndex(String(doc.definitionId))
+})
 
 export const FlowVersionModel =
   mongoose.models.FlowVersion ??

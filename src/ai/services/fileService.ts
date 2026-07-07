@@ -6,39 +6,32 @@
 
 import { PDFParse } from 'pdf-parse'
 import mammoth from 'mammoth'
+import JSZip from 'jszip'
+import WordExtractor from 'word-extractor'
+import {
+  DOCUMENT_FORMAT_LABEL,
+  isAllowedUploadFile,
+  isImageMimetype,
+  normalizeUploadMimetype,
+  resolveExtractionKind,
+  type DocumentExtractionKind,
+} from './documentFormats.js'
 
-// ---- Types ----
+export { DOCUMENT_FORMAT_LABEL, DOCUMENT_UPLOAD_ACCEPT } from './documentFormats.js'
 
 export interface ProcessedFile {
-  /** Original filename */
   filename: string
-  /** MIME type */
   mimetype: string
-  /** File size in bytes */
   size: number
-  /** Extracted text content */
   text: string
-  extractionMethod: 'ocr' | 'pdf' | 'docx' | 'txt' | 'empty'
-  /** Base64 data URL for images (ephemeral) */
+  extractionMethod: DocumentExtractionKind
   dataUrl?: string
 }
 
-// ---- Constants ----
-
 export const VISION_OCR_MODEL = process.env.AI_VISION_OCR_MODEL || 'deepseek-v4-flash'
-/** 文本摘要 / 对话默认模型（与 OCR 视觉模型分离） */
 export const DOCUMENT_TEXT_MODEL = process.env.AI_DOCUMENT_TEXT_MODEL || 'deepseek-v4-flash'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
-const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
-const ALLOWED_DOC_TYPES = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain',
-])
-
-// ---- Vision API (DeepSeek VL) ----
 
 async function callVisionModel(
   base64Image: string,
@@ -86,8 +79,6 @@ async function callVisionModel(
   return data.choices[0]?.message?.content ?? ''
 }
 
-// ---- OCR via DeepSeek VL ----
-
 async function performOCR(base64Image: string, mimeType: string): Promise<string> {
   return callVisionModel(
     base64Image,
@@ -99,7 +90,6 @@ async function performOCR(base64Image: string, mimeType: string): Promise<string
 const DEFAULT_VISION_PROMPT =
   '请从视觉语义角度描述这张图片：场景、主体、布局、UI/表单结构、图表类型、颜色与空间关系等。文字内容可简要概括，重点不是逐字 OCR。'
 
-/** 纯视觉语义描述（非 OCR） */
 export async function performVisionAnalysis(
   base64Image: string,
   mimeType: string,
@@ -109,7 +99,6 @@ export async function performVisionAnalysis(
   return callVisionModel(base64Image, mimeType, prompt)
 }
 
-/** 解析 data URL 或裸 base64，返回 { base64, mimeType } */
 export function parseImagePayload(image: string): { base64: string; mimeType: string } {
   const trimmed = image.trim()
   const dataUrlMatch = /^data:([^;]+);base64,(.+)$/i.exec(trimmed)
@@ -124,14 +113,12 @@ export async function analyzeImagePayload(
   customPrompt?: string,
 ): Promise<{ description: string; mimetype: string }> {
   const { base64, mimeType } = parseImagePayload(image)
-  if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
+  if (!isImageMimetype(mimeType)) {
     throw new Error(`Unsupported image type: ${mimeType}`)
   }
   const description = await performVisionAnalysis(base64, mimeType, customPrompt)
   return { description, mimetype: mimeType }
 }
-
-// ---- Text extraction from documents ----
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
   const parser = new PDFParse({ data: buffer })
@@ -148,39 +135,106 @@ async function extractDocxText(buffer: Buffer): Promise<string> {
   return result.value
 }
 
-function extractPlainText(buffer: Buffer): string {
-  return buffer.toString('utf-8')
+async function extractDocText(buffer: Buffer): Promise<string> {
+  const extractor = new WordExtractor()
+  const document = await extractor.extract(buffer)
+  return document.getBody()
 }
 
-// ---- Main processing function ----
+function extractPlainText(buffer: Buffer): string {
+  let text = buffer.toString('utf-8')
+  if (text.charCodeAt(0) === 0xFEFF) {
+    text = text.slice(1)
+  }
+  return text
+}
 
-/**
- * Process an uploaded file buffer.
- *
- * - Images: OCR via DeepSeek VL, returns text + dataUrl for multimodal context
- * - PDFs: text extraction via pdf-parse
- * - DOC/DOCX: text extraction via mammoth
- * - TXT: direct UTF-8 read
- */
+function collectOfdTextFromXml(xml: string): string[] {
+  const parts: string[] = []
+  const textCodePattern = /<(?:[\w-]+:)?TextCode[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?TextCode>/gi
+  let match: RegExpExecArray | null
+  while ((match = textCodePattern.exec(xml)) !== null) {
+    const raw = match[1]
+      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+      .replace(/<[^>]+>/g, '')
+      .trim()
+    if (raw) parts.push(raw)
+  }
+  return parts
+}
+
+async function extractOfdText(buffer: Buffer): Promise<string> {
+  const zip = await JSZip.loadAsync(buffer)
+  const parts: string[] = []
+
+  const contentEntries = Object.keys(zip.files)
+    .filter((name) => /\/Content\.xml$/i.test(name) || /Document\.xml$/i.test(name))
+    .sort()
+
+  for (const name of contentEntries) {
+    const file = zip.files[name]
+    if (!file || file.dir) continue
+    const xml = await file.async('string')
+    parts.push(...collectOfdTextFromXml(xml))
+  }
+
+  if (parts.length === 0) {
+    for (const name of Object.keys(zip.files)) {
+      if (!name.endsWith('.xml') || zip.files[name]?.dir) continue
+      const xml = await zip.files[name].async('string')
+      parts.push(...collectOfdTextFromXml(xml))
+    }
+  }
+
+  return parts.join('\n').trim()
+}
+
+async function extractDocumentText(
+  buffer: Buffer,
+  filename: string,
+  mimetype: string,
+): Promise<string> {
+  const kind = resolveExtractionKind(filename, mimetype)
+
+  switch (kind) {
+    case 'pdf':
+      return extractPdfText(buffer)
+    case 'docx':
+      return extractDocxText(buffer)
+    case 'doc':
+      return extractDocText(buffer)
+    case 'csv':
+      return extractPlainText(buffer)
+    case 'ofd':
+      return extractOfdText(buffer)
+    default:
+      return extractPlainText(buffer)
+  }
+}
+
 export async function processFile(
   buffer: Buffer,
   filename: string,
   mimetype: string,
 ): Promise<ProcessedFile> {
-  // Validate file size
+  const normalizedMimetype = normalizeUploadMimetype(filename, mimetype)
+
   if (buffer.length > MAX_FILE_SIZE) {
     throw new Error(`File size exceeds maximum limit of ${MAX_FILE_SIZE / 1024 / 1024}MB`)
   }
 
-  // Image processing — OCR via vision model (flash), downstream LLM only sees text
-  if (ALLOWED_IMAGE_TYPES.has(mimetype)) {
+  if (!isAllowedUploadFile(filename, normalizedMimetype)) {
+    throw new Error(`Unsupported file type: ${mimetype || filename}. Allowed: ${DOCUMENT_FORMAT_LABEL}`)
+  }
+
+  if (isImageMimetype(normalizedMimetype)) {
     const base64 = buffer.toString('base64')
-    const dataUrl = `data:${mimetype};base64,${base64}`
-    const text = await performOCR(base64, mimetype)
+    const dataUrl = `data:${normalizedMimetype};base64,${base64}`
+    const text = await performOCR(base64, normalizedMimetype)
 
     return {
       filename,
-      mimetype,
+      mimetype: normalizedMimetype,
       size: buffer.length,
       text,
       extractionMethod: text.trim() ? 'ocr' : 'empty',
@@ -188,52 +242,23 @@ export async function processFile(
     }
   }
 
-  // Document processing
-  if (!ALLOWED_DOC_TYPES.has(mimetype)) {
-    throw new Error(`Unsupported file type: ${mimetype}. Allowed: images, PDF, DOC, DOCX, TXT`)
-  }
-
-  let text = ''
-
-  if (mimetype === 'application/pdf') {
-    text = await extractPdfText(buffer)
-  } else if (
-    mimetype === 'application/msword' ||
-    mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  ) {
-    text = await extractDocxText(buffer)
-  } else {
-    // text/plain
-    text = extractPlainText(buffer)
-  }
-
-  const extractionMethod = !text.trim()
-    ? 'empty'
-    : mimetype === 'application/pdf'
-      ? 'pdf'
-      : mimetype === 'text/plain'
-        ? 'txt'
-        : 'docx'
+  const text = await extractDocumentText(buffer, filename, normalizedMimetype)
+  const kind = resolveExtractionKind(filename, normalizedMimetype)
+  const extractionMethod: DocumentExtractionKind = text.trim() ? kind : 'empty'
 
   return {
     filename,
-    mimetype,
+    mimetype: normalizedMimetype,
     size: buffer.length,
     text,
     extractionMethod,
   }
 }
 
-/**
- * Validate that the file type is supported.
- */
-export function isAllowedFileType(mimetype: string): boolean {
-  return ALLOWED_IMAGE_TYPES.has(mimetype) || ALLOWED_DOC_TYPES.has(mimetype)
+export function isAllowedFileType(filename: string, mimetype: string): boolean {
+  return isAllowedUploadFile(filename, mimetype)
 }
 
-/**
- * Check if the MIME type is an image type.
- */
 export function isImageType(mimetype: string): boolean {
-  return ALLOWED_IMAGE_TYPES.has(mimetype)
+  return isImageMimetype(normalizeUploadMimetype('image.bin', mimetype))
 }

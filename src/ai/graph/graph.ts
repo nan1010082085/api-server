@@ -20,6 +20,7 @@ import { AgentStateAnnotation } from './state.js'
 import { editorAgentNode } from './editorAgent.js'
 import { flowAgentNode } from './flowAgent.js'
 import { pageAgentNode } from './pageAgent.js'
+import { pluginExpertAgentNode } from './pluginExpertAgent.js'
 import { getAllToolsSync, getToolsByNames } from '../tools/registry.js'
 import { checkpointer } from './checkpointer.js'
 import { getLLM } from '../services/llmCache.js'
@@ -32,6 +33,7 @@ import { logger } from '../../utils/logger.js'
 import { requirementAnalyzerNode, routeAfterRequirementAnalyzer } from './requirementAnalyzer.js'
 import { requirementConfirmNode } from './requirementConfirm.js'
 import { taskPlannerNode, routeAfterTaskPlanner } from './taskPlanner.js'
+import { resolveRoutedExpert, expertToLegacyAgentKey } from '../plugins/resolveRouterExpert.js'
 
 // ────────────────────────────────────────────
 // Tool nodes（带错误兜底）
@@ -148,8 +150,9 @@ async function routerNode(
     return { session: { ...state.session, nodeExecutionCount: nextCount } }
   }
 
-  // v2: 所有 standalone 请求都经过 requirementAnalyzer，router 只做初步标记
-  const lower = (state.messages[state.messages.length - 1]?.content as string ?? '').toLowerCase()
+  // v2: standalone — 多意图仍用显式规则，单意图走插件中心 routing
+  const lastContent = state.messages[state.messages.length - 1]?.content
+  const lower = (typeof lastContent === 'string' ? lastContent : '').toLowerCase()
   const isFlow = /流程|审批|节点|bpmn|workflow|开始|结束/.test(lower)
   const isPage = /列表|统计|详情|仪表盘|dashboard|搜索列表|数据表格/.test(lower)
   const isForm = /表单|表|输入|填写|编辑/.test(lower)
@@ -170,22 +173,54 @@ async function routerNode(
     return { session: { ...state.session, currentAgent: chain[0].agent }, task: { ...state.task, type: 'generate_simple', chain, currentStepIndex: 0 }, tools: { ...state.tools, needsTool: true } }
   }
 
-  if (isFlow) {
-    console.log(`[router] 关键词匹配 -> flow`)
-    return { session: { ...state.session, currentAgent: 'flow' }, task: { ...state.task, type: 'generate_simple', chain: [{ agent: 'flow', description: '生成流程', status: 'pending' }], currentStepIndex: 0 }, tools: { ...state.tools, needsTool: true } }
+  const routed = resolveRoutedExpert({
+    text: lower,
+    contextSource: state.context.source,
+  })
+  const routedKey = routed ? expertToLegacyAgentKey(routed) : null
+  if (routed) {
+    if (routedKey && routedKey !== 'general') {
+      console.log(`[router] pluginRegistry match -> ${routedKey} (${routed.id})`)
+      return {
+        session: {
+          ...state.session,
+          currentAgent: routedKey,
+          currentExpertId: undefined,
+          nodeExecutionCount: nextCount,
+        },
+        task: {
+          ...state.task,
+          type: 'generate_simple',
+          chain: [{ agent: routedKey, description: routed.label, status: 'pending' }],
+          currentStepIndex: 0,
+        },
+        tools: { ...state.tools, needsTool: true },
+      }
+    }
+    console.log(`[router] pluginRegistry custom expert -> ${routed.id}`)
+    return {
+      session: {
+        ...state.session,
+        currentAgent: 'general',
+        currentExpertId: routed.id,
+        nodeExecutionCount: nextCount,
+      },
+      task: {
+        ...state.task,
+        type: 'generate_simple',
+        chain: [{ agent: 'page' as const, description: routed.label, status: 'pending' }],
+        currentStepIndex: 0,
+      },
+      tools: { ...state.tools, needsTool: true },
+    }
   }
 
-  if (isPage) {
-    console.log(`[router] 关键词匹配 -> page`)
-    return { session: { ...state.session, currentAgent: 'page' }, task: { ...state.task, type: 'generate_simple', chain: [{ agent: 'page', description: '生成业务页面', status: 'pending' }], currentStepIndex: 0 }, tools: { ...state.tools, needsTool: true } }
+  if (isGeneral) {
+    console.log(`[router] 通用问候 -> general`)
+    return { session: { ...state.session, currentAgent: 'general' }, task: { ...state.task, type: 'general' }, tools: { ...state.tools, needsTool: false } }
   }
 
-  if (isForm) {
-    console.log(`[router] 关键词匹配 -> editor`)
-    return { session: { ...state.session, currentAgent: 'editor' }, task: { ...state.task, type: 'generate_simple', chain: [{ agent: 'editor', description: '生成表单', status: 'pending' }], currentStepIndex: 0 }, tools: { ...state.tools, needsTool: true } }
-  }
-
-  // general 或无法匹配：交给 requirementAnalyzer 做深度分析
+  // 无法快匹：交给 requirementAnalyzer 做深度分析
   console.log(`[router] 交给 requirementAnalyzer 深度分析`)
   return { session: { ...state.session, currentAgent: 'general' }, task: { ...state.task, type: 'general' }, tools: { ...state.tools, needsTool: false } }
 }
@@ -483,6 +518,7 @@ export function routeAfterTaskChain(
     return 'summarizer'
   }
 
+  if (state.session.currentExpertId) return 'pluginExpert'
   if (state.session.currentAgent === 'editor') return 'editor'
   if (state.session.currentAgent === 'flow') return 'flow'
   if (state.session.currentAgent === 'page') return 'page'
@@ -621,6 +657,7 @@ export function afterToolsRoute(
     return 'summarizer'
   }
 
+  if (state.session.currentExpertId) return 'pluginExpert'
   console.log(`[afterToolsRoute] -> ${state.session.currentAgent} (显式模式)`)
   return state.session.currentAgent
 }
@@ -642,6 +679,7 @@ const builder = new StateGraph(AgentStateAnnotation)
   .addNode('editor', editorAgentNode)
   .addNode('flow', flowAgentNode)
   .addNode('page', pageAgentNode)
+  .addNode('pluginExpert', pluginExpertAgentNode)
   .addNode('general', generalAgentNode)
   .addNode('allTools', allToolNodeWithErrorHandling)
   .addNode('afterTools', afterToolsNode)
@@ -682,6 +720,7 @@ const builder = new StateGraph(AgentStateAnnotation)
   .addConditionalEdges('editor', afterAgent)
   .addConditionalEdges('flow', afterAgent)
   .addConditionalEdges('page', afterAgent)
+  .addConditionalEdges('pluginExpert', afterAgent)
 
   // general 直接结束
   .addEdge('general', END)

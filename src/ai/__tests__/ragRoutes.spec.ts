@@ -11,11 +11,20 @@ vi.mock('../services/ragService.js', () => ({
     updated: 1,
     skipped: 2,
     errors: 0,
+    flowsTotal: 2,
+    flowsCreated: 1,
+    flowsUpdated: 0,
+    flowsSkipped: 1,
+    flowsErrors: 0,
   }),
   indexSchema: vi.fn().mockResolvedValue({
     schemaId: 'test-schema-id',
     action: 'updated',
   }),
+}))
+
+vi.mock('../services/embeddingService.js', () => ({
+  isEmbeddingConfigured: vi.fn().mockReturnValue(true),
 }))
 
 // Mock FormSchemaModel
@@ -37,18 +46,43 @@ vi.mock('../../models/FormSchema.js', () => ({
   },
 }))
 
+// Mock FlowDefinitionModel
+vi.mock('../../flow-models/FlowDefinition.js', () => ({
+  FlowDefinitionModel: {
+    countDocuments: vi.fn().mockResolvedValue(3),
+    find: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      lean: vi.fn().mockResolvedValue([
+        { _id: 'flow-1', name: 'Leave Flow', status: 'published', updatedAt: new Date('2026-01-01') },
+      ]),
+    }),
+  },
+}))
+
 // Mock SchemaEmbeddingModel
 vi.mock('../../models/SchemaEmbedding.js', () => ({
   SchemaEmbeddingModel: {
     countDocuments: vi.fn().mockResolvedValue(8),
+    findOne: vi.fn().mockReturnValue({
+      lean: vi.fn().mockResolvedValue(null),
+    }),
     find: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnThis(),
       lean: vi.fn().mockResolvedValue([
-        { schemaId: 'schema-1', updatedAt: new Date('2026-01-01') },
-        { schemaId: 'schema-2', updatedAt: new Date('2025-12-01') },
+        { schemaId: 'schema-1', entityKind: 'schema', updatedAt: new Date('2026-01-01') },
+        { schemaId: 'schema-2', entityKind: 'schema', updatedAt: new Date('2025-12-01') },
+        { schemaId: 'flow-1', entityKind: 'flow', updatedAt: new Date('2026-01-01') },
       ]),
     }),
+    create: vi.fn().mockResolvedValue({}),
+    updateOne: vi.fn().mockResolvedValue({}),
     deleteOne: vi.fn().mockResolvedValue({ deletedCount: 1 }),
+  },
+}))
+
+vi.mock('../../middleware/auth.js', () => ({
+  authMiddleware: () => async (_ctx: unknown, next: () => Promise<void>) => {
+    await next()
   },
 }))
 
@@ -123,6 +157,11 @@ describe('POST /api/ai/rag/reindex', () => {
       updated: 0,
       skipped: 1,
       errors: 2,
+      flowsTotal: 1,
+      flowsCreated: 0,
+      flowsUpdated: 0,
+      flowsSkipped: 0,
+      flowsErrors: 1,
     })
 
     const res = await request('POST', '/api/ai/rag/reindex')

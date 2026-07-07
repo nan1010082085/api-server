@@ -34,9 +34,28 @@ vi.mock('../../models/FormSchema.js', () => ({
   },
 }))
 
+vi.mock('../../flow-models/FlowDefinition.js', () => ({
+  FlowDefinitionModel: {
+    find: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      lean: vi.fn().mockResolvedValue([]),
+    }),
+    findById: vi.fn(),
+  },
+}))
+
+vi.mock('../../flow-models/FlowVersion.js', () => ({
+  FlowVersionModel: {
+    findById: vi.fn(),
+    findOne: vi.fn(),
+  },
+}))
+
 vi.mock('../../models/SchemaEmbedding.js', () => ({
   SchemaEmbeddingModel: {
-    findOne: vi.fn().mockResolvedValue(null),
+    findOne: vi.fn().mockReturnValue({
+      lean: vi.fn().mockResolvedValue(null),
+    }),
     find: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnThis(),
       lean: vi.fn().mockResolvedValue([]),
@@ -52,6 +71,8 @@ import {
   extractTextForEmbedding,
   computeContentHash,
   semanticSearch,
+  indexSchema,
+  extractFlowTextForEmbedding,
 } from '../services/ragService.js'
 import { embedText, isEmbeddingConfigured } from '../services/embeddingService.js'
 import { fuzzySearchSchemas } from '../services/schemaService.js'
@@ -186,6 +207,50 @@ describe('RAG Service', () => {
       const results = await semanticSearch('测试')
       expect(results).toEqual([])
       expect(embedText).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('indexSchema', () => {
+    it('indexes non-form schema types such as business', async () => {
+      vi.mocked(FormSchemaModel.findById).mockReturnValueOnce({
+        lean: vi.fn().mockResolvedValueOnce({
+          _id: 'biz-1',
+          name: '工作台',
+          type: 'business',
+          editId: 'edit-biz',
+          json: [{ type: 'board', label: 'Dashboard' }],
+        }),
+      } as never)
+
+      const result = await indexSchema('biz-1')
+      expect(result.action).toBe('created')
+      expect(SchemaEmbeddingModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityKind: 'schema',
+          type: 'business',
+          schemaId: 'biz-1',
+        }),
+      )
+    })
+
+    it('skips when embedding is not configured', async () => {
+      vi.mocked(isEmbeddingConfigured).mockReturnValueOnce(false)
+      const result = await indexSchema('any-id')
+      expect(result.action).toBe('skipped')
+      expect(FormSchemaModel.findById).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('extractFlowTextForEmbedding', () => {
+    it('collects node labels from flow graph', () => {
+      const text = extractFlowTextForEmbedding('请假流程', '员工请假', {
+        nodes: [
+          { id: 'start', type: 'start', label: '开始' },
+          { id: 'approve', type: 'userTask', label: '经理审批' },
+        ],
+      })
+      expect(text).toContain('请假流程')
+      expect(text).toContain('经理审批')
     })
   })
 })

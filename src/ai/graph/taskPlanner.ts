@@ -10,12 +10,15 @@ import { getLLM } from '../services/llmCache.js'
 import { getModelForTask, resolveUserModel } from './agentBase.js'
 import { logger } from '../../utils/logger.js'
 import type { AgentStateAnnotation, TaskPlan, TaskPlanStep } from './state.js'
+import { buildExpertCatalogForPrompt } from '../plugins/resolveRouterExpert.js'
 
 // ────────────────────────────────────────────
 // System Prompt
 // ────────────────────────────────────────────
 
-const TASK_PLANNER_PROMPT = `你是一个任务规划专家，负责将用户需求拆解为可执行的任务链。
+function buildTaskPlannerPrompt(): string {
+  const expertCatalog = buildExpertCatalogForPrompt()
+  return `你是一个任务规划专家，负责将用户需求拆解为可执行的任务链。
 
 ## 你的任务
 
@@ -25,7 +28,7 @@ const TASK_PLANNER_PROMPT = `你是一个任务规划专家，负责将用户需
 
 2. **拆解任务**
    - 将复杂需求拆解为多个步骤
-   - 每个步骤对应一个 Agent（editor/flow/page）
+   - 每个步骤对应一个 Agent（使用 legacyAgentKey：editor/flow/page 或配置中的专家）
    - 明确每个步骤的输入和输出
 
 3. **确定依赖关系**
@@ -38,11 +41,9 @@ const TASK_PLANNER_PROMPT = `你是一个任务规划专家，负责将用户需
    - parallel: 并行执行，步骤间无依赖
    - mixed: 部分并行，部分顺序
 
-## Agent 能力
+## Agent 能力（来自插件中心）
 
-- **editor**: 生成/编辑表单 Schema，输出 schemaId
-- **flow**: 生成/编辑流程，输出 flowId，可绑定 schemaId
-- **page**: 生成页面，可关联 schemaId 或 flowId
+${expertCatalog}
 
 ## 输出格式
 
@@ -138,6 +139,7 @@ const TASK_PLANNER_PROMPT = `你是一个任务规划专家，负责将用户需
 }
 \`\`\`
 `
+}
 
 // ────────────────────────────────────────────
 // Helper functions
@@ -317,7 +319,7 @@ ${JSON.stringify(userConfirmations, null, 2)}`
     })
 
     const stream = await model.stream([
-      new SystemMessage(TASK_PLANNER_PROMPT),
+      new SystemMessage(buildTaskPlannerPrompt()),
       new HumanMessage(contextInfo),
     ])
 

@@ -22,10 +22,11 @@ import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface ISchemaEmbedding {
   tenantId: string
+  entityKind: 'schema' | 'flow'
   schemaId: string
   editId: string
   name: string
-  type: 'form' | 'search_list'
+  type: string
   contentHash: string
   embedding: number[]
   metadata: {
@@ -51,10 +52,11 @@ const metadataSchema = new mongoose.Schema(
 const schemaEmbeddingDef = new mongoose.Schema(
   {
     tenantId: { type: String, default: '000000', index: true },
+    entityKind: { type: String, enum: ['schema', 'flow'], default: 'schema', index: true },
     schemaId: { type: String, required: true, index: true },
     editId: { type: String, required: true, unique: true },
     name: { type: String, required: true },
-    type: { type: String, enum: ['form', 'search_list'], default: 'form' },
+    type: { type: String, required: true },
     contentHash: { type: String, required: true },
     embedding: { type: [Number], required: true },
     metadata: { type: metadataSchema, default: () => ({}) },

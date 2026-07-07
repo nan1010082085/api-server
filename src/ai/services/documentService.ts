@@ -10,7 +10,7 @@ import {
   type DocumentExtractionMethod,
   type StructuredSummary,
 } from '../models/document.js'
-import { processFile, isAllowedFileType, isImageType, DOCUMENT_TEXT_MODEL, performVisionAnalysis } from './fileService.js'
+import { processFile, isAllowedFileType, isImageType, DOCUMENT_TEXT_MODEL, performVisionAnalysis, DOCUMENT_FORMAT_LABEL } from './fileService.js'
 import {
   saveDocumentFile,
   readDocumentFile,
@@ -129,8 +129,8 @@ export async function createDocumentFromUpload(
   userId: string,
   tenantId = '000000',
 ) {
-  if (!isAllowedFileType(mimetype)) {
-    throw new Error(`Unsupported file type: ${mimetype}`)
+  if (!isAllowedFileType(filename, mimetype)) {
+    throw new Error(`Unsupported file type: ${mimetype || filename}. Allowed: ${DOCUMENT_FORMAT_LABEL}`)
   }
 
   const { doc, processed, chunks } = await persistProcessedDocument({

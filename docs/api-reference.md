@@ -1310,21 +1310,93 @@ Agent 性能统计（聚合）。
 
 ## 40. RAG 知识库
 
+> 详见 [rag-architecture.md](./rag-architecture.md)
+
 ### `POST /api/ai/rag/reindex`
 
-批量重建嵌入索引。
+批量重建所有 Schema 和 Flow 的向量嵌入索引。
+
+**认证**: Bearer Token
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "total": 128,
+    "created": 100,
+    "updated": 20,
+    "skipped": 5,
+    "errors": 3,
+    "flowsTotal": 42,
+    "flowsCreated": 40,
+    "flowsUpdated": 1,
+    "flowsSkipped": 1,
+    "flowsErrors": 0
+  }
+}
+```
 
 ### `GET /api/ai/rag/status`
 
-索引状态统计。
+索引状态统计，包括已索引/待索引/过期数量和未索引资源列表。
+
+**认证**: Bearer Token
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "embeddingConfigured": true,
+    "autoIndexEnabled": true,
+    "totalSchemas": 128,
+    "totalFlows": 42,
+    "totalEmbeddings": 170,
+    "indexed": 125,
+    "unindexed": 3,
+    "indexedFlows": 41,
+    "unindexedFlows": 1,
+    "stale": 2,
+    "unindexedSchemas": [
+      { "id": "...", "name": "新表单", "type": "form" }
+    ]
+  }
+}
+```
 
 ### `DELETE /api/ai/rag/:schemaId`
 
-删除 Schema 嵌入。
+删除指定 Schema 的向量嵌入（不删除源 Schema）。
+
+**认证**: Bearer Token
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": { "schemaId": "...", "deleted": true }
+}
+```
 
 ### `POST /api/ai/rag/reindex/:schemaId`
 
-重建单个 Schema 索引。
+重建单个 Schema 的向量嵌入索引。
+
+**认证**: Bearer Token
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "schemaId": "...",
+    "action": "updated"
+  }
+}
+```
+
+`action` 取值：`created`（新建）/ `updated`（更新）/ `skipped`（未变更）
 
 ---
 

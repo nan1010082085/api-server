@@ -7,6 +7,10 @@
 
 import os from 'node:os'
 import path from 'node:path'
+import {
+  extensionFromFilename as getExtensionFromFilename,
+  normalizeUploadMimetype,
+} from '../services/documentFormats.js'
 
 const SUBDIR = 'ai-documents'
 
@@ -36,18 +40,23 @@ export function buildDocumentRelativePath(
 }
 
 export function extensionFromFilename(filename: string, mimetype: string): string {
-  const fromName = path.extname(filename)
-  if (fromName) return fromName.toLowerCase()
+  const fromName = getExtensionFromFilename(filename)
+  if (fromName) return fromName
 
   const map: Record<string, string> = {
     'application/pdf': '.pdf',
     'application/msword': '.doc',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
     'text/plain': '.txt',
+    'text/csv': '.csv',
+    'application/csv': '.csv',
+    'application/ofd': '.ofd',
+    'application/x-ofd': '.ofd',
     'image/jpeg': '.jpg',
     'image/png': '.png',
     'image/gif': '.gif',
     'image/webp': '.webp',
   }
-  return map[mimetype] ?? '.bin'
+  const normalized = normalizeUploadMimetype(filename, mimetype)
+  return map[normalized] ?? '.bin'
 }

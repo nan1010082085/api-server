@@ -10,18 +10,18 @@ import { getLLM } from './llmCache.js'
 import { logger } from '../../utils/logger.js'
 import { leanDoc } from '../../utils/leanDoc.js'
 import {
-  buildEditorSystemPrompt,
-  buildFlowSystemPrompt,
-  buildPageSystemPrompt,
   ROUTER_SYSTEM_PROMPT,
 } from '@schema-platform/ai-shared/promptBuilder'
 import { normalizeToolName } from '@schema-platform/ai-shared/toolNames'
 import { getToolSync, ensureToolsReady, getToolsByNames } from '../tools/registry.js'
-import { getMetadata } from '../tools/toolHandlers.js'
+import { getPluginRegistry } from '../plugins/index.js'
+import { runRegisteredExpert } from '../plugins/dispatchExpert.js'
+import type { LegacyAgentKey } from '../plugins/types.js'
 import { extractJsonFromResponse } from '../graph/agentBase.js'
 import { getDocumentWithText, reprocessDocumentFromStorage, analyzeDocumentVision, chunkText } from './documentService.js'
-import { processFile } from './fileService.js'
+import { processFile, performVisionAnalysis, isImageType } from './fileService.js'
 import { extractNodeOutputError, nodeFailure } from './agentWorkflowNodeErrors.js'
+import { resolveWorkflowApiFile } from './agentWorkflowFileFetch.js'
 import { resolveWorkflowTemplate } from './agentWorkflowTemplateResolver.js'
 import {
   normalizeConversationTurns,
@@ -30,7 +30,7 @@ import {
   extractMessageFromContext,
   extractAssistantContent,
   resolveDocumentIdFromNodeData,
-  resolveDocumentStreamFromNodeData,
+  resolveWorkflowUploadFile,
   type WorkflowConversationTurn,
 } from './agentWorkflowConversation.js'
 import type { StructuredTool } from '@langchain/core/tools'
@@ -55,10 +55,20 @@ interface WorkflowGraphNode {
       required?: boolean
     }>
     inheritUpstreamQuestions?: boolean
-    documentSource?: 'documentId' | 'inputField' | 'stream'
+    documentSource?: 'documentId' | 'inputField' | 'stream' | 'api'
     documentId?: string
     inputField?: string
     streamField?: string
+    fetchUrl?: string
+    fetchMethod?: 'GET' | 'POST'
+    fetchHeaders?: Record<string, string>
+    fetchBody?: string
+    fetchResponseMode?: 'binary' | 'json-base64' | 'json-url'
+    fetchContentPath?: string
+    fetchFilenamePath?: string
+    fetchMimetypePath?: string
+    fetchFilename?: string
+    fetchMimetype?: string
     visionPrompt?: string
     memoryMode?: 'read' | 'append' | 'reset'
     memoryRole?: 'user' | 'assistant'
@@ -99,6 +109,23 @@ interface NodeRunResult {
 }
 
 const WORKFLOW_LLM_TIMEOUT_MS = Number(process.env.WORKFLOW_LLM_TIMEOUT_MS ?? 120_000)
+const WORKFLOW_STREAM_FLUSH_MS = 200
+
+function chunkContentToText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part
+        if (part && typeof part === 'object' && 'text' in part) {
+          return typeof part.text === 'string' ? part.text : ''
+        }
+        return ''
+      })
+      .join('')
+  }
+  return ''
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -126,6 +153,82 @@ async function invokeLLMWithGuard(
 
   return Promise.race([
     llm.invoke(messages),
+    sleep(timeoutMs).then(() => {
+      throw new Error(`LLM 调用超时（${Math.round(timeoutMs / 1000)}s）`)
+    }),
+    waitForExecutionCancelled(executionId),
+  ])
+}
+
+async function setStreamingOutput(
+  executionId: string,
+  nodeId: string,
+  nodeType: string,
+  text: string,
+): Promise<void> {
+  await AgentWorkflowExecutionModel.updateOne(
+    { _id: executionId },
+    {
+      $set: {
+        streamingOutput: {
+          nodeId,
+          nodeType,
+          text,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    },
+  )
+}
+
+async function clearStreamingOutput(executionId: string): Promise<void> {
+  await AgentWorkflowExecutionModel.updateOne(
+    { _id: executionId },
+    { $unset: { streamingOutput: 1 } },
+  )
+}
+
+async function streamLLMWithGuard(
+  executionId: string,
+  nodeId: string,
+  nodeType: string,
+  llm: Awaited<ReturnType<typeof getLLM>>,
+  messages: BaseMessage[],
+): Promise<string> {
+  const timeoutMs = Number.isFinite(WORKFLOW_LLM_TIMEOUT_MS) && WORKFLOW_LLM_TIMEOUT_MS > 0
+    ? WORKFLOW_LLM_TIMEOUT_MS
+    : 120_000
+
+  const streamTask = async (): Promise<string> => {
+    const stream = await llm.stream(messages)
+    let content = ''
+    let lastFlush = 0
+
+    for await (const chunk of stream) {
+      if (await isExecutionCancelled(executionId)) {
+        throw new Error('用户手动停止')
+      }
+
+      const delta = chunkContentToText(chunk.content)
+      if (delta) {
+        content += delta
+        const now = Date.now()
+        if (now - lastFlush >= WORKFLOW_STREAM_FLUSH_MS) {
+          await setStreamingOutput(executionId, nodeId, nodeType, content)
+          lastFlush = now
+        }
+      }
+    }
+
+    if (content) {
+      await setStreamingOutput(executionId, nodeId, nodeType, content)
+    }
+
+    return content
+  }
+
+  return Promise.race([
+    streamTask(),
     sleep(timeoutMs).then(() => {
       throw new Error(`LLM 调用超时（${Math.round(timeoutMs / 1000)}s）`)
     }),
@@ -229,6 +332,7 @@ async function finishExecution(
   execution.finishedAt = finishedAt
   execution.durationMs = finishedAt.getTime() - execution.startedAt.getTime()
   if (error) execution.error = error
+  execution.streamingOutput = undefined
   await execution.save()
 }
 
@@ -506,7 +610,11 @@ const EXPERT_NODE_AGENT_MAP: Record<string, string> = {
 
 const VALID_AGENT_TYPES = new Set(['editor', 'flow', 'page', 'general'])
 
-function resolveAgentTypeFromNode(node: WorkflowGraphNode): string | null {
+function resolveAgentTargetFromNode(node: WorkflowGraphNode): string | null {
+  if (node.type === 'expert') {
+    const expertId = node.data?.expertId?.trim()
+    return expertId || null
+  }
   const mapped = EXPERT_NODE_AGENT_MAP[node.type]
   if (mapped) return mapped
   if (node.type === 'agent') {
@@ -517,62 +625,21 @@ function resolveAgentTypeFromNode(node: WorkflowGraphNode): string | null {
 }
 
 function normalizeDetectedAgent(value: unknown): string {
-  const agent = typeof value === 'string' ? value.trim().toLowerCase() : ''
-  return VALID_AGENT_TYPES.has(agent) ? agent : 'general'
-}
-
-function getAgentSystemPrompt(agentType: string): string {
-  const metadata = getMetadata()
-  switch (agentType) {
-    case 'editor':
-      return buildEditorSystemPrompt(metadata)
-    case 'flow':
-      return buildFlowSystemPrompt(metadata)
-    case 'page':
-      return buildPageSystemPrompt(metadata)
-    default:
-      return '你是通用 AI 助手，请根据上游节点输出完成任务。'
-  }
-}
-
-function getAgentTools(agentType: string): StructuredTool[] {
-  // MCP 工具名（读取/校验/RAG）+ LangGraph 专有工具名（写入/协作）
-  const editorToolNames = [
-    'schema__search', 'schema__get_detail', 'schema__search_published',
-    'schema__fuzzy_search', 'schema__find_flow_references', 'schema__validate_widgets',
-    'widget__query', 'rag__search',
-    'update_schema', 'generate_schema', 'request_collaboration',
-  ]
-  const flowToolNames = [
-    'flow__search', 'flow__get_detail', 'flow__get_node_schema', 'flow__search_users',
-    'flow__validate', 'schema__search', 'schema__get_detail', 'rag__search',
-    'update_flow', 'generate_schema', 'save_and_bind_schema', 'bind_schema_to_flow_node',
-    'request_collaboration',
-  ]
-  const pageToolNames = [
-    'schema__search', 'schema__get_detail', 'schema__search_published',
-    'schema__fuzzy_search', 'schema__validate_widgets', 'widget__query', 'rag__search',
-    'update_schema', 'generate_schema', 'request_collaboration',
-  ]
-  const generalToolNames = ['rag__search']
-
-  switch (agentType) {
-    case 'editor':
-      return getToolsByNames(editorToolNames)
-    case 'flow':
-      return getToolsByNames(flowToolNames)
-    case 'page':
-      return getToolsByNames(pageToolNames)
-    default:
-      return getToolsByNames(generalToolNames)
-  }
+  const agent = typeof value === 'string' ? value.trim() : ''
+  if (agent.includes('.')) return agent
+  const lower = agent.toLowerCase()
+  return VALID_AGENT_TYPES.has(lower) ? lower : 'general'
 }
 
 function autoDetectAgentType(input: unknown, ctx: RuntimeContext): string {
-  const text = `${typeof input === 'string' ? input : JSON.stringify(input ?? '')} ${JSON.stringify(ctx.lastOutput ?? '')}`.toLowerCase()
-  if (/流程|审批|流转|bpmn|flow|gate|节点|工作流/.test(text)) return 'flow'
-  if (/页面|布局|page|layout|landing|仪表盘|统计|列表|详情|表格/.test(text)) return 'page'
-  if (/表单|schema|form|字段|组件|widget|输入框/.test(text)) return 'editor'
+  const text = `${typeof input === 'string' ? input : JSON.stringify(input ?? '')} ${JSON.stringify(ctx.lastOutput ?? '')}`
+  const matched = getPluginRegistry().matchExpertsByRouting({
+    text,
+    runtime: 'workflow',
+  })
+  const first = matched[0]
+  if (first?.legacyAgentKey) return first.legacyAgentKey
+  if (first?.id) return first.id
   return 'general'
 }
 
@@ -625,68 +692,43 @@ async function detectAgentIntent(
 }
 
 async function dispatchAgent(
-  agentType: string,
+  agentTypeOrExpertId: string,
   input: unknown,
   ctx: RuntimeContext,
 ): Promise<{ output: unknown }> {
-  // 自动识别：根据输入内容判断使用哪个专家
-  let resolvedType = agentType
-  if (agentType === 'auto') {
+  let resolvedTarget = agentTypeOrExpertId
+  if (agentTypeOrExpertId === 'auto') {
     const detected = await detectAgentIntent(input, ctx)
-    resolvedType = detected.agent
+    resolvedTarget = detected.agent
   }
 
-  const systemPrompt = getAgentSystemPrompt(resolvedType)
-  const tools = getAgentTools(resolvedType)
+  const ref = resolvedTarget.includes('.')
+    ? { expertId: resolvedTarget }
+    : { legacyAgentKey: resolvedTarget as LegacyAgentKey }
+
   const userInput = typeof input === 'string' ? input : JSON.stringify(input ?? ctx.lastOutput ?? {})
   const contextHint = ctx.lastOutput != null
     ? `\n\n[上游节点输出]\n${JSON.stringify(ctx.lastOutput)}`
     : ''
 
-  const llm = await getLLM({ temperature: 0.5, maxTokens: 4096 })
-  const boundLLM = tools.length > 0 ? llm.bindTools(tools) : llm
+  const { text: content, truncated, expertId, legacyAgentKey } = await runRegisteredExpert({
+    ref,
+    userContent: userInput + contextHint,
+    maxToolRounds: AGENT_MAX_TOOL_ROUNDS,
+    isCancelled: () => isExecutionCancelled(ctx.executionId),
+    generalPromptBuilder: () => '你是通用 AI 助手，请根据上游节点输出完成任务。',
+  })
 
-  const messages: BaseMessage[] = [
-    new SystemMessage(systemPrompt),
-    new HumanMessage(userInput + contextHint),
-  ]
+  const agent = legacyAgentKey ?? expertId
 
-  for (let round = 0; round < AGENT_MAX_TOOL_ROUNDS; round++) {
-    const response = await boundLLM.invoke(messages)
-    const aiMsg = response as AIMessage
-    messages.push(aiMsg)
-
-    const toolCalls = (aiMsg as unknown as { tool_calls?: Array<{ name: string; args: Record<string, unknown>; id: string }> }).tool_calls
-    if (!toolCalls || toolCalls.length === 0) {
-      const content = typeof aiMsg.content === 'string' ? aiMsg.content : JSON.stringify(aiMsg.content)
-      return { output: { text: content, agent: resolvedType } }
-    }
-
-    // 执行工具调用
-    for (const tc of toolCalls) {
-      const matched = tools.find((t) => t.name === tc.name)
-      if (matched) {
-        try {
-          const result = await matched.invoke(tc.args)
-          messages.push(new ToolMessage({ content: String(result), tool_call_id: tc.id }))
-        } catch (err) {
-          messages.push(new ToolMessage({
-            content: `工具执行失败: ${err instanceof Error ? err.message : String(err)}`,
-            tool_call_id: tc.id,
-          }))
-        }
-      } else {
-        messages.push(new ToolMessage({ content: `工具 ${tc.name} 未找到`, tool_call_id: tc.id }))
-      }
-    }
+  return {
+    output: {
+      text: content,
+      agent,
+      expertId,
+      ...(truncated ? { truncated: true } : {}),
+    },
   }
-
-  // 超过最大轮次，返回最后一条 AI 消息
-  const lastMsg = messages[messages.length - 1]
-  const content = lastMsg && typeof (lastMsg as AIMessage).content === 'string'
-    ? (lastMsg as AIMessage).content
-    : 'Agent 达到最大工具调用轮次'
-  return { output: { text: content, agent: resolvedType, truncated: true } }
 }
 
 async function runNode(
@@ -705,7 +747,7 @@ async function runNode(
     return { output: result.output, error }
   }
 
-  if (node.type.startsWith('agent-') || node.type === 'agent') {
+  if (node.type.startsWith('agent-') || node.type === 'agent' || node.type === 'expert') {
     const agentInput = data.prompt?.trim() ? resolveTemplate(data.prompt, ctx) : ctx.lastOutput
 
     if (node.type === 'agent-intent') {
@@ -722,7 +764,7 @@ async function runNode(
       }
     }
 
-    const agentType = resolveAgentTypeFromNode(node) ?? data.agentType ?? 'general'
+    const agentType = resolveAgentTargetFromNode(node) ?? data.agentType ?? 'general'
     const result = await dispatchAgent(agentType, agentInput, ctx)
     return { output: result.output }
   }
@@ -735,15 +777,46 @@ async function runNode(
       return { output: { ...ctx.input } }
 
     case 'document-parse': {
-      const source = data.documentSource ?? 'inputField'
-      const streamFile = source === 'stream'
-        ? resolveDocumentStreamFromNodeData(data, ctx.input, ctx.lastOutput)
-        : null
-      if (source === 'stream' && !streamFile) {
-        const field = data.streamField?.trim() || 'file'
-        return nodeFailure(`未指定文件流（$input.${field}）`)
+      const source = data.documentSource ?? 'stream'
+      if (source === 'api') {
+        try {
+          const streamFile = await resolveWorkflowApiFile(data, (text) => resolveTemplate(text, ctx))
+          const processed = await processFile(
+            streamFile.content,
+            streamFile.filename,
+            streamFile.mimetype,
+          )
+          const chunks = chunkText(processed.text)
+          return {
+            output: {
+              filename: processed.filename,
+              mimetype: processed.mimetype,
+              size: processed.size,
+              text: processed.text,
+              chunks,
+              extractionMethod: processed.extractionMethod,
+              hasOriginalFile: false,
+              textLength: processed.text.length,
+              source: 'api',
+            },
+          }
+        } catch (err) {
+          return nodeFailure(err instanceof Error ? err.message : String(err))
+        }
       }
-      if (streamFile) {
+      if (source === 'stream') {
+        const streamFile = await resolveWorkflowUploadFile(
+          data,
+          ctx.input,
+          ctx.lastOutput,
+          { userId: ctx.triggeredBy },
+        )
+        if (!streamFile) {
+          const field = data.streamField?.trim() || 'file'
+          return nodeFailure(
+            `未指定上传文件流（$input.${field}）。请上传文件，或在 Chat 中附加附件后触发。`,
+          )
+        }
         const processed = await processFile(
           streamFile.content,
           streamFile.filename,
@@ -811,6 +884,70 @@ async function runNode(
     }
 
     case 'vision-analyze': {
+      const source = data.documentSource ?? 'stream'
+      const visionPrompt = data.visionPrompt?.trim()
+        ? resolveTemplate(data.visionPrompt, ctx)
+        : undefined
+
+      if (source === 'api') {
+        try {
+          const streamFile = await resolveWorkflowApiFile(data, (text) => resolveTemplate(text, ctx))
+          if (!isImageType(streamFile.mimetype)) {
+            return nodeFailure(`查询接口返回的不是图片类型: ${streamFile.mimetype}`)
+          }
+          const description = await performVisionAnalysis(
+            streamFile.content.toString('base64'),
+            streamFile.mimetype,
+            visionPrompt,
+          )
+          return {
+            output: {
+              filename: streamFile.filename,
+              mimetype: streamFile.mimetype,
+              size: streamFile.content.length,
+              description,
+              mode: 'vision' as const,
+              source: 'api',
+            },
+          }
+        } catch (err) {
+          return nodeFailure(err instanceof Error ? err.message : String(err))
+        }
+      }
+
+      if (source === 'stream') {
+        const streamFile = await resolveWorkflowUploadFile(
+          data,
+          ctx.input,
+          ctx.lastOutput,
+          { userId: ctx.triggeredBy },
+        )
+        if (!streamFile) {
+          const field = data.streamField?.trim() || 'file'
+          return nodeFailure(
+            `未指定图片上传流（$input.${field}）。请上传图片，或在 Chat 中附加图片后触发。`,
+          )
+        }
+        if (!isImageType(streamFile.mimetype)) {
+          return nodeFailure(`上传流不是图片类型: ${streamFile.mimetype}`)
+        }
+        const description = await performVisionAnalysis(
+          streamFile.content.toString('base64'),
+          streamFile.mimetype,
+          visionPrompt,
+        )
+        return {
+          output: {
+            filename: streamFile.filename,
+            mimetype: streamFile.mimetype,
+            size: streamFile.content.length,
+            description,
+            mode: 'vision' as const,
+            source: 'stream',
+          },
+        }
+      }
+
       const documentId = resolveDocumentIdFromNodeData(
         data,
         (text) => resolveTemplate(text, ctx),
@@ -820,9 +957,6 @@ async function runNode(
       if (!documentId) {
         return nodeFailure('未指定图片 documentId')
       }
-      const visionPrompt = data.visionPrompt?.trim()
-        ? resolveTemplate(data.visionPrompt, ctx)
-        : undefined
       const result = await analyzeDocumentVision(documentId, {
         visionPrompt,
         userId: ctx.triggeredBy,
@@ -907,10 +1041,18 @@ async function runNode(
         new HumanMessage(prompt || JSON.stringify(ctx.lastOutput ?? ctx.input)),
       )
 
-      const response = await invokeLLMWithGuard(ctx.executionId, llm, messages)
-      const content = typeof response.content === 'string'
-        ? response.content
-        : JSON.stringify(response.content)
+      let content = ''
+      try {
+        content = await streamLLMWithGuard(
+          ctx.executionId,
+          node.id,
+          node.type,
+          llm,
+          messages,
+        )
+      } finally {
+        await clearStreamingOutput(ctx.executionId)
+      }
 
       if (data.appendAssistantReply && content.trim()) {
         ctx.conversationHistory = trimConversationTurns(

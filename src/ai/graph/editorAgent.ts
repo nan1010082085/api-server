@@ -10,27 +10,13 @@
 
 import { getLLM } from '../services/llmCache.js'
 import { HumanMessage, SystemMessage, AIMessage, AIMessageChunk } from '@langchain/core/messages'
-import { buildEditorSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
-import { getMetadata } from '../services/metadataService.js'
-import { getToolsByNames } from '../tools/registry.js'
+import { getPluginRegistry } from '../plugins/index.js'
+import { buildExpertSystemPrompt, getExpertTools } from '../plugins/dispatchExpert.js'
 import { truncateMessagesForLangGraph, resolveUserModel, getModelForTask, formatPreferencesForPrompt } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { buildContextInjection, extractAgentContext, type AgentContextPayload } from './contextCarrier.js'
 import { retrieveRagContext } from './ragContextRetriever.js'
 import type { AgentStateAnnotation } from './state.js'
-
-// ────────────────────────────────────────────
-// System prompt (lazy, cached)
-// ────────────────────────────────────────────
-
-let editorSystemPrompt: string | null = null
-
-async function getEditorSystemPrompt(): Promise<string> {
-  if (!editorSystemPrompt) {
-    editorSystemPrompt = buildEditorSystemPrompt(getMetadata())
-  }
-  return editorSystemPrompt
-}
 
 // ────────────────────────────────────────────
 // Context message builder
@@ -144,20 +130,18 @@ export async function editorAgentNode(
     : ''
   const ragContext = await retrieveRagContext(userQueryText)
 
-  const systemPrompt = await getEditorSystemPrompt()
+  const expert = getPluginRegistry().getExpertByLegacyKey('editor')
+  if (!expert) {
+    throw new Error('[editorAgent] platform.editor not registered in plugin center')
+  }
+  const systemPrompt = await buildExpertSystemPrompt(expert)
   const userContent = buildContextMessage(state) + ragContext.context
 
-  const editorToolNames = [
-    'schema__search', 'schema__get_detail', 'schema__search_published',
-    'schema__fuzzy_search', 'schema__find_flow_references', 'schema__validate_widgets',
-    'widget__query', 'rag__search',
-    'update_schema', 'generate_schema', 'request_collaboration',
-  ]
   const model = (await getLLM({
-    model: resolveUserModel(state.interaction.preferences, getModelForTask('generate_complex')),
-    temperature: 0.7,
-    maxTokens: 8192,
-  })).bindTools(getToolsByNames(editorToolNames))
+    model: resolveUserModel(state.interaction.preferences, getModelForTask(expert.model?.task ?? 'generate_complex')),
+    temperature: expert.model?.temperature ?? 0.7,
+    maxTokens: expert.model?.maxTokens ?? 8192,
+  })).bindTools(getExpertTools(expert))
 
   // 截断历史消息以避免 token 超限
   // 保留 tool_calls -> ToolMessage 链完整性，保留最近 N 轮 + 首条用户消息

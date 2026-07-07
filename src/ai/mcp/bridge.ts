@@ -13,6 +13,9 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { StructuredTool } from '@langchain/core/tools'
 import { logger } from '../../utils/logger.js'
+import { getPluginRegistry } from '../plugins/index.js'
+import type { McpServerDeclaration } from '../plugins/types.js'
+import { resolveBuiltinMcpFactory } from './builtinFactories.js'
 
 // ────────────────────────────────────────────
 // 内部客户端
@@ -86,44 +89,78 @@ async function convertMcpTools(client: Client): Promise<StructuredTool[]> {
 // ────────────────────────────────────────────
 
 /**
- * 初始化所有 MCP 内部客户端，返回 LangGraph 可用的工具数组。
+ * 按插件中心声明创建 MCP Client。
+ */
+async function createClientForDeclaration(decl: McpServerDeclaration): Promise<Client> {
+  if (decl.transport === 'inmemory') {
+    const builtin = decl.builtin?.trim()
+    if (!builtin) {
+      throw new Error(`[mcpBridge] inmemory server ${decl.id} missing builtin`)
+    }
+    const factory = await resolveBuiltinMcpFactory(builtin)
+    if (!factory) {
+      throw new Error(`[mcpBridge] unknown builtin "${builtin}" for ${decl.id}`)
+    }
+    return createInternalClient(factory)
+  }
+
+  if (decl.transport === 'stdio') {
+    if (!decl.command?.trim()) {
+      throw new Error(`[mcpBridge] stdio server ${decl.id} missing command`)
+    }
+    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
+    const transport = new StdioClientTransport({
+      command: decl.command,
+      args: decl.args ?? [],
+    })
+    const client = new Client({ name: `plugin-${decl.id}`, version: '1.0.0' })
+    await client.connect(transport)
+    return client
+  }
+
+  if (decl.transport === 'sse') {
+    if (!decl.url?.trim()) {
+      throw new Error(`[mcpBridge] sse server ${decl.id} missing url`)
+    }
+    const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js')
+    const transport = new SSEClientTransport(new URL(decl.url), {
+      requestInit: decl.headers ? { headers: decl.headers } : undefined,
+    })
+    const client = new Client({ name: `plugin-${decl.id}`, version: '1.0.0' })
+    await client.connect(transport)
+    return client
+  }
+
+  throw new Error(`[mcpBridge] unsupported transport for ${decl.id}`)
+}
+
+/**
+ * 初始化插件中心声明的全部 MCP Server，返回 LangGraph 可用的工具数组。
  *
- * 加载 5 个 MCP Server：schema / flow / widget / rag / industry。
- * 并发初始化以缩短启动时间。任一 server 失败不会中断整体，仅记录警告并跳过，
- * 保证 Chat 在部分 MCP Server 不可用时仍可降级运行。
+ * 从 Registry 读取 mcpServers；任一 server 失败不会中断整体，仅记录警告并跳过。
  */
 export async function initMcpBridge(): Promise<StructuredTool[]> {
-  const { createSchemaServer } = await import('./schemaServer.js')
-  const { createFlowServer } = await import('./flowServer.js')
-  const { createWidgetServer } = await import('./widgetServer.js')
-  const { createRagServer } = await import('./ragServer.js')
-  const { createIndustryServer } = await import('./industryServer.js')
-
-  const factories: Array<{ domain: string; factory: () => McpServer }> = [
-    { domain: 'schema', factory: createSchemaServer },
-    { domain: 'flow', factory: createFlowServer },
-    { domain: 'widget', factory: createWidgetServer },
-    { domain: 'rag', factory: createRagServer },
-    { domain: 'industry', factory: createIndustryServer },
-  ]
+  const servers = getPluginRegistry()
+    .listMcpServers()
+    .filter((s) => s.enabled !== false)
 
   const results = await Promise.all(
-    factories.map(async ({ domain, factory }) => {
+    servers.map(async (decl) => {
       try {
-        const client = await createInternalClient(factory)
+        const client = await createClientForDeclaration(decl)
         const tools = await convertMcpTools(client)
-        logger.info({ msg: `[mcpBridge] ${domain} loaded ${tools.length} tools` })
+        logger.info({ msg: `[mcpBridge] ${decl.id} loaded ${tools.length} tools`, transport: decl.transport })
         return tools
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        logger.warn({ msg: `[mcpBridge] ${domain} init failed, skipping`, error: message })
+        logger.warn({ msg: `[mcpBridge] ${decl.id} init failed, skipping`, transport: decl.transport, error: message })
         return [] as StructuredTool[]
       }
     }),
   )
 
   const allTools = results.flat()
-  logger.info({ msg: `[mcpBridge] total ${allTools.length} MCP tools ready` })
+  logger.info({ msg: `[mcpBridge] total ${allTools.length} MCP tools ready`, servers: servers.length })
   return allTools
 }
 

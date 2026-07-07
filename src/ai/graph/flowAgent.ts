@@ -13,7 +13,8 @@ import { getLLM } from '../services/llmCache.js'
 import { HumanMessage, SystemMessage, AIMessage, AIMessageChunk } from '@langchain/core/messages'
 import { buildFlowSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
 import { getMetadata } from '../services/metadataService.js'
-import { getToolsByNames } from '../tools/registry.js'
+import { getPluginRegistry } from '../plugins/index.js'
+import { buildExpertSystemPrompt, getExpertTools } from '../plugins/dispatchExpert.js'
 import { truncateMessagesForLangGraph, resolveUserModel, getModelForTask, formatPreferencesForPrompt } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { buildContextInjection, type AgentContextPayload } from './contextCarrier.js'
@@ -143,20 +144,18 @@ export async function flowAgentNode(
     : ''
   const ragContext = await retrieveRagContext(userQueryText)
 
-  const systemPrompt = await getFlowSystemPrompt()
+  const expert = getPluginRegistry().getExpertByLegacyKey('flow')
+  if (!expert) {
+    throw new Error('[flowAgent] platform.flow not registered in plugin center')
+  }
+  const systemPrompt = await buildExpertSystemPrompt(expert)
   const userContent = buildContextMessage(state) + ragContext.context
 
-  const flowToolNames = [
-    'flow__search', 'flow__get_detail', 'flow__get_node_schema', 'flow__search_users',
-    'flow__validate', 'schema__search', 'schema__get_detail', 'rag__search',
-    'update_flow', 'generate_schema', 'save_and_bind_schema', 'bind_schema_to_flow_node',
-    'request_collaboration',
-  ]
   const model = (await getLLM({
-    model: resolveUserModel(state.interaction.preferences, getModelForTask('generate_complex')),
-    temperature: 0.7,
-    maxTokens: 8192,
-  })).bindTools(getToolsByNames(flowToolNames))
+    model: resolveUserModel(state.interaction.preferences, getModelForTask(expert.model?.task ?? 'generate_complex')),
+    temperature: expert.model?.temperature ?? 0.7,
+    maxTokens: expert.model?.maxTokens ?? 8192,
+  })).bindTools(getExpertTools(expert))
 
   // 截断历史消息以避免 token 超限
   const truncatedHistory = truncateMessagesForLangGraph(state.messages)

@@ -10,8 +10,10 @@
 
 import Router from '@koa/router'
 import { reindexAll, indexSchema } from './services/ragService.js'
+import { isEmbeddingConfigured } from './services/embeddingService.js'
 import { FormSchemaModel } from '../models/FormSchema.js'
 import { SchemaEmbeddingModel } from '../models/SchemaEmbedding.js'
+import { FlowDefinitionModel } from '../flow-models/FlowDefinition.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { logger } from '../utils/logger.js'
 
@@ -46,6 +48,11 @@ router.post('/reindex', async (ctx) => {
       updated: stats.updated,
       skipped: stats.skipped,
       errors: stats.errors,
+      flowsTotal: stats.flowsTotal,
+      flowsCreated: stats.flowsCreated,
+      flowsUpdated: stats.flowsUpdated,
+      flowsSkipped: stats.flowsSkipped,
+      flowsErrors: stats.flowsErrors,
     },
   }
 })
@@ -55,49 +62,69 @@ router.post('/reindex', async (ctx) => {
 // ────────────────────────────────────────────
 
 router.get('/status', async (ctx) => {
-  const [totalSchemas, totalEmbeddings] = await Promise.all([
+  const [totalSchemas, totalFlows, totalEmbeddings] = await Promise.all([
     FormSchemaModel.countDocuments(),
+    FlowDefinitionModel.countDocuments(),
     SchemaEmbeddingModel.countDocuments(),
   ])
 
-  // Find schemas that have no embedding (need indexing)
-  const embeddedSchemaIds = await SchemaEmbeddingModel.find()
-    .select('schemaId')
-    .lean() as unknown as Array<{ schemaId: string }>
-  const embeddedIdSet = new Set(embeddedSchemaIds.map((e) => e.schemaId))
+  const embeddedDocs = await SchemaEmbeddingModel.find()
+    .select('schemaId entityKind updatedAt')
+    .lean() as unknown as Array<{ schemaId: string; entityKind?: string; updatedAt: Date }>
+
+  const embeddedSchemaIdSet = new Set(
+    embeddedDocs
+      .filter((e) => e.entityKind !== 'flow')
+      .map((e) => String(e.schemaId)),
+  )
+  const embeddedFlowIdSet = new Set(
+    embeddedDocs
+      .filter((e) => e.entityKind === 'flow')
+      .map((e) => String(e.schemaId)),
+  )
 
   const allSchemas = await FormSchemaModel.find()
     .select('_id name type updatedAt')
-    .lean() as unknown as Array<{ _id: string; name: string; type: string; updatedAt: Date }>
+    .lean() as unknown as Array<{ _id: unknown; name: string; type: string; updatedAt: Date }>
 
-  const indexed = allSchemas.filter((s) => embeddedIdSet.has(s._id))
-  const unindexed = allSchemas.filter((s) => !embeddedIdSet.has(s._id))
+  const allFlows = await FlowDefinitionModel.find()
+    .select('_id name status updatedAt')
+    .lean() as unknown as Array<{ _id: unknown; name: string; status: string; updatedAt: Date }>
 
-  // Stale embeddings: embedding exists but schema was updated after embedding
-  const staleEmbeddings = await SchemaEmbeddingModel.find()
-    .select('schemaId updatedAt')
-    .lean() as unknown as Array<{ schemaId: string; updatedAt: Date }>
+  const indexedSchemas = allSchemas.filter((s) => embeddedSchemaIdSet.has(String(s._id)))
+  const unindexedSchemas = allSchemas.filter((s) => !embeddedSchemaIdSet.has(String(s._id)))
+  const indexedFlows = allFlows.filter((f) => embeddedFlowIdSet.has(String(f._id)))
+  const unindexedFlows = allFlows.filter((f) => !embeddedFlowIdSet.has(String(f._id)))
 
   const staleSet = new Set<string>()
-  const schemaUpdateMap = new Map(allSchemas.map((s) => [s._id, s.updatedAt]))
+  const schemaUpdateMap = new Map(allSchemas.map((s) => [String(s._id), s.updatedAt]))
+  const flowUpdateMap = new Map(allFlows.map((f) => [String(f._id), f.updatedAt]))
 
-  for (const emb of staleEmbeddings) {
-    const schemaUpdated = schemaUpdateMap.get(emb.schemaId)
-    if (schemaUpdated && schemaUpdated > emb.updatedAt) {
-      staleSet.add(emb.schemaId)
+  for (const emb of embeddedDocs) {
+    const entityId = String(emb.schemaId)
+    const updatedAt = emb.entityKind === 'flow'
+      ? flowUpdateMap.get(entityId)
+      : schemaUpdateMap.get(entityId)
+    if (updatedAt && updatedAt > emb.updatedAt) {
+      staleSet.add(entityId)
     }
   }
 
   ctx.body = {
     success: true,
     data: {
+      embeddingConfigured: isEmbeddingConfigured(),
+      autoIndexEnabled: true,
       totalSchemas,
+      totalFlows,
       totalEmbeddings,
-      indexed: indexed.length,
-      unindexed: unindexed.length,
+      indexed: indexedSchemas.length,
+      unindexed: unindexedSchemas.length,
+      indexedFlows: indexedFlows.length,
+      unindexedFlows: unindexedFlows.length,
       stale: staleSet.size,
-      unindexedSchemas: unindexed.map((s) => ({
-        id: s._id,
+      unindexedSchemas: unindexedSchemas.map((s) => ({
+        id: String(s._id),
         name: s.name,
         type: s.type,
       })),

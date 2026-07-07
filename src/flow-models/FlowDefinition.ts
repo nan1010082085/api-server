@@ -1,5 +1,6 @@
 import mongoose from 'mongoose'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
+import { scheduleFlowRagIndex } from '../ai/services/ragIndexScheduler.js'
 
 export interface IFlowDefinition {
   tenantId: string
@@ -62,6 +63,15 @@ flowDefinitionSchema.index({ status: 1 })
 flowDefinitionSchema.index({ createdBy: 1 })
 
 flowDefinitionSchema.plugin(tenantPlugin)
+
+flowDefinitionSchema.post('save', function (doc: IFlowDefinition & { _id: unknown }) {
+  scheduleFlowRagIndex(String(doc._id))
+})
+
+flowDefinitionSchema.post('findOneAndUpdate', function (doc: (IFlowDefinition & { _id: unknown }) | null) {
+  if (!doc) return
+  scheduleFlowRagIndex(String(doc._id))
+})
 
 export const FlowDefinitionModel =
   mongoose.models.FlowDefinition ??

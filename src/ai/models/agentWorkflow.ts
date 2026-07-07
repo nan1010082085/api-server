@@ -166,6 +166,12 @@ export interface IAgentWorkflowExecution {
   parentExecutionId?: string | null
   error?: string
   triggeredBy: string
+  streamingOutput?: {
+    nodeId: string
+    nodeType: string
+    text: string
+    updatedAt: string
+  } | null
 }
 
 const executionSchema = new mongoose.Schema(
@@ -207,6 +213,15 @@ const executionSchema = new mongoose.Schema(
       default: [],
     },
     parentExecutionId: { type: String, default: null },
+    streamingOutput: {
+      type: {
+        nodeId: String,
+        nodeType: String,
+        text: String,
+        updatedAt: String,
+      },
+      default: null,
+    },
   },
   {
     timestamps: true,

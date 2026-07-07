@@ -1,0 +1,159 @@
+{
+  "version": 1,
+  "mcpServers": [
+    {
+      "id": "platform.schema",
+      "transport": "inmemory",
+      "builtin": "schema",
+      "namespace": "schema__"
+    },
+    {
+      "id": "platform.flow",
+      "transport": "inmemory",
+      "builtin": "flow",
+      "namespace": "flow__"
+    },
+    {
+      "id": "platform.widget",
+      "transport": "inmemory",
+      "builtin": "widget",
+      "namespace": "widget__"
+    },
+    {
+      "id": "platform.rag",
+      "transport": "inmemory",
+      "builtin": "rag",
+      "namespace": "rag__"
+    },
+    {
+      "id": "platform.industry",
+      "transport": "inmemory",
+      "builtin": "industry",
+      "namespace": "industry__"
+    }
+  ],
+  "tools": [
+    { "name": "schema__search", "kind": "mcp", "source": "platform.schema" },
+    { "name": "schema__get_detail", "kind": "mcp", "source": "platform.schema" },
+    { "name": "schema__search_published", "kind": "mcp", "source": "platform.schema" },
+    { "name": "schema__fuzzy_search", "kind": "mcp", "source": "platform.schema" },
+    { "name": "schema__find_flow_references", "kind": "mcp", "source": "platform.schema" },
+    { "name": "schema__validate_widgets", "kind": "mcp", "source": "platform.schema" },
+    { "name": "flow__search", "kind": "mcp", "source": "platform.flow" },
+    { "name": "flow__get_detail", "kind": "mcp", "source": "platform.flow" },
+    { "name": "flow__get_node_schema", "kind": "mcp", "source": "platform.flow" },
+    { "name": "flow__search_users", "kind": "mcp", "source": "platform.flow" },
+    { "name": "flow__validate", "kind": "mcp", "source": "platform.flow" },
+    { "name": "widget__query", "kind": "mcp", "source": "platform.widget" },
+    { "name": "rag__search", "kind": "mcp", "source": "platform.rag" },
+    { "name": "industry__search_templates", "kind": "mcp", "source": "platform.industry" },
+    { "name": "industry__validate_form", "kind": "mcp", "source": "platform.industry" },
+    { "name": "update_schema", "kind": "graph" },
+    { "name": "generate_schema", "kind": "graph" },
+    { "name": "update_flow", "kind": "graph" },
+    { "name": "save_and_bind_schema", "kind": "graph" },
+    { "name": "bind_schema_to_flow_node", "kind": "graph" },
+    { "name": "request_collaboration", "kind": "graph" },
+    { "name": "rag_index", "kind": "graph" },
+    { "name": "http_request", "kind": "http" }
+  ],
+  "skills": [],
+  "experts": [
+    {
+      "id": "platform.editor",
+      "label": "Editor 专家",
+      "description": "表单 Schema 生成、校验与更新",
+      "legacyAgentKey": "editor",
+      "dynamicPrompt": "editor",
+      "tools": [
+        "schema__search",
+        "schema__get_detail",
+        "schema__search_published",
+        "schema__fuzzy_search",
+        "schema__find_flow_references",
+        "schema__validate_widgets",
+        "widget__query",
+        "rag__search",
+        "update_schema",
+        "generate_schema",
+        "request_collaboration"
+      ],
+      "routing": {
+        "keywords": ["表单", "schema", "form", "字段", "组件", "widget", "输入框"],
+        "contextSources": ["editor", "standalone"],
+        "priority": 10
+      },
+      "model": { "temperature": 0.7, "maxTokens": 8192, "task": "generate_complex" },
+      "runtime": ["langgraph", "workflow"]
+    },
+    {
+      "id": "platform.flow",
+      "label": "Flow 专家",
+      "description": "BPMN 流程生成、校验与更新",
+      "legacyAgentKey": "flow",
+      "dynamicPrompt": "flow",
+      "tools": [
+        "flow__search",
+        "flow__get_detail",
+        "flow__get_node_schema",
+        "flow__search_users",
+        "flow__validate",
+        "schema__search",
+        "schema__get_detail",
+        "rag__search",
+        "update_flow",
+        "generate_schema",
+        "save_and_bind_schema",
+        "bind_schema_to_flow_node",
+        "request_collaboration"
+      ],
+      "routing": {
+        "keywords": ["流程", "审批", "流转", "bpmn", "flow", "节点", "工作流"],
+        "contextSources": ["flow", "standalone"],
+        "priority": 10
+      },
+      "model": { "temperature": 0.7, "maxTokens": 8192, "task": "generate_complex" },
+      "runtime": ["langgraph", "workflow"]
+    },
+    {
+      "id": "platform.page",
+      "label": "Page 专家",
+      "description": "业务页面布局生成",
+      "legacyAgentKey": "page",
+      "dynamicPrompt": "page",
+      "tools": [
+        "schema__search",
+        "schema__get_detail",
+        "schema__search_published",
+        "schema__fuzzy_search",
+        "schema__validate_widgets",
+        "widget__query",
+        "rag__search",
+        "update_schema",
+        "generate_schema",
+        "request_collaboration"
+      ],
+      "routing": {
+        "keywords": ["页面", "布局", "page", "layout", "仪表盘", "列表", "详情"],
+        "contextSources": ["page", "standalone"],
+        "priority": 10
+      },
+      "model": { "temperature": 0.7, "maxTokens": 8192, "task": "generate_complex" },
+      "runtime": ["langgraph", "workflow"]
+    },
+    {
+      "id": "platform.general",
+      "label": "General 助手",
+      "description": "通用问答与平台能力介绍",
+      "legacyAgentKey": "general",
+      "dynamicPrompt": "general",
+      "tools": [],
+      "routing": {
+        "contextSources": ["standalone"],
+        "priority": 0
+      },
+      "model": { "temperature": 0.7, "maxTokens": 2048, "task": "analyze" },
+      "runtime": ["langgraph", "workflow"]
+    }
+  ]
+}

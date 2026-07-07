@@ -13,7 +13,8 @@ import { getLLM } from '../services/llmCache.js'
 import { HumanMessage, SystemMessage, AIMessage, AIMessageChunk } from '@langchain/core/messages'
 import { buildPageSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
 import { getMetadata } from '../services/metadataService.js'
-import { getToolsByNames } from '../tools/registry.js'
+import { getPluginRegistry } from '../plugins/index.js'
+import { buildExpertSystemPrompt, getExpertTools } from '../plugins/dispatchExpert.js'
 import { truncateMessagesForLangGraph, resolveUserModel, getModelForTask, formatPreferencesForPrompt } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { buildContextInjection, type AgentContextPayload } from './contextCarrier.js'
@@ -134,19 +135,18 @@ export async function pageAgentNode(
     : ''
   const ragContext = await retrieveRagContext(userQueryText)
 
-  const systemPrompt = await getPageSystemPrompt()
+  const expert = getPluginRegistry().getExpertByLegacyKey('page')
+  if (!expert) {
+    throw new Error('[pageAgent] platform.page not registered in plugin center')
+  }
+  const systemPrompt = await buildExpertSystemPrompt(expert)
   const userContent = buildContextMessage(state) + ragContext.context
 
-  const pageToolNames = [
-    'schema__search', 'schema__get_detail', 'schema__search_published',
-    'schema__fuzzy_search', 'schema__validate_widgets', 'widget__query', 'rag__search',
-    'update_schema', 'generate_schema', 'request_collaboration',
-  ]
   const model = (await getLLM({
-    model: resolveUserModel(state.interaction.preferences, getModelForTask('generate_complex')),
-    temperature: 0.7,
-    maxTokens: 8192,
-  })).bindTools(getToolsByNames(pageToolNames))
+    model: resolveUserModel(state.interaction.preferences, getModelForTask(expert.model?.task ?? 'generate_complex')),
+    temperature: expert.model?.temperature ?? 0.7,
+    maxTokens: expert.model?.maxTokens ?? 8192,
+  })).bindTools(getExpertTools(expert))
 
   // 截断历史消息以避免 token 超限
   const truncatedHistory = truncateMessagesForLangGraph(state.messages)

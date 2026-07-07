@@ -10,6 +10,7 @@
  */
 
 import type { StructuredTool } from '@langchain/core/tools'
+import { initPluginRegistry } from '../plugins/index.js'
 import { initMcpBridge } from '../mcp/bridge.js'
 import { langgraphOnlyTools, LANGGRAPH_ONLY_TOOL_NAMES } from './langgraphTools.js'
 
@@ -23,6 +24,7 @@ let _ready = false
 
 const _readyPromise: Promise<void> = (async () => {
   try {
+    initPluginRegistry()
     const mcpTools = await initMcpBridge()
     _allTools = [...mcpTools, ...langgraphOnlyTools]
     _toolMap = new Map(_allTools.map((t) => [t.name, t]))

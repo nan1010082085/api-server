@@ -16,8 +16,14 @@ vi.mock('../services/conversationService.js', () => ({
   appendMessage: vi.fn(),
   listConversations: vi.fn(),
   deleteConversation: vi.fn(),
-  maybeGenerateSummary: vi.fn(),
+  maybeGenerateSummary: vi.fn().mockResolvedValue(undefined),
   searchConversations: vi.fn(),
+  updateMessageFeedback: vi.fn(),
+  AIConversationModel: {
+    find: vi.fn(),
+    countDocuments: vi.fn(),
+    findOne: vi.fn(),
+  },
 }))
 
 vi.mock('../services/versionService.js', () => ({
@@ -44,6 +50,31 @@ vi.mock('../../flow-models/FlowVersion.js', () => ({
 
 vi.mock('uuid', () => ({
   v4: vi.fn(() => 'mock-uuid'),
+}))
+
+vi.mock('../../../utils/devUser.js', () => ({
+  resolveDevelopmentUser: vi.fn().mockResolvedValue({
+    id: 'dev-user-1',
+    username: 'admin',
+    roles: ['admin'],
+    tenantId: '000000',
+    deptId: null,
+    tokenType: 'access',
+  }),
+}))
+
+vi.mock('../../middleware/auth.js', () => ({
+  authMiddleware: () => async (ctx: { state: Record<string, unknown> }, next: () => Promise<void>) => {
+    ctx.state.user = {
+      id: 'dev-user-1',
+      username: 'admin',
+      roles: ['admin'],
+      tenantId: '000000',
+      deptId: null,
+      tokenType: 'access',
+    }
+    await next()
+  },
 }))
 
 import Koa from 'koa'
@@ -177,13 +208,13 @@ describe('POST /api/ai/chat', () => {
         },
         {
           event: 'on_tool_start',
-          name: 'validate_flow',
+          name: 'flow__validate',
           data: { input: { flow: { nodes: [{ id: 'n1' }], edges: [] } } },
           run_id: 'tc-flow-1',
         },
         {
           event: 'on_tool_end',
-          name: 'validate_flow',
+          name: 'flow__validate',
           data: { output: { success: true, data: { valid: true, errors: [] } } },
           run_id: 'tc-flow-1',
         },
@@ -313,7 +344,7 @@ describe('POST /api/ai/chat', () => {
         {
           event: 'on_tool_start',
           name: 'schema__validate_widgets',
-          data: { input: { widgetsJson: JSON.stringify([{ id: '1', type: 'input' }]) } },
+          data: { input: { widgets: [{ id: '1', type: 'input' }] } },
           run_id: 'tc-s1',
         },
         {
@@ -421,18 +452,24 @@ describe('POST /api/ai/publish', () => {
 
 describe('GET /api/ai/conversations', () => {
   it('returns conversation list', async () => {
-    vi.mocked(convoService.listConversations).mockResolvedValue([
-      { _id: '1', source: 'standalone', messages: [{ role: 'user', content: 'hello', timestamp: new Date() }], activeAgent: 'router', createdAt: new Date(), updatedAt: new Date() },
-      { _id: '2', source: 'editor', messages: [], activeAgent: 'editor', createdAt: new Date(), updatedAt: new Date() },
-    ] as any)
+    const mockConversations = [
+      { _id: '1', source: 'standalone', messages: [{ role: 'user', content: 'hello', timestamp: new Date() }], activeAgent: 'router', version: 1, createdAt: new Date(), updatedAt: new Date() },
+      { _id: '2', source: 'editor', messages: [], activeAgent: 'editor', version: 1, createdAt: new Date(), updatedAt: new Date() },
+    ]
+    const limit = vi.fn().mockResolvedValue(mockConversations)
+    const skip = vi.fn().mockReturnValue({ limit })
+    const sort = vi.fn().mockReturnValue({ skip })
+    vi.mocked(convoService.AIConversationModel.find).mockReturnValue({ sort } as any)
+    vi.mocked(convoService.AIConversationModel.countDocuments).mockResolvedValue(2)
 
     const res = await request('GET', '/api/ai/conversations')
 
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
-    expect(res.body.data).toHaveLength(2)
-    expect(res.body.data[0].title).toBe('hello')
-    expect(res.body.data[1].title).toBe('New conversation')
+    expect(res.body.data.items).toHaveLength(2)
+    expect(res.body.data.items[0].title).toBe('hello')
+    expect(res.body.data.items[1].title).toBe('New conversation')
+    expect(res.body.data.total).toBe(2)
   })
 })
 

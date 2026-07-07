@@ -337,21 +337,24 @@ describe('RAG MCP Server', () => {
     expect(tools.map((t) => t.name)).toEqual(['rag__search'])
   })
 
-  it('rag__search should be invokable (returns result or API error)', async () => {
-    const result = await client.callTool({
-      name: 'rag__search',
-      arguments: { query: '用户注册表单', limit: 3 },
-    })
-    const content = result.content as Array<{ type: string; text: string }>
-    expect(content[0].text).toBeDefined()
-    // 无 Embedding API Key 时可能返回错误文本，有 Key 时返回 JSON
-    try {
-      const parsed = JSON.parse(content[0].text)
-      expect(parsed).toHaveProperty('success')
-    } catch {
-      expect(content[0].text.length).toBeGreaterThan(0)
-    }
-  })
+  it(
+    'rag__search should be invokable (returns result or API error)',
+    async () => {
+      const result = await client.callTool({
+        name: 'rag__search',
+        arguments: { query: '用户注册表单', limit: 3 },
+      })
+      const content = result.content as Array<{ type: string; text: string }>
+      expect(content[0].text).toBeDefined()
+      try {
+        const parsed = JSON.parse(content[0].text)
+        expect(parsed).toHaveProperty('success')
+      } catch {
+        expect(content[0].text.length).toBeGreaterThan(0)
+      }
+    },
+    15_000,
+  )
 })
 
 // ── Industry MCP Server ──

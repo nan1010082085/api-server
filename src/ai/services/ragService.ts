@@ -17,6 +17,8 @@
 import { createHash } from 'node:crypto'
 import { FormSchemaModel } from '../../models/FormSchema.js'
 import { SchemaEmbeddingModel } from '../../models/SchemaEmbedding.js'
+import { FlowDefinitionModel } from '../../flow-models/FlowDefinition.js'
+import { FlowVersionModel } from '../../flow-models/FlowVersion.js'
 import { embedText, embedBatch, isEmbeddingConfigured } from './embeddingService.js'
 import { fuzzySearchSchemas } from './schemaService.js'
 import { logger } from '../../utils/logger.js'
@@ -122,61 +124,95 @@ export interface IndexResult {
   action: 'created' | 'updated' | 'skipped'
 }
 
+export interface ReindexStats {
+  total: number
+  created: number
+  updated: number
+  skipped: number
+  errors: number
+  flowsTotal: number
+  flowsCreated: number
+  flowsUpdated: number
+  flowsSkipped: number
+  flowsErrors: number
+}
+
+function flowEditId(flowId: string): string {
+  return `flow:${flowId}`
+}
+
+export function extractFlowTextForEmbedding(
+  name: string,
+  description: string,
+  graph: { nodes?: unknown[] } | null | undefined,
+): string {
+  const labels: string[] = [name, description].filter(Boolean)
+  const nodes = graph?.nodes
+  if (Array.isArray(nodes)) {
+    for (const node of nodes) {
+      if (!node || typeof node !== 'object') continue
+      const row = node as Record<string, unknown>
+      if (row.label) labels.push(String(row.label))
+      if (row.name) labels.push(String(row.name))
+      if (row.type) labels.push(String(row.type))
+      if (row.id) labels.push(String(row.id))
+    }
+  }
+  return [...new Set(labels)].join(' ')
+}
+
+function computeFlowContentHash(name: string, description: string, graph: unknown): string {
+  const text = extractFlowTextForEmbedding(name, description, graph as { nodes?: unknown[] })
+  return createHash('sha256').update(text).digest('hex').slice(0, 32)
+}
+
+async function loadFlowGraph(definition: Record<string, unknown>): Promise<unknown> {
+  const currentVersionId = definition.currentVersionId
+  if (currentVersionId) {
+    const version = await FlowVersionModel.findById(currentVersionId).select('graph').lean() as Record<string, unknown> | null
+    if (version?.graph) return version.graph
+  }
+  const latest = await FlowVersionModel.findOne({ definitionId: String(definition._id) })
+    .sort({ version: -1 })
+    .select('graph')
+    .lean() as Record<string, unknown> | null
+  return latest?.graph ?? null
+}
+
 /**
  * Index a single schema: generate embedding and store/update in MongoDB.
  *
  * Skips re-indexing if the content hash hasn't changed (schema unchanged).
  */
 export async function indexSchema(schemaId: string): Promise<IndexResult> {
+  if (!isEmbeddingConfigured()) {
+    return { schemaId, action: 'skipped' }
+  }
+
   const schema = await FormSchemaModel.findById(schemaId).lean() as Record<string, unknown> | null
   if (!schema) {
     throw new Error(`Schema ${schemaId} not found`)
   }
 
+  const normalizedSchemaId = String(schema._id)
   const name = String(schema.name ?? '')
   const json = schema.json
-  const type = String(schema.type ?? 'form') as 'form' | 'search_list'
+  const type = String(schema.type ?? 'form')
   const editId = String(schema.editId ?? '')
   const contentHash = computeContentHash(name, json)
 
-  // Check if embedding already exists and is current
-  const existing = await SchemaEmbeddingModel.findOne({ editId }).lean() as Record<string, unknown> | null
+  const existing = await SchemaEmbeddingModel.findOne({ editId, entityKind: 'schema' }).lean() as Record<string, unknown> | null
   if (existing && existing.contentHash === contentHash) {
-    return { schemaId, action: 'skipped' }
+    return { schemaId: normalizedSchemaId, action: 'skipped' }
   }
 
-  // Generate embedding
   const text = extractTextForEmbedding(name, json)
   const { vector } = await embedText(text)
-
-  // Extract metadata
   const features = extractFeatures(name, json)
 
-  if (existing) {
-    // Update existing embedding
-    await SchemaEmbeddingModel.updateOne(
-      { editId },
-      {
-        schemaId,
-        name,
-        type,
-        contentHash,
-        embedding: vector,
-        metadata: {
-          widgetTypes: features.widgetTypes,
-          fieldNames: features.fieldNames,
-          labels: features.labels,
-          description: features.description,
-        },
-      },
-    )
-    return { schemaId, action: 'updated' }
-  }
-
-  // Create new embedding
-  await SchemaEmbeddingModel.create({
-    schemaId,
-    editId,
+  const payload = {
+    entityKind: 'schema' as const,
+    schemaId: normalizedSchemaId,
     name,
     type,
     contentHash,
@@ -187,9 +223,73 @@ export async function indexSchema(schemaId: string): Promise<IndexResult> {
       labels: features.labels,
       description: features.description,
     },
+  }
+
+  if (existing) {
+    await SchemaEmbeddingModel.updateOne({ editId }, payload)
+    return { schemaId: normalizedSchemaId, action: 'updated' }
+  }
+
+  await SchemaEmbeddingModel.create({
+    editId,
+    ...payload,
   })
 
-  return { schemaId, action: 'created' }
+  return { schemaId: normalizedSchemaId, action: 'created' }
+}
+
+export async function indexFlowDefinition(flowId: string): Promise<IndexResult> {
+  if (!isEmbeddingConfigured()) {
+    return { schemaId: flowId, action: 'skipped' }
+  }
+
+  const definition = await FlowDefinitionModel.findById(flowId).lean() as Record<string, unknown> | null
+  if (!definition) {
+    throw new Error(`Flow ${flowId} not found`)
+  }
+
+  const normalizedFlowId = String(definition._id)
+  const name = String(definition.name ?? '')
+  const description = String(definition.description ?? '')
+  const graph = await loadFlowGraph(definition)
+  const editId = flowEditId(normalizedFlowId)
+  const contentHash = computeFlowContentHash(name, description, graph)
+
+  const existing = await SchemaEmbeddingModel.findOne({ editId, entityKind: 'flow' }).lean() as Record<string, unknown> | null
+  if (existing && existing.contentHash === contentHash) {
+    return { schemaId: normalizedFlowId, action: 'skipped' }
+  }
+
+  const text = extractFlowTextForEmbedding(name, description, graph as { nodes?: unknown[] })
+  const { vector } = await embedText(text)
+  const labels = text.split(/\s+/).filter(Boolean)
+
+  const payload = {
+    entityKind: 'flow' as const,
+    schemaId: normalizedFlowId,
+    name,
+    type: 'flow',
+    contentHash,
+    embedding: vector,
+    metadata: {
+      widgetTypes: [],
+      fieldNames: [],
+      labels,
+      description: description || `流程 ${name}`,
+    },
+  }
+
+  if (existing) {
+    await SchemaEmbeddingModel.updateOne({ editId }, payload)
+    return { schemaId: normalizedFlowId, action: 'updated' }
+  }
+
+  await SchemaEmbeddingModel.create({
+    editId,
+    ...payload,
+  })
+
+  return { schemaId: normalizedFlowId, action: 'created' }
 }
 
 /**
@@ -198,18 +298,27 @@ export async function indexSchema(schemaId: string): Promise<IndexResult> {
  * Useful for initial setup or after schema migration.
  * Returns counts of created, updated, skipped, and errored schemas.
  */
-export async function reindexAll(): Promise<{
-  total: number
-  created: number
-  updated: number
-  skipped: number
-  errors: number
-}> {
+export async function reindexAll(): Promise<ReindexStats> {
   const schemas = await FormSchemaModel.find()
     .select('_id')
     .lean() as Array<Record<string, unknown>>
 
-  const stats = { total: schemas.length, created: 0, updated: 0, skipped: 0, errors: 0 }
+  const flows = await FlowDefinitionModel.find()
+    .select('_id')
+    .lean() as Array<Record<string, unknown>>
+
+  const stats: ReindexStats = {
+    total: schemas.length,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    errors: 0,
+    flowsTotal: flows.length,
+    flowsCreated: 0,
+    flowsUpdated: 0,
+    flowsSkipped: 0,
+    flowsErrors: 0,
+  }
 
   for (const schema of schemas) {
     try {
@@ -217,6 +326,93 @@ export async function reindexAll(): Promise<{
       stats[result.action]++
     } catch {
       stats.errors++
+    }
+  }
+
+  for (const flow of flows) {
+    try {
+      const result = await indexFlowDefinition(String(flow._id))
+      if (result.action === 'created') stats.flowsCreated++
+      else if (result.action === 'updated') stats.flowsUpdated++
+      else stats.flowsSkipped++
+    } catch {
+      stats.flowsErrors++
+    }
+  }
+
+  return stats
+}
+
+/**
+ * Index only schemas / flows that have no embedding yet (startup backfill).
+ */
+export async function syncMissingRagIndices(): Promise<ReindexStats> {
+  const stats: ReindexStats = {
+    total: 0,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    errors: 0,
+    flowsTotal: 0,
+    flowsCreated: 0,
+    flowsUpdated: 0,
+    flowsSkipped: 0,
+    flowsErrors: 0,
+  }
+
+  if (!isEmbeddingConfigured()) {
+    return stats
+  }
+
+  const embeddedSchemaIds = new Set(
+    (await SchemaEmbeddingModel.find({ entityKind: { $in: ['schema', null] } })
+      .select('schemaId')
+      .lean() as Array<Record<string, unknown>>)
+      .map((row) => String(row.schemaId)),
+  )
+
+  const schemas = await FormSchemaModel.find().select('_id').lean() as Array<Record<string, unknown>>
+  stats.total = schemas.length
+
+  for (const schema of schemas) {
+    const id = String(schema._id)
+    if (embeddedSchemaIds.has(id)) {
+      stats.skipped++
+      continue
+    }
+    try {
+      const result = await indexSchema(id)
+      if (result.action === 'created') stats.created++
+      else if (result.action === 'updated') stats.updated++
+      else stats.skipped++
+    } catch {
+      stats.errors++
+    }
+  }
+
+  const embeddedFlowIds = new Set(
+    (await SchemaEmbeddingModel.find({ entityKind: 'flow' })
+      .select('schemaId')
+      .lean() as Array<Record<string, unknown>>)
+      .map((row) => String(row.schemaId)),
+  )
+
+  const flows = await FlowDefinitionModel.find().select('_id').lean() as Array<Record<string, unknown>>
+  stats.flowsTotal = flows.length
+
+  for (const flow of flows) {
+    const id = String(flow._id)
+    if (embeddedFlowIds.has(id)) {
+      stats.flowsSkipped++
+      continue
+    }
+    try {
+      const result = await indexFlowDefinition(id)
+      if (result.action === 'created') stats.flowsCreated++
+      else if (result.action === 'updated') stats.flowsUpdated++
+      else stats.flowsSkipped++
+    } catch {
+      stats.flowsErrors++
     }
   }
 
