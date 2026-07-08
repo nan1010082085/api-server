@@ -2,6 +2,7 @@ import type { Middleware } from 'koa'
 import jwt from 'jsonwebtoken'
 import { JWT_SECRET } from '../config/jwt.js'
 import { ApiKeyModel } from '../models/ApiKey.js'
+import { KeyUsageLogModel } from '../models/KeyUsageLog.js'
 import type { JwtPayload } from './auth.js'
 import type { ApiKeyAuthState } from './apiKeyAuth.js'
 
@@ -96,6 +97,8 @@ export function apiOrJwtAuthMiddleware(): Middleware {
         return
       }
 
+      const startTime = Date.now()
+
       // 异步更新 lastUsedAt，不阻塞请求
       ApiKeyModel.updateOne({ _id: record._id }, { lastUsedAt: new Date() }).exec()
 
@@ -103,11 +106,34 @@ export function apiOrJwtAuthMiddleware(): Middleware {
         tenantId: record.tenantId,
         userId: record.createdBy,
         source: 'apiKey',
-        keyId: record._id,
+        keyId: String(record._id),
+        keyName: record.name,
         permissions: record.permissions,
       } satisfies ApiKeyAuthState
 
       await next()
+
+      // 记录使用日志（异步，不阻塞响应）
+      const duration = Date.now() - startTime
+      const workflowId = ctx.get('X-Workflow-Id') || null
+      const workflowName = ctx.get('X-Workflow-Name') || null
+
+      KeyUsageLogModel.create({
+        tenantId: record.tenantId,
+        keyId: String(record._id),
+        keyName: record.name,
+        workflowId,
+        workflowName,
+        endpoint: ctx.url,
+        method: ctx.method,
+        statusCode: ctx.status,
+        duration,
+        ip: ctx.ip,
+        userAgent: ctx.get('User-Agent') || '',
+      }).catch((err: unknown) => {
+        console.error('[keyUsage] Failed to write usage log:', err instanceof Error ? err.message : String(err))
+      })
+
       return
     }
 

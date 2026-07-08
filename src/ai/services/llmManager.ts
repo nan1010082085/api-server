@@ -24,8 +24,11 @@ export class LLMManager {
   constructor() {
     this.router = new LLMRouter()
 
-    // Register providers based on available API keys
-    this.registerFromEnv()
+    // PLATFORM_LLM_ENABLED=false disables platform-managed env providers.
+    // In that mode, only DB-stored ModelConfig records can supply LLM credentials.
+    if (process.env.PLATFORM_LLM_ENABLED !== 'false') {
+      this.registerFromEnv()
+    }
 
     // Set default from environment or fallback to first available
     this._defaultProvider = process.env.DEFAULT_LLM || 'deepseek'

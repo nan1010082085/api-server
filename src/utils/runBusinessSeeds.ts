@@ -5,6 +5,7 @@ import { seedSubmissionFlowBindings } from './seedWebhooks.js'
 import { seedBusinessRoles, assignBusinessRolesToAdmin } from './seedBusinessRoles.js'
 import { seedBusinessDicts } from './seedBusinessDicts.js'
 import { seedBusinessAgentWorkflows } from './seedBusinessAgentWorkflows.js'
+import { seedDemoWorkflows } from './seedDemoWorkflows.js'
 import { seedSampleNotices } from './seedSampleNotices.js'
 import { seedSampleAuditIssues, seedSampleMetrologyDevices } from './seedSampleDomainData.js'
 import { seedDemoTenant } from './seedDemoTenant.js'
@@ -32,6 +33,7 @@ export async function runBusinessSeeds(): Promise<void> {
   await seedBusinessDicts()
   await seedBusinessSchemas()
   await seedBusinessAgentWorkflows()
+  await seedDemoWorkflows()
   await seedSampleNotices()
   await seedSampleAuditIssues()
   await seedSampleMetrologyDevices()

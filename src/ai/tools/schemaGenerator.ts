@@ -1,7 +1,7 @@
 /**
- * Schema Generator — 被其他 Agent 调用的 Schema 生成能力
+ * Schema Generator — 被 generate_schema tool 调用的 Schema 生成能力
  *
- * 封装 Editor Agent 的核心生成逻辑，供 Flow Agent 的 generate_schema tool 使用。
+ * 封装 LLM 生成逻辑，供 Flow 工具的 generate_schema 调用。
  * 不走 SSE 流式，直接返回最终结果。
  */
 

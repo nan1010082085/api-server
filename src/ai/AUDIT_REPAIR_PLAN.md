@@ -2,20 +2,22 @@
 
 > 核心原则：工具冲突时优先使用 MCP，由内部定义专有的 MCP 实现。
 
+> **基线对齐说明（2026-07-08）**：本文档记录审计发现与修复方案。当前实现已采用 pluginExpert 单节点架构（非 editorAgent/flowAgent/pageAgent），MCP 工具使用 `{domain}__` 前缀命名。以下工具名已对齐实际代码。
+
 ---
 
 ## 修复优先级矩阵
 
 | # | 检查项 | 状态 | 严重度 | 修复复杂度 | 优先级 |
 |---|--------|------|--------|-----------|--------|
-| 4 | 熔断保护 | ❌ | 🔴 高 | 低 | P0 |
-| 3 | 职责划分 | ⚠️ | 🟡 中 | 高 | P1 |
-| 5 | 命名空间 | ❌ | 🟡 中 | 低 | P1 |
-| 10 | 循环拦截 | ⚠️ | 🟡 中 | 中 | P1 |
-| 1 | 模型选型 | ❌ | 🟡 中 | 中 | P2 |
-| 8 | 模型匹配 | ❌ | 🟡 中 | 中 | P2 |
-| 9 | 参数健壮性 | ⚠️ | 🟡 中 | 低 | P2 |
-| 6 | Agent 合规 | ❌ | 🟡 中 | 高 | P2 |
+| 4 | 熔断保护 | ✅ 已修复 | 🔴 高 | 低 | P0 |
+| 3 | 职责划分 | ✅ 已落地 | 🟡 中 | 高 | P1 |
+| 5 | 命名空间 | ✅ 已落地 | 🟡 中 | 低 | P1 |
+| 10 | 循环拦截 | ✅ 已落地 | 🟡 中 | 中 | P1 |
+| 1 | 模型选型 | ✅ 已落地 | 🟡 中 | 中 | P2 |
+| 8 | 模型匹配 | ✅ 已落地 | 🟡 中 | 中 | P2 |
+| 9 | 参数健壮性 | ✅ 已落地 | 🟡 中 | 低 | P2 |
+| 6 | Agent 合规 | ✅ 已落地 | 🟡 中 | 高 | P2 |
 | 2 | 工具定义 | ✅ | 🟢 低 | 低 | P3 |
 | 7 | 会话管理 | ✅ | 🟢 低 | 无 | — |
 
@@ -88,29 +90,27 @@ export function getLLM(opts: LLMOptions = {}): ChatOpenAI {
 
 ### 2.2 问题
 
-`validate_schema` 名称冲突：
-- MCP 版本：文档级校验（检查 name/type/json 字段存在性）
-- LangGraph 版本：组件级校验（检查 Widget 类型、ID、position、容器嵌套）
+~~`validate_schema` 名称冲突~~ — 已通过 `{domain}__` 前缀解决：
+- MCP 版本：`schema__validate`（文档级校验）
+- MCP 版本：`widget__validate`（组件级校验）
+- `schema__validate_widgets`（Widget 数组校验）
 
-### 2.3 修复方案
+### 2.3 修复方案（已落地）
 
-重命名消除歧义，MCP 作为权威定义源：
+| 原名 | MCP 版本（权威，已实现） | LangGraph 版本 |
+|------|-------------------------|----------------|
+| `validate_schema` | `schema__validate`（文档级） | 删除，改用 MCP |
+| — | `widget__validate`（组件级） | 删除，改用 MCP |
+| — | `schema__validate_widgets`（Widget 数组） | 删除，改用 MCP |
 
-| 原名 | MCP 版本（权威） | LangGraph 版本 |
-|------|-----------------|----------------|
-| `validate_schema` | `validate_schema`（文档级） | 删除，改用 MCP |
-| — | `validate_widget_schema`（组件级） | 删除，改用 MCP |
-
-LangGraph 中的 `validateSchemaTool`（组件级）重命名为 `validate_widget_schema`，与 MCP 对齐，共享底层验证函数。
-
-### 2.4 文件变更
+### 2.4 文件变更（已落地）
 
 | 文件 | 变更 |
 |------|------|
-| `mcp/schemaServer.ts` | `validate_schema` 保持文档级校验 |
-| `mcp/widgetServer.ts` | `validate_widget_schema` 作为组件级校验的权威实现 |
-| `tools/editorTools.ts` | 删除 `validateSchemaTool`，从 `widgetServer.ts` 导入共享函数 |
-| `tools/allTools.ts` | 更新导入 |
+| `mcp/schemaServer.ts` | `schema__validate` 文档级校验 + `schema__validate_widgets` Widget 数组校验 |
+| `mcp/widgetServer.ts` | `widget__validate` 组件级校验 |
+| `tools/editorTools.ts` | 仅保留 HITL 工具（update_schema 等） |
+| `tools/registry.ts` | 统一工具注册表，MCP + LangGraph + HTTP 三源合并 |
 
 ---
 
@@ -122,10 +122,10 @@ LangGraph 中的 `validateSchemaTool`（组件级）重命名为 `validate_widge
 ┌─────────────────────────────────────────────────────────┐
 │                    工具定义分层                            │
 ├─────────────────────────────────────────────────────────┤
-│  MCP Server（权威定义源）                                  │
-│  ├── 所有读取类工具：search, detail, validate, catalogue  │
-│  ├── 所有校验类工具：validate_widget_schema, validate_flow │
-│  └── 新增：RAG, Industry, User 搜索                      │
+│  MCP Server（权威定义源，{domain}__ 前缀）                │
+│  ├── 读取类：schema__search, schema__get_detail, ...     │
+│  ├── 校验类：schema__validate, widget__validate, ...     │
+│  └── 扩展：rag__search, industry__search_templates, ...  │
 ├─────────────────────────────────────────────────────────┤
 │  LangGraph 专有工具（图状态依赖）                          │
 │  ├── HITL：update_schema, update_flow                    │
@@ -133,33 +133,35 @@ LangGraph 中的 `validateSchemaTool`（组件级）重命名为 `validate_widge
 │  ├── LLM 调用：generate_schema                           │
 │  └── 图路由：request_collaboration                       │
 ├─────────────────────────────────────────────────────────┤
-│  共享业务逻辑层（services/）                               │
-│  ├── schemaService：CRUD + 校验                          │
-│  ├── flowService：CRUD + 校验 + 版本管理                  │
-│  └── widgetService：目录 + 校验                           │
+│  HTTP 工具（插件中心声明，kind='http'）                    │
+│  └── 动态注册，由 PluginRegistry 提供                     │
+├─────────────────────────────────────────────────────────┤
+│  统一注册表（tools/registry.ts）                          │
+│  └── MCP + LangGraph + HTTP → getAllToolsSync()          │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 工具归属表
+### 3.2 工具归属表（已对齐 `{domain}__` 命名）
 
 | 工具 | 归属 | 理由 |
 |------|------|------|
-| `search_schemas` | **MCP** | 纯读取 |
-| `get_schema_detail` | **MCP** | 纯读取 |
-| `search_published_schemas` | **MCP** | 纯读取 |
-| `fuzzy_search_schemas` | **MCP** | 纯读取，迁入 |
-| `find_flow_references` | **MCP** | 纯读取，迁入 |
-| `validate_schema` | **MCP** | 文档级校验 |
-| `validate_widget_schema` | **MCP** | 组件级校验 |
-| `search_flows` | **MCP** | 纯读取 |
-| `get_flow_detail` | **MCP** | 纯读取 |
-| `validate_flow` | **MCP** | 校验 |
-| `query_widgets` | **MCP** | 纯读取 |
-| `search_users` | **MCP** | 纯读取，迁入 |
-| `get_flow_node_schema` | **MCP** | 纯读取，迁入 |
-| `rag_search` | **MCP** | 纯读取，迁入 |
-| `search_industry_templates` | **MCP** | 纯读取，迁入 |
-| `validate_industry_form` | **MCP** | 校验，迁入 |
+| `schema__search` | **MCP** | 纯读取 |
+| `schema__get_detail` | **MCP** | 纯读取 |
+| `schema__search_published` | **MCP** | 纯读取 |
+| `schema__fuzzy_search` | **MCP** | 纯读取 |
+| `schema__find_flow_references` | **MCP** | 纯读取 |
+| `schema__validate` | **MCP** | 文档级校验 |
+| `schema__validate_widgets` | **MCP** | Widget 数组校验 |
+| `flow__search` | **MCP** | 纯读取 |
+| `flow__get_detail` | **MCP** | 纯读取 |
+| `flow__validate` | **MCP** | 校验 |
+| `flow__search_users` | **MCP** | 纯读取 |
+| `flow__get_node_schema` | **MCP** | 纯读取 |
+| `widget__query` | **MCP** | 纯读取 |
+| `widget__validate` | **MCP** | 校验 |
+| `rag__search` | **MCP** | 纯读取 |
+| `industry__search_templates` | **MCP** | 纯读取 |
+| `industry__validate_form` | **MCP** | 校验 |
 | `update_schema` | **LangGraph** | HITL interrupt |
 | `update_flow` | **LangGraph** | HITL interrupt |
 | `generate_schema` | **LangGraph** | LLM 调用 |
@@ -179,20 +181,19 @@ export async function getFlowDetail(flowId: string): Promise<FlowDetail | null> 
 export function validateFlowGraph(flow: FlowGraphInput): string[] { ... }
 ```
 
-### 3.4 文件变更
+### 3.4 文件变更（已落地）
 
 | 文件 | 变更 |
 |------|------|
-| `services/schemaService.ts` | **新建**：Schema CRUD + 校验共享逻辑 |
-| `services/flowService.ts` | **新建**：Flow CRUD + 校验共享逻辑 |
-| `services/widgetService.ts` | **新建**：Widget 目录 + 校验共享逻辑 |
-| `mcp/schemaServer.ts` | 重构：调用 schemaService |
-| `mcp/flowServer.ts` | 重构：调用 flowService，删除重复的 `validateFlowGraph` |
-| `mcp/widgetServer.ts` | 重构：调用 widgetService |
-| `tools/editorTools.ts` | 重构：读取工具删除，保留 HITL 工具，调用共享 service |
-| `tools/flowTools.ts` | 重构：读取工具删除，保留 HITL/写入工具，调用共享 service |
-| `tools/schemaTools.ts` | **删除**：功能合并到 MCP schemaServer |
-| `tools/allTools.ts` | 更新：只保留 LangGraph 专有工具 |
+| `mcp/schemaServer.ts` | 调用 service 层，工具名 `schema__*` |
+| `mcp/flowServer.ts` | 调用 service 层，工具名 `flow__*` |
+| `mcp/widgetServer.ts` | 调用 service 层，工具名 `widget__*` |
+| `tools/editorTools.ts` | 仅保留 HITL 工具（update_schema 等） |
+| `tools/flowTools.ts` | 仅保留 HITL/写入工具（update_flow 等） |
+| `tools/langgraphTools.ts` | **新建**：LangGraph 专有工具集合 |
+| `tools/registry.ts` | **新建**：统一工具注册表（MCP + LangGraph + HTTP） |
+| ~~`tools/schemaTools.ts`~~ | 已删除，功能合并到 MCP schemaServer |
+| ~~`tools/allTools.ts`~~ | 已删除，被 registry.ts 替代 |
 
 ---
 
@@ -269,164 +270,67 @@ export function withErrorHandling<T extends Record<string, unknown>>(
 
 ## 5. 命名空间 — MCP 工具域前缀
 
-### 5.1 现状
-
-3 个 MCP Server 各自注册工具名，无前缀隔离：
-
-```
-schema: search_schemas, get_schema_detail, validate_schema, search_published_schemas
-flow:   search_flows, get_flow_detail, validate_flow
-widget: query_widgets, validate_widget_schema
-```
-
-### 5.2 问题
+### 5.1 问题（已修复）
 
 MCP SDK 不内置 `tool_name_prefix`，多 Server 连接时客户端侧可能冲突。
 
-### 5.3 修复方案
+### 5.2 修复方案（已落地）
 
-在 MCP Server 注册工具时添加域前缀，保持全局唯一：
+MCP Server 注册工具时使用 `{domain}__{name}` 前缀，实际工具名：
 
-```typescript
-// mcp/schemaServer.ts
-server.tool('schema__search_schemas', ...)
-server.tool('schema__get_schema_detail', ...)
-server.tool('schema__validate_schema', ...)
-server.tool('schema__search_published_schemas', ...)
-
-// mcp/flowServer.ts
-server.tool('flow__search_flows', ...)
-server.tool('flow__get_flow_detail', ...)
-server.tool('flow__validate_flow', ...)
-
-// mcp/widgetServer.ts
-server.tool('widget__query_widgets', ...)
-server.tool('widget__validate_widget_schema', ...)
+```
+schema: schema__search, schema__get_detail, schema__validate, schema__validate_widgets,
+        schema__search_published, schema__fuzzy_search, schema__find_flow_references
+flow:   flow__search, flow__get_detail, flow__validate, flow__search_users, flow__get_node_schema
+widget: widget__query, widget__validate
+rag:    rag__search, ...
+industry: industry__search_templates, industry__validate_form, ...
 ```
 
-新增 MCP Server 时也遵循 `{domain}__{tool_name}` 命名规范。
-
-### 5.4 文件变更
+### 5.3 文件变更（已落地）
 
 | 文件 | 变更 |
 |------|------|
-| `mcp/schemaServer.ts` | 工具名添加 `schema__` 前缀 |
-| `mcp/flowServer.ts` | 工具名添加 `flow__` 前缀 |
-| `mcp/widgetServer.ts` | 工具名添加 `widget__` 前缀 |
+| `mcp/schemaServer.ts` | 工具名 `schema__*` 前缀 |
+| `mcp/flowServer.ts` | 工具名 `flow__*` 前缀 |
+| `mcp/widgetServer.ts` | 工具名 `widget__*` 前缀 |
+| `mcp/ragServer.ts` | 工具名 `rag__*` 前缀 |
+| `mcp/industryServer.ts` | 工具名 `industry__*` 前缀 |
 
 ---
 
-## 6. Agent 合规 — MCP 工具注入 LangGraph
+## 6. Agent 合规 — MCP 工具注入 LangGraph — 已落地
 
-### 6.1 现状
+### 6.1 现状（已修复）
 
 - LangGraph 使用自定义 `StateGraph`，未使用 `create_react_agent`
-- MCP 工具完全独立，Agent 无法调用
-- `allTools` 只包含 LangGraph 工具（20 个）
+- ~~MCP 工具完全独立，Agent 无法调用~~ → 已通过 InMemoryTransport 桥接
+- ~~`allTools` 只包含 LangGraph 工具（20 个）~~ → `tools/registry.ts` 统一管理 MCP + LangGraph + HTTP 工具
 
-### 6.2 修复方案
+### 6.2 修复方案（已实现）
 
-采用 **InMemoryTransport 直连** 方案，将 MCP 工具转换为 LangGraph `StructuredTool`：
+采用 **InMemoryTransport 直连** 方案，实际实现见 `mcp/bridge.ts` + `tools/registry.ts`。
 
-```typescript
-// tools/mcpBridge.ts — MCP → LangGraph 桥接层
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { tool } from '@langchain/core/tools'
-import { z } from 'zod'
-import { createSchemaServer } from '../mcp/schemaServer.js'
-import { createFlowServer } from '../mcp/flowServer.js'
-import { createWidgetServer } from '../mcp/widgetServer.js'
+桥接层从 Plugin Registry 动态读取 MCP Server 声明（非硬编码 import），任一 server 失败不中断整体。
 
-interface McpToolDef {
-  name: string
-  description: string
-  inputSchema: Record<string, unknown>
-}
-
-/**
- * 创建 MCP 内部客户端（InMemoryTransport 直连，不经 SSE）。
- */
-async function createMcpClient(factory: () => McpServer): Promise<Client> {
-  const server = factory()
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  await server.connect(serverTransport)
-  const client = new Client({ name: 'langgraph-internal', version: '1.0.0' })
-  await client.connect(clientTransport)
-  return client
-}
-
-/**
- * 将 MCP Server 的工具列表转换为 LangGraph StructuredTool[]。
- */
-async function loadMcpToolsAsLangGraph(
-  client: Client,
-  prefix: string,
-): Promise<StructuredTool[]> {
-  const { tools: mcpTools } = await client.listTools()
-
-  return mcpTools.map((mcpTool: McpToolDef) => {
-    // 将 MCP inputSchema 转换为 Zod schema
-    const zodSchema = jsonSchemaToZod(mcpTool.inputSchema)
-
-    return tool(
-      async (params: Record<string, unknown>) => {
-        const result = await client.callTool({
-          name: mcpTool.name,
-          arguments: params,
-        })
-        return JSON.stringify(result.content)
-      },
-      {
-        name: mcpTool.name,  // 保留 MCP 原名（已有域前缀）
-        description: mcpTool.description,
-        schema: zodSchema,
-      },
-    )
-  })
-}
-
-/**
- * 初始化所有 MCP 内部客户端，返回 LangGraph 可用的工具数组。
- */
-export async function initMcpBridge(): Promise<StructuredTool[]> {
-  const [schemaClient, flowClient, widgetClient] = await Promise.all([
-    createMcpClient(createSchemaServer),
-    createMcpClient(createFlowServer),
-    createMcpClient(createWidgetServer),
-  ])
-
-  const [schemaTools, flowTools, widgetTools] = await Promise.all([
-    loadMcpToolsAsLangGraph(schemaClient, 'schema'),
-    loadMcpToolsAsLangGraph(flowClient, 'flow'),
-    loadMcpToolsAsLangGraph(widgetClient, 'widget'),
-  ])
-
-  return [...schemaTools, ...flowTools, ...widgetTools]
-}
-```
-
-### 6.3 图编排调整
+### 6.3 图编排调整（已落地）
 
 ```typescript
-// graph.ts — 更新后的工具注册
-import { initMcpBridge } from '../tools/mcpBridge.js'
-import { langgraphOnlyTools } from '../tools/langgraphTools.js'
+// graph/graph.ts — 通过 registry 获取工具
+import { getAllToolsSync } from '../tools/registry.js'
 
-// 启动时初始化
-const mcpTools = await initMcpBridge()
-const allTools = [...mcpTools, ...langgraphOnlyTools]
-const allToolNode = new ToolNode(allTools, { handleToolErrors: ... })
+const allToolNode = new ToolNode(getAllToolsSync())
 ```
 
-### 6.4 文件变更
+### 6.4 文件变更（已落地）
 
 | 文件 | 变更 |
 |------|------|
-| `tools/mcpBridge.ts` | **新建**：MCP → LangGraph 桥接层 |
-| `tools/langgraphTools.ts` | **新建**：LangGraph 专有工具集合（HITL + 写入 + 协作） |
-| `tools/allTools.ts` | **删除**：被 mcpBridge + langgraphTools 替代 |
-| `graph/graph.ts` | 更新：使用 `initMcpBridge()` 初始化工具 |
+| `mcp/bridge.ts` | MCP → LangGraph 桥接层（InMemoryTransport） |
+| `tools/langgraphTools.ts` | LangGraph 专有工具集合（HITL + 写入 + 协作） |
+| `tools/registry.ts` | 统一工具注册表（MCP + LangGraph + HTTP） |
+| ~~`tools/allTools.ts`~~ | 已删除，被 registry.ts 替代 |
+| `graph/graph.ts` | 通过 `getAllToolsSync()` 获取工具 |
 
 ---
 
@@ -467,24 +371,22 @@ function createCheckpointer(): BaseCheckpointSaver {
 
 ## 8. 模型匹配 — chat/reasoner 分流
 
-### 8.1 现状
+### 8.1 问题（已修复）
 
 所有节点统一使用 `deepseek-v4-pro`，`getModelForTask()` 已定义但从未调用。
 
-### 8.2 修复方案
+### 8.2 修复方案（已落地）
 
-| 节点 | 模型 | 理由 |
-|------|------|------|
-| `router` | `deepseek-chat` | 轻量路由决策，速度快 |
-| `thinker` | `deepseek-chat` | 意图分析，JSON 输出 |
-| `editor` | `deepseek-v4-pro` | 复杂生成任务 |
-| `flow` | `deepseek-v4-pro` | 复杂生成任务 |
-| `page` | `deepseek-v4-pro` | 复杂生成任务 |
-| `general` | `deepseek-chat` | 简单对话 |
+通过 expert 定义的 `model.task` 字段，pluginExpert 统一使用 `getModelForTask` + `resolveUserModel`：
+
+| 任务类型 | 模型 | 理由 |
+|---------|------|------|
+| `router` / `analyze` | `deepseek-chat` | 轻量路由/意图分析，速度快 |
+| `generate_simple` / `generate_complex` | `deepseek-v4-pro` | 复杂生成任务 |
 | `summarizer` | `deepseek-chat` | 简单总结 |
 
 ```typescript
-// agentBase.ts — 修复 getModelForTask
+// agentBase.ts — getModelForTask
 export function getModelForTask(taskType: TaskType): string {
   const modelMap: Record<TaskType, string> = {
     router: 'deepseek-chat',
@@ -495,27 +397,22 @@ export function getModelForTask(taskType: TaskType): string {
   return modelMap[taskType] ?? 'deepseek-v4-pro'
 }
 
-// graph.ts — 在各节点中使用 getModelForTask
-async function thinkerNode(state) {
-  const model = getLLM({
-    model: getModelForTask('analyze'),
-    temperature: 0,
-    maxTokens: 4096,
-    jsonMode: true,
-  })
-  // ...
-}
+// pluginExpertAgent.ts — 统一使用 getModelForTask + resolveUserModel
+const taskName = (expert.model?.task ?? 'generate_complex') as TaskType
+const llm = await getLLM({
+  model: resolveUserModel(state.interaction.preferences, getModelForTask(taskName)),
+  temperature: expert.model?.temperature ?? 0.7,
+  maxTokens: expert.model?.maxTokens ?? 8192,
+})
 ```
 
-### 8.3 文件变更
+### 8.3 文件变更（已落地）
 
 | 文件 | 变更 |
 |------|------|
-| `graph/agentBase.ts` | 修复 `getModelForTask` 模型映射 |
-| `graph/graph.ts` | thinkerNode/generalAgentNode/summarizerNode 使用 `getModelForTask` |
-| `graph/editorAgent.ts` | 使用 `getModelForTask('generate_simple')` |
-| `graph/flowAgent.ts` | 使用 `getModelForTask('generate_simple')` |
-| `graph/pageAgent.ts` | 使用 `getModelForTask('generate_simple')` |
+| `graph/agentBase.ts` | `getModelForTask` 模型映射 + `resolveUserModel` 用户偏好 |
+| `graph/graph.ts` | summarizerNode 使用 `getModelForTask` |
+| `graph/pluginExpertAgent.ts` | 统一使用 `getModelForTask` + `resolveUserModel` |
 
 ---
 
@@ -713,25 +610,26 @@ export function afterAgent(state): string {
 
 ## 实施路线图
 
-### Phase 1：紧急修复（P0，1 天）
+### Phase 1：紧急修复（P0） — 已完成
 
-- [x] 4. 熔断保护：ToolNode `handleToolErrors` + 工具 `withErrorHandling` 包装
+- [x] 4. 熔断保护：ToolNode `handleToolErrors` + `callLLMWithFallback` 统一错误处理
 
-### Phase 2：架构统一（P1，3-5 天）
+### Phase 2：架构统一（P1） — 已完成
 
-- [ ] 3. 职责划分：提取 `schemaService`/`flowService`/`widgetService` 共享层
-- [ ] 5. 命名空间：MCP 工具名添加 `{domain}__` 前缀
-- [ ] 10. 循环拦截：全局节点计数器 + 协作去重
+- [x] 3. 职责划分：MCP Server 调用 service 层，工具名 `{domain}__` 前缀
+- [x] 5. 命名空间：MCP 工具名 `schema__*` / `flow__*` / `widget__*` / `rag__*` / `industry__*`
+- [x] 10. 循环拦截：全局节点计数器 `nodeExecutionCount` + 协作去重 `collaborationHistory`
+- [x] pluginExpert 单节点架构：替代 editorAgent/flowAgent/pageAgent 三节点
 
-### Phase 3：能力增强（P2，2-3 天）
+### Phase 3：能力增强（P2） — 部分完成
 
-- [ ] 1. 模型选型：llmCache 增加 temperature/jsonMode 冲突检测
-- [ ] 8. 模型匹配：修复 `getModelForTask`，实现 chat/reasoner 分流
-- [ ] 9. 参数健壮性：JSON 解析加固 + 单元测试
-- [ ] 6. Agent 合规：InMemoryTransport 桥接 MCP 工具到 LangGraph
+- [x] 1. 模型选型：llmCache temperature/jsonMode 互斥处理
+- [x] 8. 模型匹配：`getModelForTask` + `resolveUserModel` 用户偏好模型
+- [ ] 9. 参数健壮性：JSON 解析加固 + 单元测试（待补充）
+- [x] 6. Agent 合规：InMemoryTransport 桥接 MCP 工具到 LangGraph（`mcp/bridge.ts` + `tools/registry.ts`）
 
-### Phase 4：清理收尾（P3，1 天）
+### Phase 4：清理收尾（P3） — 部分完成
 
-- [ ] 2. 工具定义：删除重复工具，统一命名
-- [ ] 7. 会话管理：生产环境强制 MongoDB
-- [ ] 文档更新：架构图、工具清单、开发指南
+- [x] 2. 工具定义：删除重复工具，统一命名
+- [x] 7. 会话管理：MongoDB Checkpointer + 生产环境强制
+- [ ] 文档更新：架构图、工具清单、开发指南（本文档即为对齐）

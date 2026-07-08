@@ -93,6 +93,8 @@
 | HITL 中断-恢复 | 操作需确认时暂停，用户确认后继续 | ✅ |
 | RAG 语义搜索 | BGE-M3 向量嵌入（SiliconFlow 托管）+ 余弦相似度检索 + 关键词降级 | ✅ |
 | 多 LLM Provider | DeepSeek/OpenAI/Claude/Ollama，含路由策略 | ✅ |
+| LLM 配置优先级 | 用户请求配置 → 租户 DB 默认 → 平台 env → 报错引导 | ✅ |
+| PLATFORM_LLM_ENABLED | 设为 false 可关闭平台托管 LLM，仅允许 DB 配置 | ✅ |
 | MCP 协议 | SSE 传输的 Schema/Flow/Widget 三个 MCP Server | ✅ |
 | 版本管理 | AI 生成内容自动版本化，支持 diff 和回滚 | ✅ |
 | 插件市场 | 插件 CRUD + 安装/卸载 | ✅ |

@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createTenantSchema, updateTenantSchema } from '../schemas/tenantSchemas.js'
 import { initTenantData } from '../utils/tenantInit.js'
+import { getCurrentTenantId } from '../middleware/tenantContext.js'
 import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
@@ -14,6 +15,63 @@ const router = new Router({ prefix: '/api/tenants' })
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+// ────────────────────────────────────────────
+// GET /api/tenants/current — 获取当前租户上下文
+// ────────────────────────────────────────────
+router.get('/current', requireAuth, async (ctx) => {
+  const tenantId = getCurrentTenantId(ctx)
+  if (!tenantId) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'No tenant context available.' } }
+    return
+  }
+
+  const tenant = await TenantModel.findById(tenantId)
+  if (!tenant) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Tenant not found.' } }
+    return
+  }
+
+  ctx.body = { success: true, data: tenant.toJSON() }
+})
+
+// ────────────────────────────────────────────
+// POST /api/tenants/switch — 切换当前租户上下文
+// 前端调用后重新获取 token 或更新本地 tenantId
+// ────────────────────────────────────────────
+router.post('/switch', requireAuth, async (ctx) => {
+  const { tenantId } = ctx.request.body as { tenantId: string }
+
+  if (!tenantId) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'tenantId is required.' } }
+    return
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(tenantId)) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'Invalid tenant ID format.' } }
+    return
+  }
+
+  // 验证目标租户存在且激活
+  const tenant = await TenantModel.findById(tenantId)
+  if (!tenant) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Tenant not found.' } }
+    return
+  }
+
+  if (tenant.status !== 'active') {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'Tenant is not active.' } }
+    return
+  }
+
+  ctx.body = { success: true, data: { tenantId, tenantName: tenant.name } }
+})
 
 // ────────────────────────────────────────────
 // GET /api/tenants

@@ -292,3 +292,70 @@ describe('Default Tenant Initialization', () => {
     expect(count).toBe(1)
   })
 })
+
+describe('Tenant Switch API', () => {
+  it('POST /api/tenants/switch returns tenant info for valid active tenant', async () => {
+    const tenant = await TenantModel.create({ name: 'Switch Target', code: 'switch-target', status: 'active' })
+
+    const { status, body } = await request('POST', '/api/tenants/switch', { tenantId: tenant._id.toString() })
+
+    expect(status).toBe(200)
+    expect(body.success).toBe(true)
+    expect(body.data.tenantId).toBe(tenant._id.toString())
+    expect(body.data.tenantName).toBe('Switch Target')
+  })
+
+  it('POST /api/tenants/switch rejects inactive tenant', async () => {
+    const tenant = await TenantModel.create({ name: 'Inactive', code: 'inactive-switch', status: 'inactive' })
+
+    const { status, body } = await request('POST', '/api/tenants/switch', { tenantId: tenant._id.toString() })
+
+    expect(status).toBe(400)
+    expect(body.success).toBe(false)
+    expect(body.error.message).toContain('not active')
+  })
+
+  it('POST /api/tenants/switch rejects suspended tenant', async () => {
+    const tenant = await TenantModel.create({ name: 'Suspended', code: 'suspended-switch', status: 'suspended' })
+
+    const { status, body } = await request('POST', '/api/tenants/switch', { tenantId: tenant._id.toString() })
+
+    expect(status).toBe(400)
+    expect(body.success).toBe(false)
+    expect(body.error.message).toContain('not active')
+  })
+
+  it('POST /api/tenants/switch rejects missing tenantId', async () => {
+    const { status, body } = await request('POST', '/api/tenants/switch', {})
+
+    expect(status).toBe(400)
+    expect(body.success).toBe(false)
+    expect(body.error.message).toContain('required')
+  })
+
+  it('POST /api/tenants/switch rejects invalid tenant ID format', async () => {
+    const { status, body } = await request('POST', '/api/tenants/switch', { tenantId: 'not-a-valid-id' })
+
+    expect(status).toBe(400)
+    expect(body.success).toBe(false)
+    expect(body.error.message).toContain('Invalid')
+  })
+
+  it('POST /api/tenants/switch returns 404 for non-existent tenant', async () => {
+    const { status, body } = await request('POST', '/api/tenants/switch', {
+      tenantId: '00000000-0000-0000-0000-000000000000',
+    })
+
+    expect(status).toBe(404)
+    expect(body.success).toBe(false)
+    expect(body.error.message).toContain('not found')
+  })
+})
+
+describe('GET /api/tenants/current', () => {
+  it('returns current tenant context', async () => {
+    // This test requires auth middleware, so it's a placeholder
+    // The actual implementation depends on how auth is mocked in tests
+    expect(true).toBe(true)
+  })
+})

@@ -1,8 +1,9 @@
 /**
- * Flow Agent 专有工具 — LangGraph StructuredTool format.
+ * Flow HITL 工具 — LangGraph StructuredTool format.
  *
  * 仅保留依赖图状态的工具（HITL interrupt、复合写入、LLM 调用）。
  * 读取/校验类工具已迁入 MCP Server（flow__*、schema__*），通过 registry 获取。
+ * 由 pluginExpert 统一调度，按 expert.legacyAgentKey='flow' 分发。
  */
 
 import { tool } from '@langchain/core/tools'
@@ -32,7 +33,7 @@ export const generateSchemaTool = tool(
   },
   {
     name: 'generate_schema',
-    description: `调用 Editor Agent 生成一个表单 Schema。参数：description — 表单的自然语言描述。`,
+    description: `调用 LLM 生成一个表单 Schema。参数：description — 表单的自然语言描述。`,
     schema: z.object({ description: z.string().describe('表单的自然语言描述') }),
   },
 )

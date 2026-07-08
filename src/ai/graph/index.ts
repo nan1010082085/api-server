@@ -6,7 +6,7 @@
  */
 
 // Compiled graph (primary entry point)
-export { graph, routeAfterRouter, routeAfterTaskChain, afterAgent, afterToolsRoute } from './graph.js'
+export { graph, routeAfterTaskChain, afterAgent, afterToolsRoute } from './graph.js'
 
 // Checkpointer (for thread-based conversation persistence)
 export { checkpointer } from './checkpointer.js'

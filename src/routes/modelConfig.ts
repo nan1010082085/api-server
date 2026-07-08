@@ -15,6 +15,31 @@ function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/**
+ * Mask an API key for safe display.
+ * Keeps the first 4 and last 4 characters; replaces the middle with asterisks.
+ * Keys shorter than 9 characters are fully masked.
+ */
+export function maskApiKey(key: string): string {
+  if (!key || key.length === 0) return ''
+  if (key.length < 9) return '****'
+  return key.slice(0, 4) + '****' + key.slice(-4)
+}
+
+/**
+ * Mask the apiKey field in a ModelConfig object (plain or Mongoose doc).
+ * Returns a plain object so Mongoose transforms are already applied.
+ */
+function maskConfigApiKey<T extends Record<string, unknown>>(config: T): T {
+  const plain = (config as { toJSON?: () => Record<string, unknown> }).toJSON
+    ? (config as { toJSON: () => Record<string, unknown> }).toJSON()
+    : { ...config }
+  if (plain.apiKey) {
+    plain.apiKey = maskApiKey(plain.apiKey as string)
+  }
+  return plain as T
+}
+
 // ────────────────────────────────────────────
 // GET /api/model-configs
 // List model configurations
@@ -39,7 +64,7 @@ router.get('/', requireAuth, async (ctx) => {
   ctx.body = {
     success: true,
     data: {
-      items,
+      items: items.map(maskConfigApiKey),
       total,
       page,
       pageSize,
@@ -108,7 +133,7 @@ router.get('/:id', requireAuth, async (ctx) => {
     return
   }
 
-  ctx.body = { success: true, data: config }
+  ctx.body = { success: true, data: maskConfigApiKey(config) }
 })
 
 // ────────────────────────────────────────────

@@ -64,6 +64,12 @@ function validateRegistryReferences(): void {
     if (tool.kind === 'mcp' && tool.source && !mcpIds.has(tool.source)) {
       addIssue('error', `Tool ${tool.name} references unknown MCP server "${tool.source}"`)
     }
+    if (!tool.label?.trim()) {
+      addIssue('error', `Tool ${tool.name} missing required "label"`)
+    }
+    if (!tool.category?.trim()) {
+      addIssue('error', `Tool ${tool.name} missing required "category"`)
+    }
   }
 
   const knownTools = new Set([...toolNames, ...LANGGRAPH_ONLY_TOOL_NAMES])

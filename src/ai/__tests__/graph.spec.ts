@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages'
 import { END } from '@langchain/langgraph'
-import { graph, routeAfterRouter, routeAfterTaskChain, afterAgent, afterToolsRoute } from '../graph/graph.js'
+import { graph, routeAfterTaskChain, afterAgent, afterToolsRoute } from '../graph/graph.js'
 import type { AgentStateAnnotation } from '../graph/state.js'
 
 type State = typeof AgentStateAnnotation.State
@@ -39,38 +39,6 @@ describe('graph assembly', () => {
   it('graph has streamEvents method for SSE streaming', () => {
     expect(graph.streamEvents).toBeDefined()
     expect(graph.streamEvents.length).toBeGreaterThanOrEqual(2)
-  })
-})
-
-describe('routeAfterRouter', () => {
-  it('routes to pluginExpert when no active task chain', () => {
-    const state = makeState({
-      context: { source: 'editor', turnCount: 1 },
-      session: { id: '', conversationId: '', currentAgent: 'editor', currentExpertId: 'platform.editor' },
-    })
-    expect(routeAfterRouter(state)).toBe('pluginExpert')
-  })
-
-  it('routes to taskChain when task chain is active', () => {
-    const state = makeState({
-      context: { source: 'standalone', turnCount: 1 },
-      task: {
-        type: 'generate_simple',
-        chain: [{ agent: 'editor', description: 'Generate form', status: 'running' }],
-        currentStepIndex: 0,
-        intermediateResults: [],
-        currentVersion: 0,
-      },
-    })
-    expect(routeAfterRouter(state)).toBe('taskChain')
-  })
-
-  it('routes to pluginExpert for auto mode with no task chain', () => {
-    const state = makeState({
-      context: { source: 'standalone', turnCount: 1 },
-      session: { id: '', conversationId: '', currentAgent: 'editor', currentExpertId: 'platform.editor' },
-    })
-    expect(routeAfterRouter(state)).toBe('pluginExpert')
   })
 })
 

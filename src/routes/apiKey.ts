@@ -1,5 +1,6 @@
 import Router from '@koa/router'
 import { ApiKeyModel } from '../models/ApiKey.js'
+import { RoleModel } from '../models/Role.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
@@ -13,6 +14,27 @@ const router = new Router({ prefix: '/api/keys' })
 function maskKey(key: string): string {
   if (key.length <= 12) return key.slice(0, 6) + '****'
   return key.slice(0, 6) + '****' + key.slice(-4)
+}
+
+/**
+ * Check if user has admin-level access (any role with data_scope === 'all').
+ * Admin users can view/manage all keys in the tenant; regular users only their own.
+ */
+export async function isAdmin(userId: string, roles: string[]): Promise<boolean> {
+  if (roles.length === 0) return false
+  const roleDocs = await RoleModel.find({ _id: { $in: roles } }).select('data_scope').lean()
+  return roleDocs.some(r => r.data_scope === 'all')
+}
+
+/**
+ * Build ownership filter: non-admin users can only see/manage their own keys.
+ */
+export async function buildOwnershipFilter(user: Pick<JwtPayload, 'id' | 'roles' | 'tenantId'>): Promise<Record<string, unknown>> {
+  const base: Record<string, unknown> = { tenantId: user.tenantId }
+  if (!(await isAdmin(user.id, user.roles))) {
+    base.createdBy = user.id
+  }
+  return base
 }
 
 // ────────────────────────────────────────────
@@ -45,6 +67,7 @@ router.post('/', requireAuth, requirePermission('apikey:create'), validate(creat
 
 // ────────────────────────────────────────────
 // GET /api/keys — 列表（不返回完整 key，只返回前缀）
+// 非管理员只返回自己创建的 Key，管理员可查看全部
 // ────────────────────────────────────────────
 router.get('/', requireAuth, requirePermission('apikey:view'), async (ctx) => {
   const user = ctx.state.user as JwtPayload
@@ -52,7 +75,7 @@ router.get('/', requireAuth, requirePermission('apikey:view'), async (ctx) => {
   const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
   const { status } = ctx.query as { status?: string }
 
-  const filter: Record<string, unknown> = { tenantId: user.tenantId }
+  const filter = await buildOwnershipFilter(user)
   if (status && ['active', 'disabled'].includes(status)) {
     filter.status = status
   }
@@ -83,10 +106,13 @@ router.get('/', requireAuth, requirePermission('apikey:view'), async (ctx) => {
 
 // ────────────────────────────────────────────
 // GET /api/keys/:id — 详情（不返回完整 key）
+// 非管理员只能查看自己创建的 Key
 // ────────────────────────────────────────────
 router.get('/:id', requireAuth, requirePermission('apikey:view'), async (ctx) => {
   const user = ctx.state.user as JwtPayload
-  const key = await ApiKeyModel.findOne({ _id: ctx.params.id, tenantId: user.tenantId })
+  const filter = await buildOwnershipFilter(user)
+  filter._id = ctx.params.id
+  const key = await ApiKeyModel.findOne(filter)
   if (!key) {
     ctx.status = 404
     ctx.body = { success: false, error: { message: 'API Key not found.' } }
@@ -101,10 +127,13 @@ router.get('/:id', requireAuth, requirePermission('apikey:view'), async (ctx) =>
 
 // ────────────────────────────────────────────
 // DELETE /api/keys/:id — 删除
+// 非管理员只能删除自己创建的 Key
 // ────────────────────────────────────────────
 router.delete('/:id', requireAuth, requirePermission('apikey:delete'), async (ctx) => {
   const user = ctx.state.user as JwtPayload
-  const key = await ApiKeyModel.findOneAndDelete({ _id: ctx.params.id, tenantId: user.tenantId })
+  const filter = await buildOwnershipFilter(user)
+  filter._id = ctx.params.id
+  const key = await ApiKeyModel.findOneAndDelete(filter)
   if (!key) {
     ctx.status = 404
     ctx.body = { success: false, error: { message: 'API Key not found.' } }
@@ -116,13 +145,16 @@ router.delete('/:id', requireAuth, requirePermission('apikey:delete'), async (ct
 
 // ────────────────────────────────────────────
 // PATCH /api/keys/:id/status — 启用/禁用
+// 非管理员只能修改自己创建的 Key
 // ────────────────────────────────────────────
 router.patch('/:id/status', requireAuth, requirePermission('apikey:edit'), validate(updateApiKeyStatusSchema), async (ctx) => {
   const user = ctx.state.user as JwtPayload
   const { status } = ctx.request.body as { status: 'active' | 'disabled' }
 
+  const filter = await buildOwnershipFilter(user)
+  filter._id = ctx.params.id
   const key = await ApiKeyModel.findOneAndUpdate(
-    { _id: ctx.params.id, tenantId: user.tenantId },
+    filter,
     { $set: { status } },
     { new: true, runValidators: true },
   )

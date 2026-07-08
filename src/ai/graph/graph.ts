@@ -430,18 +430,6 @@ ${taskResults || '无'}
 // Conditional edge functions
 // ────────────────────────────────────────────
 
-export function routeAfterRouter(
-  state: typeof AgentStateAnnotation.State,
-): string {
-  if (state.task.chain.length > 0) {
-    console.log(`[routeAfterRouter] 任务链 -> taskChain (step=${state.task.currentStepIndex}/${state.task.chain.length})`)
-    return 'taskChain'
-  }
-
-  console.log(`[routeAfterRouter] -> pluginExpert (agent=${state.session.currentAgent})`)
-  return 'pluginExpert'
-}
-
 export function routeAfterTaskChain(
   state: typeof AgentStateAnnotation.State,
 ): string {
@@ -595,7 +583,6 @@ export function afterToolsRoute(
 
 // v2 架构配置
 const V2_CONFIG = {
-  enableRequirementAnalysis: process.env.AI_ENABLE_REQUIREMENT_ANALYSIS !== 'false',
   enableTaskPlanner: process.env.AI_ENABLE_TASK_PLANNER !== 'false',
 }
 
@@ -615,18 +602,8 @@ const builder = new StateGraph(AgentStateAnnotation)
   // 边的连接
   .addEdge(START, 'router')
 
-  // router 之后：根据配置决定是否启用需求分析
-  .addConditionalEdges('router', (state) => {
-    // 如果未启用需求分析，使用 v1 路由
-    if (!V2_CONFIG.enableRequirementAnalysis) {
-      console.log('[router] v1 mode -> routeAfterRouter')
-      return routeAfterRouter(state)
-    }
-
-    // 所有模式都走需求分析（包括显式模式）
-    console.log(`[router] v2 mode -> requirementAnalyzer (source=${state.context.source})`)
-    return 'requirementAnalyzer'
-  })
+  // router 之后：统一走需求分析管线
+  .addEdge('router', 'requirementAnalyzer')
 
   // requirementAnalyzer 之后
   .addConditionalEdges('requirementAnalyzer', routeAfterRequirementAnalyzer)

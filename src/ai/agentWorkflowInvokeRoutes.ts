@@ -1,7 +1,10 @@
 /**
  * 工作流统一入口 — POST /api/ai/workflows/invoke/:slugOrId
  *
- * 鉴权：X-Workflow-Key（与 workflow.invokeKey 一致）
+ * 鉴权（二选一）：
+ * - X-Workflow-Key（与 workflow.invokeKey 一致）
+ * - X-API-Key（sk-* 前缀，平台 API Key）
+ *
  * 租户：X-Tenant-Id（默认 000000）
  *
  * 内外部、脚本、第三方均走此入口；JWT 管理面另见 agentWorkflowRoutes execute（所有者等价持钥）。
@@ -13,10 +16,13 @@ import {
   invokePublishedWorkflow,
   WorkflowInvokeError,
   readWorkflowKeyFromContext,
+  readApiKeyFromContext,
   resolveInvokeTenantId,
   logInvokeAttempt,
+  verifyApiKeyLookup,
 } from './services/agentWorkflowInvoke.js'
-import { getAgentWorkflowExecutionByInvokeKey } from './services/agentWorkflowService.js'
+import { getAgentWorkflowExecutionByInvokeKey, toExecution } from './services/agentWorkflowService.js'
+import { AgentWorkflowExecutionModel, AgentWorkflowModel } from './models/agentWorkflow.js'
 
 const router = new Router({ prefix: '/api/ai/workflows' })
 
@@ -24,6 +30,7 @@ router.use(tenantContextMiddleware())
 
 function handleInvokeError(ctx: { status: number; body: unknown }, err: unknown): boolean {
   if (err instanceof WorkflowInvokeError) {
+    logger.warn({ msg: '[invokeRoutes] workflow invoke error', code: err.code, message: err.message })
     ctx.status = err.httpStatus
     ctx.body = { success: false, error: { message: err.message, code: err.code } }
     return true
@@ -33,6 +40,11 @@ function handleInvokeError(ctx: { status: number; body: unknown }, err: unknown)
 
 router.post('/invoke/:slugOrId', async (ctx) => {
   const slugOrId = ctx.params.slugOrId
+  if (!slugOrId || slugOrId.length > 200) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'Invalid slugOrId', code: 'invalid_param' } }
+    return
+  }
   const body = ctx.request.body as {
     input?: Record<string, unknown>
     trigger?: 'manual' | 'webhook' | 'chat' | 'api'
@@ -44,6 +56,7 @@ router.post('/invoke/:slugOrId', async (ctx) => {
     const { execution } = await invokePublishedWorkflow({
       slugOrId,
       invokeKey: readWorkflowKeyFromContext(ctx),
+      apiKey: readApiKeyFromContext(ctx),
       tenantId: resolveInvokeTenantId(ctx),
       input: body?.input ?? {},
       trigger: body?.trigger ?? 'api',
@@ -73,17 +86,39 @@ router.post('/invoke/:slugOrId', async (ctx) => {
 
 router.get('/invoke/executions/:executionId', async (ctx) => {
   const executionId = ctx.params.executionId
+  const tenantId = resolveInvokeTenantId(ctx)
+
+  // Try X-Workflow-Key first
   const data = await getAgentWorkflowExecutionByInvokeKey(
     executionId,
     readWorkflowKeyFromContext(ctx),
-    resolveInvokeTenantId(ctx),
+    tenantId,
   )
-  if (!data) {
-    ctx.status = 404
-    ctx.body = { success: false, error: { message: 'Execution not found', code: 'execution_not_found' } }
+
+  if (data) {
+    ctx.body = { success: true, data }
     return
   }
-  ctx.body = { success: true, data }
+
+  // Fallback: try X-API-Key
+  const apiRecord = await verifyApiKeyLookup(readApiKeyFromContext(ctx), tenantId)
+  if (apiRecord) {
+    // API key is valid, but getAgentWorkflowExecutionByInvokeKey requires workflow invokeKey.
+    // Re-query directly: find the execution and check tenant match only.
+    const doc = await AgentWorkflowExecutionModel.findById(executionId).lean()
+    if (doc) {
+      const workflowDoc = await AgentWorkflowModel.findById(
+        (doc as unknown as Record<string, unknown>).workflowId,
+      ).lean()
+      if (workflowDoc && !Array.isArray(workflowDoc) && workflowDoc.tenantId === tenantId) {
+        ctx.body = { success: true, data: toExecution(doc as unknown as Record<string, unknown>) }
+        return
+      }
+    }
+  }
+
+  ctx.status = 404
+  ctx.body = { success: false, error: { message: 'Execution not found', code: 'execution_not_found' } }
 })
 
 export default router

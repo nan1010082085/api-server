@@ -41,6 +41,7 @@ import type { AIMessage } from './graph/state.js'
 import { recordBehavior, analyzeUserPreferences, getBehaviorStats } from './services/behaviorService.js'
 import { getAvailableIndustries, getIndustryTemplates, type IndustryType } from './config/industryAgents.js'
 import { semanticSearch } from './services/ragService.js'
+import { ConfigModel } from '../models/Config.js'
 import { logger } from '../utils/logger.js'
 
 const router = new Router({ prefix: '/api/ai' })
@@ -329,6 +330,33 @@ router.get('/chat/interrupt/:threadId', async (ctx) => {
       timestamp: interrupted.timestamp,
     },
   }
+})
+
+// ────────────────────────────────────────────
+// GET /api/ai/chat/starter-prompts
+// ────────────────────────────────────────────
+
+const DEFAULT_STARTER_PROMPTS = [
+  { icon: 'edit', text: '帮我生成一个用户注册表单', agent: 'editor' },
+  { icon: 'list', text: '创建一个订单审批流程', agent: 'flow' },
+  { icon: 'search', text: '搜索已有的表单模板', agent: 'auto' },
+  { icon: 'setting', text: '设计一个系统配置页面', agent: 'editor' },
+]
+
+router.get('/chat/starter-prompts', async (ctx) => {
+  try {
+    const config = await ConfigModel.findOne({ key: 'ai.chat.starterPrompts', status: 'active' })
+    if (config?.value) {
+      const parsed = JSON.parse(config.value)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        ctx.body = { success: true, data: parsed }
+        return
+      }
+    }
+  } catch {
+    // JSON parse error or DB issue — fall through to defaults
+  }
+  ctx.body = { success: true, data: DEFAULT_STARTER_PROMPTS }
 })
 
 // ────────────────────────────────────────────

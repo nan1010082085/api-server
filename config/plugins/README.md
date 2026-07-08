@@ -49,6 +49,6 @@ pnpm plugin:validate
 | MCP | 在 `mcp/` 新增 `{id}.json`，transport 选 inmemory / stdio / sse；inmemory 自定义用 `factoryModule` |
 | Tool | 在对应 `tools/mcp-*.json` 或 `langgraph.json` 追加条目 |
 | Skill | 在 `skills/` 新增 `{id}.json`，或 `file` 指向 Markdown |
-| Expert | 在 `experts/` 新增 `{id}.json`，引用 tools / skills |
+| Expert | 在 `experts/` 新增 `{id}.json`，引用 tools / skills；`legacyAgentKey` 仅作 task chain 调度键，非图节点（见 [plugin.md](../../../ai/docs/plugin.md#legacyagentkey-说明)） |
 
 设计器 Palette 与 `GET /api/ai/plugins` 自动感知新条目。

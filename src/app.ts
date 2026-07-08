@@ -49,6 +49,7 @@ import configRouter from './routes/config.js'
 import auditLogRouter from './routes/auditLog.js'
 import microAppRouter from './routes/microApp.js'
 import apiKeyRouter from './routes/apiKey.js'
+import keyUsageRouter from './routes/keyUsage.js'
 import submissionRouter from './routes/submission.js'
 import webhookRouter from './routes/webhook.js'
 import webhookTriggerRouter from './routes/webhookTrigger.js'
@@ -229,6 +230,8 @@ app.use(microAppRouter.routes())
 app.use(microAppRouter.allowedMethods())
 app.use(apiKeyRouter.routes())
 app.use(apiKeyRouter.allowedMethods())
+app.use(keyUsageRouter.routes())
+app.use(keyUsageRouter.allowedMethods())
 app.use(submissionRouter.routes())
 app.use(submissionRouter.allowedMethods())
 app.use(webhookRouter.routes())

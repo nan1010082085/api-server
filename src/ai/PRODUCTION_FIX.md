@@ -2,6 +2,8 @@
 
 > 问题：每次部署后 AI 对话不稳定，Agents 频繁 400，错误直接暴露给用户。
 
+> **基线对齐说明（2026-07-08）**：本文档中的修复方案已大部分落地。当前架构采用 pluginExpert 单节点（非 editorAgent/flowAgent/pageAgent 三节点），统一错误处理通过 `callLLMWithFallback` 实现。
+
 ---
 
 ## 一、根因分析（按严重度排序）
@@ -27,49 +29,37 @@ source: z.enum(['editor', 'flow', 'page', 'standalone']),
 
 ---
 
-### 🔴 P0-2：Agent 节点 LLM 调用失败 → 原始错误透传到对话
+### 🔴 P0-2：Agent 节点 LLM 调用失败 → 原始错误透传到对话 — 已修复
 
-**文件**：`graph/editorAgent.ts:142-145`、`graph/flowAgent.ts:151-154`、`graph/pageAgent.ts:140-144`
+**文件**：`graph/pluginExpertAgent.ts`（统一入口，非 editorAgent/flowAgent/pageAgent）
 
 ```typescript
-// 当前代码 — 直接 re-throw 原始错误
-} catch (err) {
-  console.error(`[editorAgent] LLM 调用失败:`, err)
-  throw err  // DeepSeek API 的 400/401/429 原始错误直接抛出
-}
+// 已修复 — 使用 callLLMWithFallback 统一错误处理
+return callLLMWithFallback('pluginExpert', async () => {
+  const stream = await model.stream(messages)
+  // ...
+})
 ```
 
-**影响**：DeepSeek 返回的原始错误（如 "context_length_exceeded"、"invalid_api_key"、"rate_limit"）直接出现在用户对话中。
+**影响**：DeepSeek 返回的原始错误（如 "context_length_exceeded"、"invalid_api_key"、"rate_limit"）通过 `callLLMWithFallback` 分类后返回用户友好消息。
 
-**修复**：统一错误包装，返回对用户友好的消息，原始错误只写日志。
+**修复**：`graph/agentErrorHandler.ts` 统一错误包装，原始错误只写日志。
 
 ---
 
-### 🔴 P0-3：summarizerNode 无 try-catch → 图崩溃
+### 🔴 P0-3：summarizerNode 无 try-catch → 图崩溃 — 已修复
 
-**文件**：`graph/graph.ts:351-398`
+**文件**：`graph/graph.ts`
 
-```typescript
-// 当前代码 — 无任何错误处理
-async function summarizerNode(state) {
-  const stream = await model.stream([...])  // 如果 LLM 失败，直接崩溃
-  for await (const chunk of stream) { ... }
-}
-```
-
-**影响**：多步任务链完成后，summarizer 调用 LLM 失败会导致整个图执行崩溃，用户看到原始错误。
+已通过 `callLLMWithFallback` 包装，LLM 失败时降级返回任务列表，不中断图执行。
 
 ---
 
-### 🟡 P1-1：ToolNode 无 handleToolErrors → 工具异常中断对话
+### 🟡 P1-1：ToolNode 无 handleToolErrors → 工具异常中断对话 — 已修复
 
-**文件**：`graph/graph.ts:32`
+**文件**：`graph/graph.ts`
 
-```typescript
-const allToolNode = new ToolNode(allTools)  // 无错误兜底
-```
-
-**影响**：MongoDB 连接断开、JSON 解析失败等工具异常会中断整个对话流。
+已实现 `allToolNodeWithErrorHandling`，工具异常时为每个待执行 tool_call 生成独立的错误 ToolMessage，不中断图执行。
 
 ---
 
@@ -122,48 +112,12 @@ source: z.enum(['editor', 'flow', 'page', 'standalone']),
 
 ---
 
-### Fix-2：统一 Agent 错误处理层（P0）
+### Fix-2：统一 Agent 错误处理层（P0） — 已落地
 
-新建 `graph/agentErrorHandler.ts`，所有 Agent 节点共用：
+新建 `graph/agentErrorHandler.ts`，pluginExpert 和 summarizer 共用：
 
 ```typescript
-// graph/agentErrorHandler.ts
-
-import { AIMessage } from '@langchain/core/messages'
-import type { AgentStateAnnotation } from './state.js'
-
-/**
- * 用户友好的错误消息映射。
- * 原始错误只写日志，不暴露给用户。
- */
-const USER_FRIENDLY_MESSAGES: Record<string, string> = {
-  'context_length_exceeded': '对话内容过长，请新建对话或缩短消息',
-  'invalid_api_key': 'AI 服务配置异常，请联系管理员',
-  'rate_limit': 'AI 服务繁忙，请稍后重试',
-  'timeout': 'AI 响应超时，请稍后重试',
-  'network': '网络连接异常，请检查网络后重试',
-}
-
-function classifyError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err)
-  const lower = message.toLowerCase()
-
-  if (lower.includes('context_length') || lower.includes('too many tokens')) return 'context_length_exceeded'
-  if (lower.includes('api_key') || lower.includes('unauthorized') || lower.includes('401')) return 'invalid_api_key'
-  if (lower.includes('rate') || lower.includes('429') || lower.includes('too many requests')) return 'rate_limit'
-  if (lower.includes('timeout') || lower.includes('timed out')) return 'timeout'
-  if (lower.includes('econnrefused') || lower.includes('enotfound') || lower.includes('network')) return 'network'
-
-  return 'unknown'
-}
-
-/**
- * 包装 Agent 节点的 LLM 调用，统一错误处理。
- *
- * - 原始错误写日志（含完整堆栈）
- * - 返回用户友好的 AIMessage（不中断图执行）
- * - 支持降级消息（如 summarizer 降级为简单列表）
- */
+// graph/agentErrorHandler.ts — 已实现
 export async function callLLMWithFallback<T>(
   agentName: string,
   fn: () => Promise<T>,
@@ -172,114 +126,42 @@ export async function callLLMWithFallback<T>(
   try {
     return await fn()
   } catch (err) {
-    const errorType = classifyError(err)
-    const friendlyMsg = USER_FRIENDLY_MESSAGES[errorType] ?? 'AI 处理异常，请重试'
-    const rawMsg = err instanceof Error ? err.message : String(err)
-
-    // 原始错误只写日志
-    console.error(`[${agentName}] LLM 调用失败 [${errorType}]:`, rawMsg)
-
-    // 如果有降级内容，返回降级结果（不中断图）
-    if (fallbackContent !== undefined) {
-      return new AIMessage({ content: fallbackContent }) as unknown as T
-    }
-
-    // 否则返回友好的错误消息（不中断图）
-    return new AIMessage({
-      content: `⚠️ ${friendlyMsg}\n\n> 技术详情已记录到服务端日志，如需帮助请联系管理员。`,
-    }) as unknown as T
+    // 分类错误 → 用户友好消息 → 原始错误只写日志
   }
 }
 ```
 
-**各 Agent 节点改造**：
+**pluginExpert 统一使用**：
 
 ```typescript
-// graph/editorAgent.ts — 改造后
-import { callLLMWithFallback } from './agentErrorHandler.js'
+// graph/pluginExpertAgent.ts — 统一专家节点
+return callLLMWithFallback('pluginExpert', async () => {
+  const stream = await model.stream(messages)
+  // ...
+})
 
-export async function editorAgentNode(state) {
-  const systemPrompt = await getEditorSystemPrompt()
-  const userContent = buildContextMessage(state)
-  const model = getLLM({ temperature: 0.7, maxTokens: 8192 })
-    .bindTools([...editorTools, ...collaborationTools])
-
-  const truncatedHistory = truncateMessages(state.messages)
-  const messages = [new SystemMessage(systemPrompt), ...truncatedHistory, new HumanMessage(userContent)]
-
-  return callLLMWithFallback('editorAgent', async () => {
-    const stream = await model.stream(messages)
-    let final: AIMessageChunk | null = null
-    for await (const chunk of stream) {
-      final = final ? final.concat(chunk) : chunk
-    }
-    if (!final) throw new Error('LLM 返回空流')
-    return { messages: [final as unknown as AIMessage] }
-  })
-}
-
-// graph/graph.ts — summarizerNode 改造后
-async function summarizerNode(state) {
-  const lastUserMessage = [...state.messages].reverse().find(m => m.constructor.name === 'HumanMessage')
-  const userContent = lastUserMessage
-    ? (typeof lastUserMessage.content === 'string' ? lastUserMessage.content : JSON.stringify(lastUserMessage.content))
-    : '你好'
-
-  const taskResults = state.task.chain
-    .filter(step => step.status === 'done')
-    .map(step => `✅ ${step.agent} 专家：${step.description}`)
-    .join('\n')
-
-  const model = getLLM({ temperature: 0.7, maxTokens: 2048 })
-  const prompt = `${SUMMARIZER_SYSTEM_PROMPT}\n\n## 用户需求\n${userContent}\n\n## 执行结果\n${taskResults || '无'}`
-
-  // 降级内容：如果 LLM 失败，直接返回任务列表
-  const fallbackContent = `## 执行完成\n\n${taskResults || '无执行结果'}\n\n如需进一步调整，请继续描述需求。`
-
-  const response = await callLLMWithFallback('summarizer', async () => {
-    const stream = await model.stream([new SystemMessage(prompt), new HumanMessage(userContent)])
-    let content = ''
-    for await (const chunk of stream) {
-      const c = typeof chunk.content === 'string' ? chunk.content : ''
-      if (c) content += c
-    }
-    return new AIMessage({ content })
-  }, fallbackContent)
-
-  return {
-    messages: [response instanceof AIMessage ? response : new AIMessage({ content: fallbackContent })],
-    session: { ...state.session, currentAgent: 'general' },
-  }
-}
+// graph/graph.ts — summarizerNode
+const result = await callLLMWithFallback('summarizer', async () => {
+  // ...
+}, fallbackContent)
 ```
 
 ---
 
-### Fix-3：ToolNode 错误兜底（P1）
+### Fix-3：ToolNode 错误兜底（P1） — 已落地
 
 ```typescript
-// graph/graph.ts
-const allToolNode = new ToolNode(allTools)
+// graph/graph.ts — 已实现
+const allToolNode = new ToolNode(getAllToolsSync())
 
-// 包装 ToolNode 的错误处理
-const allToolNodeWithFallback = {
-  async invoke(state: typeof AgentStateAnnotation.State) {
-    try {
-      return await allToolNode.invoke(state)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.error(`[ToolNode] 工具执行异常:`, message)
-      // 返回一个友好的 ToolMessage，不中断图
-      const { ToolMessage } = await import('@langchain/core/messages')
-      return {
-        messages: [new ToolMessage({
-          content: JSON.stringify({ success: false, error: '工具执行异常，请重试', recoverable: true }),
-          tool_call_id: 'error',
-          name: 'system_error',
-        })],
-      }
-    }
-  },
+async function allToolNodeWithErrorHandling(state) {
+  try {
+    return await allToolNode.invoke(state)
+  } catch (err) {
+    // 为每个待执行的 tool_call 生成独立的错误 ToolMessage
+    // 结构化日志：ai:thinker:error
+    // 返回 { messages: errorMessages }，不中断图执行
+  }
 }
 ```
 
@@ -330,59 +212,22 @@ function sendError(send: (data: Record<string, unknown>) => void, opts: {
 
 ---
 
-### Fix-5：Checkpointer 启动校验（P1）
+### Fix-5：Checkpointer 启动校验（P1） — 已落地
 
 ```typescript
-// graph/checkpointer.ts
-function createCheckpointer(): BaseCheckpointSaver {
-  if (process.env.NODE_ENV === 'production') {
-    // 生产环境：必须用 MongoDB，失败则抛错阻止启动
-    const cp = new MongoDBCheckpointer()
-    console.log('[checkpointer] MongoDB checkpointer 初始化成功')
-    return cp
-  }
-
-  // 开发环境：优先 MongoDB，降级 MemorySaver
-  try {
-    const cp = new MongoDBCheckpointer()
-    console.log('[checkpointer] MongoDB checkpointer 初始化成功')
-    return cp
-  } catch (err) {
-    console.warn('[checkpointer] MongoDB 不可用，降级到 MemorySaver:', err)
-    return new MemorySaver() as unknown as BaseCheckpointSaver
-  }
-}
+// graph/checkpointer.ts — 已实现
+// 生产环境：必须用 MongoDB，失败则抛错阻止启动
+// 开发环境：优先 MongoDB，降级 MemorySaver
 ```
 
 ---
 
-### Fix-6：Agent 节点 LLM 重试（P2）
+### Fix-6：Agent 节点 LLM 重试（P2） — 已落地
 
 ```typescript
-// graph/agentBase.ts — 新增带重试的流式调用
-export async function streamWithRetry<T>(
-  fn: () => Promise<T>,
-  maxRetries = 2,
-): Promise<T> {
-  let lastError: Error | undefined
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn()
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err))
-      if (attempt === maxRetries) break
-
-      const status = (err as { status?: number }).status
-      // 400 不重试（参数错误），429/5xx 重试
-      if (status && status < 500 && status !== 429) break
-
-      const delay = 1000 * Math.pow(2, attempt)
-      console.warn(`[streamWithRetry] 重试 ${attempt + 1}/${maxRetries}，等待 ${delay}ms`)
-      await new Promise(r => setTimeout(r, delay))
-    }
-  }
-  throw lastError
-}
+// graph/agentBase.ts — 已实现
+// withRetry 带指数退避的重试包装器
+// callLLMWithFallback 提供降级兜底
 ```
 
 ---
@@ -427,7 +272,7 @@ export async function streamWithRetry<T>(
 {
   type: 'error',
   content: 'AI 服务繁忙，请稍后重试',    // 用户友好消息
-  agent: 'editor',                       // 出错的 Agent
+  agent: 'pluginExpert',                 // 出错的节点
   errorType: 'rate_limit',              // 分类标识
   recoverable: true,                    // 是否可重试
 }
@@ -435,7 +280,7 @@ export async function streamWithRetry<T>(
 // 工具错误事件（不中断对话，LLM 自行处理）
 {
   type: 'tool_error',
-  toolName: 'search_schemas',
+  toolName: 'schema__search',
   content: '搜索失败，请重试',
 }
 ```
@@ -474,20 +319,19 @@ case 'tool_error':
 | 3 | Checkpointer 初始化日志 | 搜索 `checkpointer` 日志 | `MongoDB checkpointer 初始化成功` |
 | 4 | 模型名是否正确 | 搜索 `getLLM` 调用 | `deepseek-v4-pro` |
 | 5 | source='page' 是否通过校验 | 发送 `source: 'page'` 请求 | 不返回 400 |
-| 6 | Agent 节点错误日志 | 搜索 `[xxxAgent] LLM 调用失败` | 应该有友好错误分类 |
+| 6 | pluginExpert 错误日志 | 搜索 `[pluginExpert] LLM 调用失败` | 应该有友好错误分类 |
 | 7 | SSE error 事件格式 | 前端 Network 面板 | 只有 `type: 'error'`，无重复 `type: 'text'` |
+| 8 | 工具注册表就绪 | 搜索 `toolsRegistry` 日志 | `init failed` 无报错 |
 
 ---
 
 ## 六、实施顺序
 
-| 优先级 | Fix | 工作量 | 影响范围 |
-|--------|-----|--------|---------|
-| P0 | Fix-1: source 枚举补全 | 1 行 | Page Agent 可用 |
-| P0 | Fix-2: Agent 错误处理层 | 新文件 + 3 个 Agent 改造 | 所有 Agent 不再暴露原始错误 |
-| P0 | Fix-3: summarizerNode try-catch | 1 处 | 多步任务不再崩溃 |
-| P1 | Fix-4: SSE 错误标准化 | routes.ts 改造 | 前端统一处理 |
-| P1 | Fix-5: Checkpointer 启动校验 | 1 处 | 生产环境快速失败 |
-| P2 | Fix-6: Agent LLM 重试 | agentBase.ts | 瞬态错误自动恢复 |
-
-**预计总工作量**：1-2 天
+| 优先级 | Fix | 工作量 | 影响范围 | 状态 |
+|--------|-----|--------|---------|------|
+| P0 | Fix-1: source 枚举补全 | 1 行 | Page Agent 可用 | ✅ |
+| P0 | Fix-2: Agent 错误处理层 | agentErrorHandler.ts + pluginExpert/summarizer | 统一错误处理 | ✅ |
+| P0 | Fix-3: summarizerNode try-catch | callLLMWithFallback 包装 | 多步任务不再崩溃 | ✅ |
+| P1 | Fix-4: SSE 错误标准化 | routes.ts | 前端统一处理 | ✅ |
+| P1 | Fix-5: Checkpointer 启动校验 | checkpointer.ts | 生产环境快速失败 | ✅ |
+| P2 | Fix-6: Agent LLM 重试 | agentBase.ts | 瞬态错误自动恢复 | ✅ |

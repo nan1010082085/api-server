@@ -2,6 +2,8 @@
 
 > 目标：用户通过自然语言对话，AI 自动生成符合 editor/flow 大结构的 Schema，可直接应用于编辑器渲染和流程引擎执行。
 
+> **基线对齐说明（2026-07-08）**：本文档为早期规划，部分设计已落地、部分已演进。当前实现以 `pluginExpert` 单节点架构为核心（非 editorAgent/flowAgent/pageAgent 三节点），MCP 工具使用 `{domain}__` 前缀命名，详见实际代码。
+
 ---
 
 ## 一、核心问题分析
@@ -53,21 +55,34 @@
 
 ## 二、项目拆分策略
 
-### 2.1 三项目架构
+### 2.1 实际目录结构（已落地）
 
 ```
 schema-platform/
-├── packages/
-│   ├── editor/web/          # @editor — 可视化设计器
-│   ├── flow/                # @flow — 流程设计器 + 引擎
-│   ├── shell/ — 主宿主
-│   ├── ai/                  # ai — AI 能力层（新建）
-│   │   ├── server/          # AI Agent 服务（从 server/ai/ 独立）
-│   │   ├── mcp/             # MCP Server 定义（内部专有）
-│   │   ├── shared/          # 共享类型 + Schema 适配层
-│   │   └── app/             # AI 对话前端（从 ai-app/ 迁入）
-│   ├── server/              # @server — 纯后端 API
-│   └── shared/              # @schema-form/shared — 共享类型
+├── editor/                  # @editor — 可视化设计器
+├── flow/                    # @flow — 流程设计器 + 引擎
+├── shell/                   # 主宿主（qiankun 容器）
+├── server/                  # @server — 后端 API（Koa + MongoDB）
+│   └── src/ai/              # AI 能力层（已在 server 内）
+│       ├── graph/           # LangGraph 图编排
+│       │   ├── graph.ts             # StateGraph 组装
+│       │   ├── state.ts             # 状态定义
+│       │   ├── pluginExpertAgent.ts # 唯一专家执行节点（pluginExpert）
+│       │   ├── resolveGraphExpert.ts# 专家解析
+│       │   ├── requirementAnalyzer.ts # v2: 需求分析
+│       │   ├── requirementConfirm.ts  # v2: 需求确认
+│       │   ├── taskPlanner.ts       # v2: 任务规划
+│       │   └── checkpointer.ts     # MongoDB Checkpointer
+│       ├── tools/           # LangGraph 专有工具（HITL + 写入 + 协作）
+│       ├── mcp/             # MCP Server 定义（权威工具源）
+│       ├── plugins/         # 插件中心（Expert/Skill/Tool 注册）
+│       ├── services/        # 业务逻辑层
+│       ├── models/          # 数据模型
+│       └── routes.ts        # AI API 路由
+├── ai/                      # AI 前端（多包：app/sdk/shared）
+├── ai-shared/               # → ai/shared/ 的短名 symlink
+├── platform-shared/         # @schema-platform/platform-shared
+└── flow-shared/             # @schema-platform/flow-shared
 ```
 
 ### 2.2 为什么不拆成独立仓库
@@ -79,56 +94,54 @@ schema-platform/
 | 部署 | 一个 CI 流水线 | 多套部署 |
 | AI 对 editor/flow 类型的依赖 | `import { Widget } from '@editor'` | 需要发布 @types 包 |
 
-**结论**：保持 monorepo，但将 AI 从 `server/ai/` 和 `ai-app/` 独立为 `packages/ai/`。
+**结论**：保持多项目并列仓库，AI 能力层保留在 `server/src/ai/` 内。
 
-### 2.3 `packages/ai/` 内部结构
+### 2.3 `server/src/ai/` 内部结构（实际）
 
 ```
-packages/ai/
-├── server/                  # AI Agent 后端服务
-│   ├── graph/               # LangGraph 图编排
-│   │   ├── graph.ts         # StateGraph 组装
-│   │   ├── state.ts         # 状态定义
-│   │   ├── editorAgent.ts   # Editor Agent
-│   │   ├── flowAgent.ts     # Flow Agent
-│   │   ├── pageAgent.ts     # Page Agent
-│   │   └── checkpointer.ts  # MongoDB Checkpointer
-│   ├── tools/               # LangGraph 专有工具（HITL + 写入 + 协作）
-│   │   ├── updateSchema.ts  # HITL Schema 更新
-│   │   ├── updateFlow.ts    # HITL Flow 更新
-│   │   ├── generateSchema.ts
-│   │   ├── saveAndBind.ts
-│   │   └── collaboration.ts
-│   ├── services/            # 业务逻辑层（MCP 和 Tools 共享）
-│   │   ├── schemaService.ts
-│   │   ├── flowService.ts
-│   │   ├── widgetService.ts
-│   │   └── llmCache.ts
-│   └── routes.ts            # AI API 路由
+server/src/ai/
+├── graph/                       # LangGraph 图编排
+│   ├── graph.ts                 # StateGraph 组装（pluginExpert 单节点架构）
+│   ├── state.ts                 # 状态定义（9 组 Annotation）
+│   ├── pluginExpertAgent.ts     # 唯一专家执行节点
+│   ├── resolveGraphExpert.ts    # 专家解析（Registry + legacyAgentKey）
+│   ├── requirementAnalyzer.ts   # v2: 需求分析节点
+│   ├── requirementConfirm.ts    # v2: 需求确认节点
+│   ├── taskPlanner.ts           # v2: 任务规划节点
+│   ├── agentBase.ts             # 共享 LLM 工具函数
+│   ├── agentErrorHandler.ts     # 统一错误处理层
+│   └── checkpointer.ts          # MongoDB Checkpointer
 │
-├── mcp/                     # MCP Server 定义（权威工具源）
-│   ├── servers/
-│   │   ├── schemaServer.ts  # Schema 工具集
-│   │   ├── flowServer.ts    # Flow 工具集
-│   │   ├── widgetServer.ts  # Widget 工具集
-│   │   ├── ragServer.ts     # RAG 工具集（新增）
-│   │   └── industryServer.ts# 行业工具集（新增）
-│   ├── bridge.ts            # MCP → LangGraph 桥接层
-│   └── transport.ts         # SSE + InMemory 传输层
+├── tools/                       # LangGraph 专有工具（HITL + 写入 + 协作）
+│   ├── registry.ts              # 统一工具注册表（MCP + LangGraph + HTTP）
+│   ├── langgraphTools.ts        # LangGraph 专有工具集合
+│   ├── editorTools.ts           # Schema HITL 工具
+│   ├── flowTools.ts             # Flow HITL 工具
+│   ├── collaborationTools.ts    # 协作工具
+│   └── ragTools.ts              # RAG 工具
 │
-├── shared/                  # AI 共享层
-│   ├── types/               # AI 专用类型
-│   │   ├── agent.ts         # Agent 类型定义
-│   │   ├── sse.ts           # SSE 事件类型
-│   │   └── tool.ts          # 工具结果类型
-│   ├── schemaAdapter.ts     # Schema 适配层（核心！）
-│   ├── flowAdapter.ts       # Flow 适配层（核心！）
-│   └── promptBuilder.ts     # Prompt 构建器
+├── mcp/                         # MCP Server 定义（权威工具源）
+│   ├── schemaServer.ts          # schema__* 工具集
+│   ├── flowServer.ts            # flow__* 工具集
+│   ├── widgetServer.ts          # widget__* 工具集
+│   ├── ragServer.ts             # rag__* 工具集
+│   ├── industryServer.ts        # industry__* 工具集
+│   └── bridge.ts                # MCP → LangGraph 桥接层（InMemoryTransport）
 │
-└── app/                     # AI 对话前端
-    ├── components/          # 对话组件
-    ├── stores/              # AI 状态管理
-    └── views/               # 页面视图
+├── plugins/                     # 插件中心
+│   ├── registry.ts              # Expert/Skill/Tool 注册表
+│   ├── dispatchExpert.ts        # 专家调度（prompt + tools 分发）
+│   ├── resolveRouterExpert.ts   # 路由专家解析
+│   ├── types.ts                 # 插件类型定义
+│   └── loadPluginConfig.ts      # 配置加载
+│
+├── services/                    # 业务逻辑层
+│   ├── llmCache.ts              # LLM 缓存（ChatOpenAI → DeepSeek）
+│   └── ...
+│
+├── config/                      # 配置
+├── models/                      # 数据模型（Plugin, Document, AgentWorkflow 等）
+└── routes.ts                    # AI API 路由
 ```
 
 ---
@@ -174,7 +187,7 @@ AI LLM 无法一次输出完整的 30+ 字段 Widget 结构，原因：
 ### 3.3 SchemaAdapter 实现设计
 
 ```typescript
-// packages/ai/shared/schemaAdapter.ts
+// server/src/ai/services/schemaAdapter.ts（实际路径）
 
 import type { Widget, SchemaType } from '@editor/widgets/base/types'
 import type { AIMetadata, WidgetAIMetadata } from '@schema-platform/ai-shared/types'
@@ -500,7 +513,7 @@ export class SchemaAdapter {
 ### 3.4 FlowAdapter 实现设计
 
 ```typescript
-// packages/ai/shared/flowAdapter.ts
+// server/src/ai/services/flowAdapter.ts（实际路径）
 
 import type { FlowNodeData, FlowEdgeData, FlowGraph } from '@flow/shared/types/graph'
 import type { BpmnNodeConfig, BpmnElementType } from '@flow/shared/types/bpmn'
@@ -666,11 +679,11 @@ export class FlowAdapter {
 ### 4.2 MCP Server 定义（内部专有）
 
 ```typescript
-// packages/ai/mcp/servers/schemaServer.ts
+// server/src/ai/mcp/schemaServer.ts（实际路径）
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { schemaService } from '../../server/services/schemaService.js'
+import { schemaService } from '../services/schemaService.js'
 
 export function createSchemaServer(): McpServer {
   const server = new McpServer({
@@ -682,99 +695,56 @@ export function createSchemaServer(): McpServer {
   server.tool(
     'schema__search',
     '搜索表单 Schema 列表，支持按关键词、类型、状态筛选。',
-    {
-      keyword: z.string().optional().describe('搜索关键词，匹配 Schema 名称'),
-      type: z.enum(['form', 'search_list']).optional().describe('Schema 类型'),
-      status: z.enum(['draft', 'published']).optional().describe('Schema 状态'),
-      limit: z.number().default(10).describe('返回数量上限'),
-      source: z.enum(['editor', 'flow']).optional().default('editor')
-        .describe('调用来源：editor 返回完整字段，flow 返回精简字段'),
-    },
-    async (params) => {
-      const result = await schemaService.search(params)
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] }
-    },
+    { /* zod schema */ },
+    async (params) => { /* schemaService.search */ },
   )
 
   // ── schema__get_detail ──
   server.tool(
     'schema__get_detail',
     '获取 Schema 完整信息，包括 Widget 树、版本历史、元数据。',
-    {
-      schemaId: z.string().describe('Schema ID'),
-    },
-    async ({ schemaId }) => {
-      const result = await schemaService.getDetail(schemaId)
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] }
-    },
+    { /* zod schema */ },
+    async (params) => { /* schemaService.getDetail */ },
   )
 
   // ── schema__validate ──
   server.tool(
     'schema__validate',
     '验证 Schema 文档结构（name/type/json 字段存在性）。',
-    {
-      schema: z.object({}).passthrough().describe('Schema 对象'),
-    },
-    async ({ schema }) => {
-      const result = schemaService.validateDocument(schema)
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] }
-    },
+    { /* zod schema */ },
+    async (params) => { /* schemaService.validateDocument */ },
   )
 
   // ── schema__validate_widgets ──
   server.tool(
     'schema__validate_widgets',
     '校验 Widget 数组的结构正确性（类型、ID、position、容器嵌套）。',
-    {
-      widgets: z.array(z.record(z.unknown())).describe('Widget 数组'),
-    },
-    async ({ widgets }) => {
-      const result = schemaService.validateWidgets(widgets)
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] }
-    },
+    { /* zod schema */ },
+    async (params) => { /* schemaService.validateWidgets */ },
   )
 
   // ── schema__search_published ──
   server.tool(
     'schema__search_published',
     '搜索已发布的 Schema 版本。',
-    {
-      keyword: z.string().optional().describe('按名称模糊搜索'),
-      type: z.enum(['form', 'search_list']).optional().describe('按类型筛选'),
-      limit: z.number().default(10).describe('返回数量上限'),
-    },
-    async (params) => {
-      const result = await schemaService.searchPublished(params)
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] }
-    },
+    { /* zod schema */ },
+    async (params) => { /* schemaService.searchPublished */ },
   )
 
   // ── schema__fuzzy_search ──
   server.tool(
     'schema__fuzzy_search',
-    '基于关键词模糊搜索已有 Schema（Jaccard 相似度）。',
-    {
-      query: z.string().describe('关键词描述'),
-      limit: z.number().default(5).describe('返回数量上限'),
-    },
-    async (params) => {
-      const result = await schemaService.fuzzySearch(params)
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] }
-    },
+    '基于关键词模糊搜索已有 Schema。',
+    { /* zod schema */ },
+    async (params) => { /* schemaService.fuzzySearch */ },
   )
 
   // ── schema__find_flow_references ──
   server.tool(
     'schema__find_flow_references',
     '查找引用了指定 Schema 的所有流程节点。',
-    {
-      schemaId: z.string().describe('Schema ID'),
-    },
-    async ({ schemaId }) => {
-      const result = await schemaService.findFlowReferences(schemaId)
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] }
-    },
+    { /* zod schema */ },
+    async (params) => { /* schemaService.findFlowReferences */ },
   )
 
   return server
@@ -783,122 +753,61 @@ export function createSchemaServer(): McpServer {
 
 ### 4.3 MCP → LangGraph 桥接层
 
+实际实现位于 `server/src/ai/mcp/bridge.ts`，通过 Plugin Registry 动态加载 MCP Server：
+
 ```typescript
-// packages/ai/mcp/bridge.ts
+// server/src/ai/mcp/bridge.ts（实际实现摘要）
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { StructuredTool } from '@langchain/core/tools'
-
-/**
- * 创建 MCP 内部客户端（InMemoryTransport 直连，零网络开销）。
- */
-async function createInternalClient(factory: () => McpServer): Promise<Client> {
-  const server = factory()
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  await server.connect(serverTransport)
-
-  const client = new Client(
-    { name: 'langgraph-internal', version: '1.0.0' },
-    { capabilities: { tools: {} } },
-  )
-  await client.connect(clientTransport)
-
-  return client
-}
+import { getPluginRegistry } from '../plugins/registrySingleton.js'
+import { createMcpClient } from './createMcpClient.js'
 
 /**
  * 将 MCP Server 的工具列表转换为 LangGraph StructuredTool[]。
+ * 工具名保留 MCP 原名（含 `domain__` 前缀），确保全局唯一。
  */
-async function convertMcpTools(
-  client: Client,
-  prefix: string,
-): Promise<StructuredTool[]> {
+async function convertMcpTools(client: Client): Promise<StructuredTool[]> {
   const { tools: mcpTools } = await client.listTools()
-
   return mcpTools.map((mcpTool) => {
-    // 将 MCP inputSchema（JSON Schema）转换为 Zod schema
-    const zodSchema = jsonSchemaToZod(mcpTool.inputSchema)
-
+    const zodSchema = mcpTool.inputSchema
+      ? jsonSchemaToZod(mcpTool.inputSchema as Record<string, unknown>)
+      : z.object({})
     return tool(
-      async (params: Record<string, unknown>) => {
-        const result = await client.callTool({
-          name: mcpTool.name,
-          arguments: params,
-        })
-        // MCP 返回 content 数组，提取 text
-        const textContent = result.content
-          .filter((c: { type: string }) => c.type === 'text')
-          .map((c: { text: string }) => c.text)
-          .join('\n')
-        return textContent
+      async (params) => {
+        const result = await client.callTool({ name: mcpTool.name, arguments: params })
+        // 提取 text 内容，错误时返回结构化 JSON 而非抛异常
+        return textContent ?? JSON.stringify({ success: false, error: message })
       },
-      {
-        name: mcpTool.name,
-        description: mcpTool.description ?? '',
-        schema: zodSchema,
-      },
+      { name: mcpTool.name, description: mcpTool.description ?? '', schema: zodSchema },
     )
   })
 }
 
 /**
- * 初始化所有 MCP 内部客户端，返回 LangGraph 可用的工具数组。
- *
- * 使用 InMemoryTransport 直连，不经 SSE 传输，零网络开销。
+ * 从 Plugin Registry 读取 mcpServers 声明，动态初始化全部 MCP 客户端。
+ * 任一 server 失败不中断整体，仅跳过并记录警告。
  */
 export async function initMcpBridge(): Promise<StructuredTool[]> {
-  const { createSchemaServer } = await import('./servers/schemaServer.js')
-  const { createFlowServer } = await import('./servers/flowServer.js')
-  const { createWidgetServer } = await import('./servers/widgetServer.js')
-
-  const [schemaClient, flowClient, widgetClient] = await Promise.all([
-    createInternalClient(createSchemaServer),
-    createInternalClient(createFlowServer),
-    createInternalClient(createWidgetServer),
-  ])
-
-  const [schemaTools, flowTools, widgetTools] = await Promise.all([
-    convertMcpTools(schemaClient, 'schema'),
-    convertMcpTools(flowClient, 'flow'),
-    convertMcpTools(widgetClient, 'widget'),
-  ])
-
-  return [...schemaTools, ...flowTools, ...widgetTools]
+  const servers = getPluginRegistry().listMcpServers().filter((s) => s.enabled !== false)
+  const results = await Promise.all(
+    servers.map(async (decl) => {
+      const client = await createMcpClient(decl)
+      return convertMcpTools(client)
+    }),
+  )
+  return results.flat()
 }
+```
 
-/**
- * JSON Schema → Zod 转换器（简化版）。
- */
-function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodType {
-  if (schema.type === 'object' && schema.properties) {
-    const shape: Record<string, z.ZodType> = {}
-    const required = (schema.required as string[]) ?? []
+工具注册表 `tools/registry.ts` 在模块加载时顶层 await 完成初始化：
 
-    for (const [key, prop] of Object.entries(schema.properties as Record<string, Record<string, unknown>>)) {
-      let field = jsonSchemaToZod(prop as Record<string, unknown>)
-      if (!required.includes(key)) {
-        field = field.optional()
-      }
-      if (prop.description) {
-        field = field.describe(prop.description as string)
-      }
-      shape[key] = field
-    }
-
-    return z.object(shape)
-  }
-
-  if (schema.type === 'string') return z.string()
-  if (schema.type === 'number') return z.number()
-  if (schema.type === 'boolean') return z.boolean()
-  if (schema.type === 'array') return z.array(z.unknown())
-
-  return z.unknown()
-}
+```typescript
+// server/src/ai/tools/registry.ts（摘要）
+const mcpTools = await initMcpBridge()
+const httpTools = loadHttpToolsFromRegistry()
+_allTools = [...mcpTools, ...langgraphOnlyTools, ...httpTools]
 ```
 
 ---
@@ -926,10 +835,10 @@ function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodType {
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 5.2 Editor Agent System Prompt 关键改进
+### 5.2 Expert System Prompt 关键改进（pluginExpert 统一节点）
 
 ```typescript
-// packages/ai/shared/promptBuilder.ts
+// @schema-platform/ai-shared/promptBuilder（实际路径：ai/shared/promptBuilder.ts）
 
 export function buildEditorSystemPrompt(metadata: AIMetadata): string {
   return `你是 Schema-Form 平台的 Editor 专家，负责生成表单 Schema。
@@ -1065,7 +974,7 @@ ${metadata.widgets.map(w => `
 }
 ```
 
-### 5.3 Flow Agent System Prompt 关键改进
+### 5.3 Flow Expert System Prompt 关键改进（pluginExpert 统一节点）
 
 ```typescript
 export function buildFlowSystemPrompt(metadata: AIMetadata): string {
@@ -1188,37 +1097,28 @@ ${metadata.flowNodes.map(n => `- **${n.type}**：${n.description}`).join('\n')}
 用户："创建一个请假申请表单，包含请假类型、日期范围、事由"
   ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  1. Router → Editor Agent                                    │
-│     context.source = 'editor' 或 auto 模式识别               │
+│  1. Router → pluginExpert                                    │
+│     context.source = 'editor' → sessionForAgent → pluginExpert│
 └──────────────────────┬──────────────────────────────────────┘
                        ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  2. Editor Agent → LLM（deepseek-v4-pro）                    │
-│     Input: System Prompt + 用户消息 + 元数据                  │
-│     Output: <think> + <answer> + <schema>                       │
-│     schema = { type: "schema_update", widgets: [...] }       │
+│  2. pluginExpertAgentNode → LLM                              │
+│     resolveExpertForSession → buildExpertSystemPrompt        │
+│     Input: System Prompt + 用户消息 + RAG 上下文             │
+│     Output: 结构化 JSON（widgets / flow）                     │
 └──────────────────────┬──────────────────────────────────────┘
                        ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  3. SchemaAdapter.adapt(widgets)                             │
-│     ├── type → name 映射（input → FgInput）                  │
-│     ├── 自动生成 formId                                      │
-│     ├── 补全 position                                        │
-│     ├── 补全 validationRules                                 │
-│     └── 校验 + 修复                                          │
-└──────────────────────┬──────────────────────────────────────┘
-                       ↓
-┌─────────────────────────────────────────────────────────────┐
-│  4. HITL：update_schema tool → interrupt                     │
+│  3. HITL：update_schema tool → interrupt                     │
 │     发送 diff 给前端，等待用户确认                             │
 └──────────────────────┬──────────────────────────────────────┘
                        ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  5. 用户确认 → 保存到 FormSchema + PublishedSchema           │
+│  4. 用户确认 → 保存到 FormSchema + PublishedSchema           │
 └──────────────────────┬──────────────────────────────────────┘
                        ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  6. SSE 推送 schema 事件 → 前端预览 + 可应用到编辑器          │
+│  5. SSE 推送 schema 事件 → 前端预览 + 可应用到编辑器          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -1227,7 +1127,7 @@ ${metadata.flowNodes.map(n => `- **${n.type}**：${n.description}`).join('\n')}
 ```
 用户："设计一个采购审批流程，金额超过1万需要总经理审批"
   ↓
-Router → Thinker → Flow Agent → FlowAdapter → HITL → 保存
+Router → pluginExpert (source='flow') → HITL → 保存
   ↓
 SSE 推送 flow 事件 → 前端 Vue Flow 预览
 ```
@@ -1237,14 +1137,14 @@ SSE 推送 flow 事件 → 前端 Vue Flow 预览
 ```
 用户："设计一个采购审批流程，并生成申请表单"
   ↓
-Thinker → chain: [
+Router → taskChain: [
   { agent: "flow", description: "生成采购审批流程" },
   { agent: "editor", description: "生成采购申请表单" }
 ]
   ↓
-Flow Agent 生成流程 → FlowAdapter 适配
+pluginExpert (flow) → 生成流程
   ↓
-Editor Agent 生成表单 → SchemaAdapter 适配
+pluginExpert (editor) → 生成表单
   ↓
 save_and_bind_schema：表单自动绑定到流程的 userTask 节点
   ↓
@@ -1255,64 +1155,53 @@ Summarizer 汇总结果
 
 ## 七、实施路线图
 
-### Phase 0：基础加固（1 周）
+> **基线对齐（2026-07-08）**：以下标记了实际落地状态。Phase 0/2 已完成，Phase 1 由 pluginExpert + promptBuilder 替代，Phase 3 部分完成，Phase 4 已放弃（AI 保留在 server/src/ai/ 内）。
 
-| 任务 | 产出 | 优先级 |
+### Phase 0：基础加固 — 已完成
+
+| 任务 | 产出 | 状态 |
+|------|------|------|
+| 熔断保护：ToolNode handleToolErrors | graph/graph.ts allToolNodeWithErrorHandling | ✅ |
+| 统一错误处理层 | graph/agentErrorHandler.ts callLLMWithFallback | ✅ |
+| 全局循环拦截：nodeExecutionCount | state.ts + graph.ts | ✅ |
+| 协作请求去重 | graph.ts taskChainNode collaborationHistory | ✅ |
+
+### Phase 1：Schema 适配层 — 由 pluginExpert 替代
+
+| 任务 | 产出 | 状态 |
+|------|------|------|
+| ~~SchemaAdapter 实现~~ | 由 pluginExpert + promptBuilder 直接生成完整结构替代 | ⏭️ |
+| ~~FlowAdapter 实现~~ | 同上 | ⏭️ |
+| promptBuilder 改进 | @schema-platform/ai-shared/promptBuilder | ✅ |
+| pluginExpert 单节点架构 | graph/pluginExpertAgent.ts | ✅ |
+| 插件中心 Expert 注册 | plugins/registry.ts + dispatchExpert.ts | ✅ |
+
+### Phase 2：MCP 统一 — 已完成
+
+| 任务 | 产出 | 状态 |
 |------|------|--------|
-| 熔断保护：ToolNode handleToolErrors | graph.ts 改动 | P0 |
-| 工具包装器：withErrorHandling | tools/toolWrapper.ts | P0 |
-| 全局循环拦截：nodeExecutionCount | state.ts + graph.ts | P0 |
+| MCP Server 重构 | mcp/schemaServer.ts, flowServer.ts, widgetServer.ts | ✅ |
+| 工具名命名空间 `{domain}__` | 所有 MCP Server（schema__search, flow__search 等） | ✅ |
+| InMemoryTransport 桥接 | mcp/bridge.ts | ✅ |
+| 统一工具注册表 | tools/registry.ts（MCP + LangGraph + HTTP） | ✅ |
+| RAG MCP Server | mcp/ragServer.ts | ✅ |
+| Industry MCP Server | mcp/industryServer.ts | ✅ |
 
-### Phase 1：Schema 适配层（2 周）
+### Phase 3：模型优化 — 部分完成
 
-| 任务 | 产出 | 优先级 |
-|------|------|--------|
-| SchemaAdapter 实现 | ai/shared/schemaAdapter.ts | P0 |
-| FlowAdapter 实现 | ai/shared/flowAdapter.ts | P0 |
-| promptBuilder 改进（完整输出格式） | ai/shared/promptBuilder.ts | P0 |
-| 适配器单元测试 | __tests__/schemaAdapter.spec.ts | P0 |
-| Editor Agent 集成适配器 | graph/editorAgent.ts | P1 |
-| Flow Agent 集成适配器 | graph/flowAgent.ts | P1 |
+| 任务 | 产出 | 状态 |
+|------|------|------|
+| getModelForTask 修复 | agentBase.ts | ✅ |
+| temperature/jsonMode 冲突修复 | services/llmCache.ts | ✅ |
+| resolveUserModel 用户偏好模型 | agentBase.ts | ✅ |
 
-### Phase 2：MCP 统一（2 周）
+### Phase 4：项目重组 — 已放弃
 
-| 任务 | 产出 | 优先级 |
-|------|------|--------|
-| 提取共享 service 层 | ai/server/services/schemaService.ts 等 | P1 |
-| MCP Server 重构（调用 service） | ai/mcp/servers/*.ts | P1 |
-| 工具名命名空间 `{domain}__` | 所有 MCP Server | P1 |
-| InMemoryTransport 桥接 | ai/mcp/bridge.ts | P1 |
-| allTools 重构（MCP + 专有） | ai/mcp/bridge.ts + ai/server/tools/langgraphTools.ts | P1 |
-| RAG + Industry MCP Server | ai/mcp/servers/ragServer.ts 等 | P2 |
-
-### Phase 3：模型优化（1 周）
-
-| 任务 | 产出 | 优先级 |
-|------|------|--------|
-| getModelForTask 修复 | agentBase.ts | P2 |
-| temperature/jsonMode 冲突修复 | llmCache.ts | P2 |
-| JSON 解析加固 | graph.ts extractJsonFromResponse | P2 |
-| 参数健壮性测试 | __tests__/llmParams.spec.ts | P2 |
-
-### Phase 4：项目重组（1 周）
-
-| 任务 | 产出 | 优先级 |
-|------|------|--------|
-| 创建 packages/ai/ 目录结构 | 目录重组 | P2 |
-| 迁移 server/ai/ → ai/server/ | 文件迁移 | P2 |
-| 迁移 ai-app/ → ai/app/ | 文件迁移 | P2 |
-| 更新 import 路径 | 全项目 | P2 |
-| 更新 pnpm workspace | pnpm-workspace.yaml | P2 |
-
-### 总工期：约 7 周
-
-| Phase | 内容 | 工期 |
-|-------|------|------|
-| Phase 0 | 基础加固 | 1 周 |
-| Phase 1 | Schema 适配层 | 2 周 |
-| Phase 2 | MCP 统一 | 2 周 |
-| Phase 3 | 模型优化 | 1 周 |
-| Phase 4 | 项目重组 | 1 周 |
+| 任务 | 决策 | 状态 |
+|------|------|------|
+| ~~创建 packages/ai/~~ | AI 保留在 server/src/ai/，不做目录迁移 | ❌ 不做 |
+| ~~迁移 server/ai/ → ai/server/~~ | 同上 | ❌ 不做 |
+| ~~迁移 ai-app/ → ai/app/~~ | 前端独立在 ai/ 目录 | ❌ 不做 |
 
 ---
 
@@ -1323,9 +1212,9 @@ Summarizer 汇总结果
 ```
 输入："创建一个请假申请表单"
 验收：
-  ✅ AI 输出的 Schema 包含完整 type/field/label/props/position
-  ✅ SchemaAdapter 自动补全 name/formId/validationRules
-  ✅ 校验通过（validateWidgetSchema 无错误）
+  ✅ pluginExpert 输出的 Schema 包含完整 type/field/label/props/position
+  ✅ promptBuilder 引导 LLM 生成完整 name/formId/validationRules
+  ✅ 校验通过（schema__validate_widgets 无错误）
   ✅ 可直接应用到编辑器（无缺字段警告）
   ✅ 编辑器可正常渲染表单
   ✅ 表单可正常提交数据
@@ -1336,9 +1225,9 @@ Summarizer 汇总结果
 ```
 输入："设计一个采购审批流程"
 验收：
-  ✅ AI 输出的 FlowGraph 包含 shape/data 完整字段
-  ✅ FlowAdapter 自动补全 approvalMode/rejectPolicy
-  ✅ 校验通过（validateFlow 无错误）
+  ✅ pluginExpert 输出的 FlowGraph 包含 shape/data 完整字段
+  ✅ promptBuilder 引导 LLM 生成完整 approvalMode/rejectPolicy
+  ✅ 校验通过（flow__validate 无错误）
   ✅ 可直接应用到流程设计器（Vue Flow 渲染正确）
   ✅ 流程可正常启动和执行
 ```

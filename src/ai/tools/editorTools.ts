@@ -1,8 +1,9 @@
 /**
- * Editor Agent 专有工具 — LangGraph StructuredTool format.
+ * Schema HITL 工具 — LangGraph StructuredTool format.
  *
  * 仅保留依赖图状态的工具（HITL interrupt、Schema diff）。
  * 读取/校验类工具已迁入 MCP Server（schema__*、widget__*），通过 registry 获取。
+ * 由 pluginExpert 统一调度，按 expert.legacyAgentKey='editor' 分发。
  */
 
 import { tool } from '@langchain/core/tools'

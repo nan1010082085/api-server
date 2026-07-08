@@ -18,7 +18,11 @@ export type PluginToolCategory =
   | 'langgraph'
   | 'workflow'
 
-/** LangGraph 路由用 legacy 键，与 graph 节点名 / session.currentAgent 对齐 */
+/**
+ * Task chain 调度键（固定枚举，不可扩展）。
+ * 用途：taskPlanner 生成任务链时作为 step.agent 的值；LangGraph router 按此写入 session.currentAgent。
+ * 不是图节点名，不是 Expert ID。参见 plugin.md#legacyagentkey-说明。
+ */
 export type LegacyAgentKey = 'editor' | 'flow' | 'page' | 'general' | 'router'
 
 export interface PluginToolDeclaration {
@@ -82,7 +86,12 @@ export interface ExpertDeclaration {
   id: string
   label: string
   description?: string
-  /** 与 LangGraph session.currentAgent / 工作流 agentType 对齐 */
+  /**
+   * Task chain 调度键 — 用于 taskPlanner 任务链步骤路由、LangGraph session.currentAgent 回退查找。
+   * 非图节点 ID，非 Expert 唯一标识（id 才是）。
+   * 仅当 Expert 需要参与 task chain 或被 router 意图匹配调度时才需要设置。
+   * @see plugin.md#legacyagentkey-说明
+   */
   legacyAgentKey?: LegacyAgentKey
   /** 运行时从 promptBuilder 生成（editor/flow/page/general） */
   dynamicPrompt?: 'editor' | 'flow' | 'page' | 'general'

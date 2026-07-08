@@ -396,7 +396,7 @@ export const AgentStateAnnotation = Annotation.Root({
 /** Full state type for the AI conversation graph. */
 export type AIConversationState = typeof AgentStateAnnotation.State
 
-/** State type for Editor Agent subgraph. */
+/** State type alias (legacy name, same as AIConversationState). */
 export type EditorAgentState = typeof AgentStateAnnotation.State
 
 /** Update type for partial state updates from nodes. */
