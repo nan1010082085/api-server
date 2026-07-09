@@ -24,6 +24,7 @@ vi.mock('../../models/ApiKey.js', () => ({
 const validKeyRecord = {
   _id: 'id1',
   key: 'sk-valid',
+  name: 'test-key',
   status: 'active',
   tenantId: '000000',
   createdBy: 'user1',
@@ -115,7 +116,12 @@ describe('agentWorkflowInvoke', () => {
     it('returns record for valid active key with matching tenant', async () => {
       mockFindOne.mockResolvedValue(validKeyRecord)
       const result = await verifyApiKeyLookup('sk-valid', '000000')
-      expect(result).toEqual({ tenantId: '000000', createdBy: 'user1' })
+      expect(result).toEqual({
+        tenantId: '000000',
+        createdBy: 'user1',
+        keyId: 'id1',
+        keyName: 'test-key',
+      })
       expect(mockUpdateOne).toHaveBeenCalledWith(
         { _id: 'id1' },
         { lastUsedAt: expect.any(Date) },
@@ -132,7 +138,12 @@ describe('agentWorkflowInvoke', () => {
         expiresAt: futureDate,
       })
       const result = await verifyApiKeyLookup('sk-not-expired')
-      expect(result).toEqual({ tenantId: '000000', createdBy: 'user2' })
+      expect(result).toEqual({
+        tenantId: '000000',
+        createdBy: 'user2',
+        keyId: 'id2',
+        keyName: 'test-key',
+      })
     })
 
     it('skips tenantId check when not provided', async () => {
@@ -144,7 +155,12 @@ describe('agentWorkflowInvoke', () => {
         createdBy: 'user3',
       })
       const result = await verifyApiKeyLookup('sk-any-tenant')
-      expect(result).toEqual({ tenantId: 'tenant-x', createdBy: 'user3' })
+      expect(result).toEqual({
+        tenantId: 'tenant-x',
+        createdBy: 'user3',
+        keyId: 'id3',
+        keyName: 'test-key',
+      })
     })
 
     it('trims whitespace from key', async () => {
@@ -156,7 +172,12 @@ describe('agentWorkflowInvoke', () => {
       })
       const result = await verifyApiKeyLookup('  sk-trimmed  ')
       expect(mockFindOne).toHaveBeenCalledWith({ key: 'sk-trimmed' })
-      expect(result).toEqual({ tenantId: '000000', createdBy: 'user4' })
+      expect(result).toEqual({
+        tenantId: '000000',
+        createdBy: 'user4',
+        keyId: 'id4',
+        keyName: 'test-key',
+      })
     })
   })
 

@@ -20,6 +20,7 @@ import {
   resolveInvokeTenantId,
   logInvokeAttempt,
   verifyApiKeyLookup,
+  logInvokeApiKeyUsage,
 } from './services/agentWorkflowInvoke.js'
 import { getAgentWorkflowExecutionByInvokeKey, toExecution } from './services/agentWorkflowService.js'
 import { AgentWorkflowExecutionModel, AgentWorkflowModel } from './models/agentWorkflow.js'
@@ -53,8 +54,10 @@ router.post('/invoke/:slugOrId', async (ctx) => {
     callbackSecret?: string
   }
 
+  const startTime = Date.now()
+
   try {
-    const { execution } = await invokePublishedWorkflow({
+    const { execution, workflow, apiKeyUsed } = await invokePublishedWorkflow({
       slugOrId,
       invokeKey: readWorkflowKeyFromContext(ctx),
       apiKey: readApiKeyFromContext(ctx),
@@ -66,6 +69,17 @@ router.post('/invoke/:slugOrId', async (ctx) => {
     })
 
     logInvokeAttempt(slugOrId, true, body?.trigger ?? 'api')
+
+    if (apiKeyUsed) {
+      logInvokeApiKeyUsage(apiKeyUsed, { _id: workflow._id, name: workflow.name }, {
+        endpoint: ctx.url,
+        method: ctx.method,
+        ip: ctx.ip,
+        userAgent: ctx.get('User-Agent') || '',
+        statusCode: 202,
+        durationMs: Date.now() - startTime,
+      })
+    }
 
     ctx.status = 202
     ctx.body = {

@@ -11,6 +11,7 @@ import type { Context } from 'koa'
 import { isValidObjectId } from '../../utils/objectId.js'
 import { AgentWorkflowModel } from '../models/agentWorkflow.js'
 import { ApiKeyModel } from '../../models/ApiKey.js'
+import { KeyUsageLogModel } from '../../models/KeyUsageLog.js'
 import { startAgentWorkflowExecution } from './agentWorkflowService.js'
 import { logger } from '../../utils/logger.js'
 
@@ -79,6 +80,22 @@ export async function findPublishedWorkflowForInvoke(
   }).select('+invokeKey')
 }
 
+export interface ApiKeyLookupResult {
+  tenantId: string
+  createdBy: string
+  keyId: string
+  keyName: string
+}
+
+export interface InvokeRequestMeta {
+  endpoint: string
+  method: string
+  ip: string
+  userAgent: string
+  statusCode: number
+  durationMs: number
+}
+
 export type WorkflowInvokeTrigger = 'manual' | 'webhook' | 'chat' | 'api'
 
 export interface InvokeWorkflowOptions {
@@ -95,6 +112,12 @@ export interface InvokeWorkflowOptions {
   callbackSecret?: string
 }
 
+export interface InvokePublishedWorkflowResult {
+  workflow: NonNullable<Awaited<ReturnType<typeof findPublishedWorkflowForInvoke>>>
+  execution: NonNullable<Awaited<ReturnType<typeof startAgentWorkflowExecution>>>
+  apiKeyUsed?: ApiKeyLookupResult
+}
+
 export class WorkflowInvokeError extends Error {
   constructor(
     message: string,
@@ -106,7 +129,7 @@ export class WorkflowInvokeError extends Error {
   }
 }
 
-export async function invokePublishedWorkflow(opts: InvokeWorkflowOptions) {
+export async function invokePublishedWorkflow(opts: InvokeWorkflowOptions): Promise<InvokePublishedWorkflowResult> {
   const workflow = await findPublishedWorkflowForInvoke(opts.slugOrId, opts.tenantId)
   if (!workflow) {
     throw new WorkflowInvokeError('Workflow not found or not published', 'workflow_not_found', 404)
@@ -116,12 +139,12 @@ export async function invokePublishedWorkflow(opts: InvokeWorkflowOptions) {
     opts.ownerUserId && workflow.createdBy === opts.ownerUserId,
   )
 
+  let apiKeyUsed: ApiKeyLookupResult | undefined
+
   if (!isOwner) {
-    // Try X-Workflow-Key first
     const workflowKeyValid = verifyWorkflowInvokeKey(workflow.invokeKey, opts.invokeKey)
 
     if (!workflowKeyValid) {
-      // Fallback: try X-API-Key (sk-*)
       const tenant = opts.tenantId?.trim() || '000000'
       const apiRecord = await verifyApiKeyLookup(opts.apiKey, tenant)
       if (!apiRecord) {
@@ -131,6 +154,7 @@ export async function invokePublishedWorkflow(opts: InvokeWorkflowOptions) {
           401,
         )
       }
+      apiKeyUsed = apiRecord
     }
   }
 
@@ -149,7 +173,7 @@ export async function invokePublishedWorkflow(opts: InvokeWorkflowOptions) {
     throw new WorkflowInvokeError('Failed to start workflow', 'invoke_failed', 500)
   }
 
-  return { workflow, execution }
+  return { workflow, execution, apiKeyUsed }
 }
 
 /** Webhook 路径触发：验签 secret 与 workflow.invokeKey 对齐 */
@@ -174,7 +198,7 @@ export function verifyWebhookSignatureWithInvokeKey(
 export async function verifyApiKeyLookup(
   apiKey: string | undefined,
   tenantId?: string,
-): Promise<{ tenantId: string; createdBy: string } | null> {
+): Promise<ApiKeyLookupResult | null> {
   const key = apiKey?.trim()
   if (!key) return null
 
@@ -187,15 +211,44 @@ export async function verifyApiKeyLookup(
 
   if (!apiKeyCanExecuteWorkflow(record.permissions as string[] | undefined)) return null
 
-  // When tenantId is provided, enforce same-tenant constraint
   if (tenantId && record.tenantId !== tenantId) return null
 
-  // Async update lastUsedAt, non-blocking
   ApiKeyModel.updateOne({ _id: record._id }, { lastUsedAt: new Date() })
     .exec()
     .catch((err: unknown) => logger.warn({ msg: '[verifyApiKeyLookup] lastUsedAt update failed', err }))
 
-  return { tenantId: record.tenantId, createdBy: record.createdBy }
+  return {
+    tenantId: record.tenantId,
+    createdBy: record.createdBy,
+    keyId: String(record._id),
+    keyName: record.name,
+  }
+}
+
+/** 记录平台 Key 经 invoke 触发的使用审计（异步，不阻塞响应） */
+export function logInvokeApiKeyUsage(
+  apiKey: ApiKeyLookupResult,
+  workflow: { id?: string; _id?: unknown; name?: string },
+  meta: InvokeRequestMeta,
+): void {
+  KeyUsageLogModel.create({
+    tenantId: apiKey.tenantId,
+    keyId: apiKey.keyId,
+    keyName: apiKey.keyName,
+    workflowId: workflow.id ?? String(workflow._id ?? ''),
+    workflowName: workflow.name ?? null,
+    endpoint: meta.endpoint,
+    method: meta.method,
+    statusCode: meta.statusCode,
+    duration: meta.durationMs,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  }).catch((err: unknown) => {
+    logger.warn({
+      msg: '[workflowInvoke] key usage log failed',
+      err: err instanceof Error ? err.message : String(err),
+    })
+  })
 }
 
 export function readWorkflowKeyFromContext(ctx: Context): string | undefined {
