@@ -31,9 +31,8 @@ export function maskApiKey(key: string): string {
  * Returns a plain object so Mongoose transforms are already applied.
  */
 function maskConfigApiKey<T extends Record<string, unknown>>(config: T): T {
-  const plain = (config as { toJSON?: () => Record<string, unknown> }).toJSON
-    ? (config as { toJSON: () => Record<string, unknown> }).toJSON()
-    : { ...config }
+  const maybe = config as unknown as { toJSON?: () => Record<string, unknown> }
+  const plain = maybe.toJSON ? maybe.toJSON() : { ...config }
   if (plain.apiKey) {
     plain.apiKey = maskApiKey(plain.apiKey as string)
   }

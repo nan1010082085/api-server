@@ -23,6 +23,7 @@ import {
 } from './services/agentWorkflowInvoke.js'
 import { getAgentWorkflowExecutionByInvokeKey, toExecution } from './services/agentWorkflowService.js'
 import { AgentWorkflowExecutionModel, AgentWorkflowModel } from './models/agentWorkflow.js'
+import { logger } from '../utils/logger.js'
 
 const router = new Router({ prefix: '/api/ai/workflows' })
 

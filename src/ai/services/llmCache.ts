@@ -88,21 +88,29 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
   const { ModelConfigModel } = await import('../../models/ModelConfig.js')
 
   // If caller specified a model, try to find a matching config first
-  let dbConfig: {
+  type DbConfigLean = {
     provider: string
     apiKey: string
     baseUrl: string
     model: string
     parameters?: { temperature?: number; maxTokens?: number }
-  } | null = null
+  }
+
+  const loadDbConfig = async (filter: Record<string, unknown>): Promise<DbConfigLean | null> => {
+    const doc = await ModelConfigModel.findOne(filter).lean()
+    if (!doc || Array.isArray(doc)) return null
+    return doc as unknown as DbConfigLean
+  }
+
+  let dbConfig: DbConfigLean | null = null
 
   if (opts.model) {
-    dbConfig = await ModelConfigModel.findOne({ model: opts.model }).lean()
+    dbConfig = await loadDbConfig({ model: opts.model })
   }
 
   // Fall back to tenant default
   if (!dbConfig) {
-    dbConfig = await ModelConfigModel.findOne({ isDefault: true }).lean()
+    dbConfig = await loadDbConfig({ isDefault: true })
   }
 
   if (dbConfig) {
