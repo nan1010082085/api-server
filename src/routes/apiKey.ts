@@ -49,9 +49,12 @@ router.post('/', requireAuth, requirePermission('apikey:create'), validate(creat
 
   const user = ctx.state.user as JwtPayload
 
+  const permissions =
+    body.permissions?.length > 0 ? body.permissions : ['workflow:execute']
+
   const apiKey = await ApiKeyModel.create({
     name: body.name,
-    permissions: body.permissions,
+    permissions,
     expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
     createdBy: user.id,
     tenantId: user.tenantId,

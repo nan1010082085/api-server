@@ -6,11 +6,13 @@ import {
   verifyApiKeyLookup,
   readApiKeyFromContext,
   API_KEY_HEADER,
+  WORKFLOW_EXECUTE_PERMISSION,
 } from '../services/agentWorkflowInvoke.js'
 
 // Mock ApiKeyModel
 const mockFindOne = vi.fn()
-const mockUpdateOne = vi.fn(() => ({ exec: vi.fn() }))
+const mockExec = vi.fn().mockResolvedValue({})
+const mockUpdateOne = vi.fn(() => ({ exec: mockExec }))
 
 vi.mock('../../models/ApiKey.js', () => ({
   ApiKeyModel: {
@@ -19,9 +21,21 @@ vi.mock('../../models/ApiKey.js', () => ({
   },
 }))
 
+const validKeyRecord = {
+  _id: 'id1',
+  key: 'sk-valid',
+  status: 'active',
+  tenantId: '000000',
+  createdBy: 'user1',
+  expiresAt: null,
+  permissions: [WORKFLOW_EXECUTE_PERMISSION],
+}
+
 describe('agentWorkflowInvoke', () => {
   beforeEach(() => {
-    vi.restoreAllMocks()
+    vi.clearAllMocks()
+    mockExec.mockResolvedValue({})
+    mockUpdateOne.mockImplementation(() => ({ exec: mockExec }))
   })
 
   it('generateInvokeKey returns wf_ prefix hex', () => {
@@ -62,12 +76,9 @@ describe('agentWorkflowInvoke', () => {
 
     it('returns null when key is disabled', async () => {
       mockFindOne.mockResolvedValue({
-        _id: 'id1',
+        ...validKeyRecord,
         key: 'sk-disabled',
         status: 'disabled',
-        tenantId: '000000',
-        createdBy: 'user1',
-        expiresAt: null,
       })
       const result = await verifyApiKeyLookup('sk-disabled')
       expect(result).toBeNull()
@@ -75,11 +86,8 @@ describe('agentWorkflowInvoke', () => {
 
     it('returns null when key is expired', async () => {
       mockFindOne.mockResolvedValue({
-        _id: 'id1',
+        ...validKeyRecord,
         key: 'sk-expired',
-        status: 'active',
-        tenantId: '000000',
-        createdBy: 'user1',
         expiresAt: new Date('2020-01-01'),
       })
       const result = await verifyApiKeyLookup('sk-expired')
@@ -88,26 +96,24 @@ describe('agentWorkflowInvoke', () => {
 
     it('returns null when tenantId mismatches', async () => {
       mockFindOne.mockResolvedValue({
-        _id: 'id1',
-        key: 'sk-valid',
-        status: 'active',
+        ...validKeyRecord,
         tenantId: 'tenant-a',
-        createdBy: 'user1',
-        expiresAt: null,
       })
       const result = await verifyApiKeyLookup('sk-valid', 'tenant-b')
       expect(result).toBeNull()
     })
 
-    it('returns record for valid active key with matching tenant', async () => {
+    it('returns null when key lacks workflow:execute permission', async () => {
       mockFindOne.mockResolvedValue({
-        _id: 'id1',
-        key: 'sk-valid',
-        status: 'active',
-        tenantId: '000000',
-        createdBy: 'user1',
-        expiresAt: null,
+        ...validKeyRecord,
+        permissions: ['other:read'],
       })
+      const result = await verifyApiKeyLookup('sk-valid', '000000')
+      expect(result).toBeNull()
+    })
+
+    it('returns record for valid active key with matching tenant', async () => {
+      mockFindOne.mockResolvedValue(validKeyRecord)
       const result = await verifyApiKeyLookup('sk-valid', '000000')
       expect(result).toEqual({ tenantId: '000000', createdBy: 'user1' })
       expect(mockUpdateOne).toHaveBeenCalledWith(
@@ -119,10 +125,9 @@ describe('agentWorkflowInvoke', () => {
     it('returns record for valid active key with future expiration', async () => {
       const futureDate = new Date(Date.now() + 86400000)
       mockFindOne.mockResolvedValue({
+        ...validKeyRecord,
         _id: 'id2',
         key: 'sk-not-expired',
-        status: 'active',
-        tenantId: '000000',
         createdBy: 'user2',
         expiresAt: futureDate,
       })
@@ -132,12 +137,11 @@ describe('agentWorkflowInvoke', () => {
 
     it('skips tenantId check when not provided', async () => {
       mockFindOne.mockResolvedValue({
+        ...validKeyRecord,
         _id: 'id3',
         key: 'sk-any-tenant',
-        status: 'active',
         tenantId: 'tenant-x',
         createdBy: 'user3',
-        expiresAt: null,
       })
       const result = await verifyApiKeyLookup('sk-any-tenant')
       expect(result).toEqual({ tenantId: 'tenant-x', createdBy: 'user3' })
@@ -145,12 +149,10 @@ describe('agentWorkflowInvoke', () => {
 
     it('trims whitespace from key', async () => {
       mockFindOne.mockResolvedValue({
+        ...validKeyRecord,
         _id: 'id4',
         key: 'sk-trimmed',
-        status: 'active',
-        tenantId: '000000',
         createdBy: 'user4',
-        expiresAt: null,
       })
       const result = await verifyApiKeyLookup('  sk-trimmed  ')
       expect(mockFindOne).toHaveBeenCalledWith({ key: 'sk-trimmed' })

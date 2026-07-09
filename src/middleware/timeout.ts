@@ -4,11 +4,8 @@ const DEFAULT_TIMEOUT = 30_000 // 30 seconds
 
 export function timeoutMiddleware(ms: number = DEFAULT_TIMEOUT): Middleware {
   return async (ctx, next) => {
-    // Skip timeout for long-running SSE streams and RAG batch reindex
-    const isLongRunningStream =
-      ctx.path.includes('/open/workflow-executions/') && ctx.path.endsWith('/stream')
     const isRagBatchReindex = ctx.method === 'POST' && ctx.path === '/api/ai/rag/reindex'
-    if (isLongRunningStream || isRagBatchReindex) {
+    if (isRagBatchReindex) {
       await next()
       return
     }

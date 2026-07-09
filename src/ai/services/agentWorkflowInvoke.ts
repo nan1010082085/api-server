@@ -16,6 +16,13 @@ import { logger } from '../../utils/logger.js'
 
 export const WORKFLOW_KEY_HEADER = 'X-Workflow-Key'
 export const API_KEY_HEADER = 'X-API-Key'
+/** 平台 Key 调用 invoke 所需权限 */
+export const WORKFLOW_EXECUTE_PERMISSION = 'workflow:execute'
+
+export function apiKeyCanExecuteWorkflow(permissions: string[] | undefined): boolean {
+  if (!permissions?.length) return false
+  return permissions.includes(WORKFLOW_EXECUTE_PERMISSION) || permissions.includes('*')
+}
 
 export function generateInvokeKey(): string {
   return `wf_${randomBytes(24).toString('hex')}`
@@ -177,6 +184,8 @@ export async function verifyApiKeyLookup(
   if (record.status !== 'active') return null
 
   if (record.expiresAt && record.expiresAt.getTime() < Date.now()) return null
+
+  if (!apiKeyCanExecuteWorkflow(record.permissions as string[] | undefined)) return null
 
   // When tenantId is provided, enforce same-tenant constraint
   if (tenantId && record.tenantId !== tenantId) return null
