@@ -20,6 +20,7 @@
 import { ChatOpenAI } from '@langchain/openai'
 import { llmManager } from './llmManager.js'
 import type { LangChainModelOptions } from './llmProvider.js'
+import { getProviderDefaultBaseUrl, resolveProviderEnvApiKey } from '../../utils/modelProviderEnv.js'
 
 interface LLMOptions {
   model?: string
@@ -75,7 +76,7 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
     return {
       providerName: provider,
       apiKey: opts.userConfig.apiKey,
-      baseURL: opts.userConfig.baseURL || getDefaultBaseUrl(provider),
+      baseURL: opts.userConfig.baseURL || getProviderDefaultBaseUrl(provider),
       model: opts.userConfig.model ?? opts.model ?? 'deepseek-v4-flash',
       temperature: opts.temperature ?? 0.7,
       maxTokens: opts.maxTokens ?? 8192,
@@ -116,8 +117,8 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
   if (dbConfig) {
     return {
       providerName: dbConfig.provider,
-      apiKey: dbConfig.apiKey || (platformEnabled ? process.env.DEEPSEEK_API_KEY : '') || '',
-      baseURL: dbConfig.baseUrl || getDefaultBaseUrl(dbConfig.provider),
+      apiKey: dbConfig.apiKey || (platformEnabled ? resolveProviderEnvApiKey(dbConfig.provider) : '') || '',
+      baseURL: dbConfig.baseUrl || getProviderDefaultBaseUrl(dbConfig.provider),
       model: opts.model ?? dbConfig.model,
       temperature: opts.temperature ?? dbConfig.parameters?.temperature ?? 0.7,
       maxTokens: opts.maxTokens ?? dbConfig.parameters?.maxTokens ?? 8192,
@@ -170,13 +171,7 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
 }
 
 function getDefaultBaseUrl(provider: string): string {
-  const baseUrls: Record<string, string> = {
-    deepseek: 'https://api.deepseek.com',
-    openai: 'https://api.openai.com/v1',
-    anthropic: 'https://api.anthropic.com',
-    ollama: 'http://localhost:11434/v1',
-  }
-  return baseUrls[provider] ?? 'https://api.deepseek.com'
+  return getProviderDefaultBaseUrl(provider)
 }
 
 /**

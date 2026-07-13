@@ -8,7 +8,7 @@ const modelParametersSchema = z.object({
 
 export const createModelConfigSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or fewer'),
-  provider: z.enum(['deepseek', 'openai', 'anthropic', 'ollama']),
+  provider: z.enum(['deepseek', 'openai', 'anthropic', 'ollama', 'mimo']),
   model: z.string().min(1, 'Model is required').max(100),
   apiKey: z.string().max(500).optional().default(''),
   baseUrl: z.string().url('Invalid base URL').max(500).optional().or(z.literal('')).default(''),
@@ -18,7 +18,7 @@ export const createModelConfigSchema = z.object({
 
 export const updateModelConfigSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  provider: z.enum(['deepseek', 'openai', 'anthropic', 'ollama']).optional(),
+  provider: z.enum(['deepseek', 'openai', 'anthropic', 'ollama', 'mimo']).optional(),
   model: z.string().min(1).max(100).optional(),
   apiKey: z.string().max(500).optional(),
   baseUrl: z.string().url('Invalid base URL').max(500).optional().or(z.literal('')),

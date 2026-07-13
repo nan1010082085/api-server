@@ -1,7 +1,7 @@
 import mongoose from 'mongoose'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
-export type ModelProvider = 'deepseek' | 'openai' | 'anthropic' | 'ollama'
+export type ModelProvider = 'deepseek' | 'openai' | 'anthropic' | 'ollama' | 'mimo'
 
 export interface IModelParameters {
   temperature: number
@@ -37,7 +37,7 @@ const modelConfigSchema = new mongoose.Schema(
     provider: {
       type: String,
       required: true,
-      enum: ['deepseek', 'openai', 'anthropic', 'ollama'],
+      enum: ['deepseek', 'openai', 'anthropic', 'ollama', 'mimo'],
     },
     model: { type: String, required: true, trim: true },
     apiKey: { type: String, default: '' },

@@ -36,6 +36,7 @@ router.get('/health', async (ctx) => {
   // Also check for env vars that exist but weren't registered (e.g. invalid keys)
   const envKeys: Array<{ name: string; envVar: string }> = [
     { name: 'deepseek', envVar: 'DEEPSEEK_API_KEY' },
+    { name: 'mimo', envVar: 'MIMO_API_KEY' },
     { name: 'openai', envVar: 'OPENAI_API_KEY' },
     { name: 'claude', envVar: 'CLAUDE_API_KEY' },
   ]

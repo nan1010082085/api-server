@@ -13,7 +13,9 @@ import type { LLMProvider, ProviderConfig, RoutingStrategyName, UsageStats, LLMR
 import { DeepSeekProvider } from './deepseekProvider.js'
 import { OpenAIProvider } from './openaiProvider.js'
 import { ClaudeProvider } from './claudeProvider.js'
+import { MimoProvider } from './mimoProvider.js'
 import { LLMRouter } from './llmRouter.js'
+import { getProviderDefaultBaseUrl } from '../../utils/modelProviderEnv.js'
 
 export class LLMManager {
   private providers = new Map<string, LLMProvider>()
@@ -66,6 +68,16 @@ export class LLMManager {
         apiKey: claudeKey,
         baseURL: process.env.CLAUDE_BASE_URL || process.env.ANTHROPIC_BASE_URL,
         defaultModel: process.env.CLAUDE_MODEL,
+      }))
+    }
+
+    // Mimo（OpenAI 兼容）
+    const mimoKey = process.env.MIMO_API_KEY
+    if (mimoKey) {
+      this.providers.set('mimo', new MimoProvider({
+        apiKey: mimoKey,
+        baseURL: process.env.MIMO_BASE_URL || getProviderDefaultBaseUrl('mimo'),
+        defaultModel: process.env.MIMO_MODEL || 'mimo-v2.5',
       }))
     }
   }

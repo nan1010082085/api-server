@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
 import { createModelConfigSchema, updateModelConfigSchema, testModelConfigSchema } from '../schemas/modelConfigSchemas.js'
 import { clearLLMCache } from '../ai/services/llmCache.js'
+import { getProviderDefaultBaseUrl, resolveProviderEnvApiKey } from '../utils/modelProviderEnv.js'
 import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
@@ -51,7 +52,7 @@ router.get('/', requireAuth, async (ctx) => {
 
   const filter: Record<string, unknown> = {}
   if (search) filter.name = { $regex: escapeRegex(search as string), $options: 'i' }
-  if (provider && ['deepseek', 'openai', 'anthropic', 'ollama'].includes(provider as string)) {
+  if (provider && ['deepseek', 'openai', 'anthropic', 'ollama', 'mimo'].includes(provider as string)) {
     filter.provider = provider
   }
 
@@ -231,20 +232,25 @@ router.post('/:id/test', requireAuth, validate(testModelConfigSchema), async (ct
   }
 
   if (!config.apiKey && config.provider !== 'ollama') {
-    ctx.status = 400
-    ctx.body = { success: false, error: { message: 'API key is required for this provider.' } }
-    return
+    const envApiKey = resolveProviderEnvApiKey(config.provider)
+    if (!envApiKey) {
+      ctx.status = 400
+      ctx.body = { success: false, error: { message: 'API key is required for this provider.' } }
+      return
+    }
   }
 
+  const apiKey = config.apiKey || resolveProviderEnvApiKey(config.provider)
+
   try {
-    const baseUrl = config.baseUrl || getDefaultBaseUrl(config.provider)
+    const baseUrl = config.baseUrl || getProviderDefaultBaseUrl(config.provider)
     const testMessage = message ?? 'Hello, respond with OK'
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: config.model,
@@ -297,15 +303,5 @@ router.post('/:id/test', requireAuth, validate(testModelConfigSchema), async (ct
     }
   }
 })
-
-function getDefaultBaseUrl(provider: string): string {
-  const baseUrls: Record<string, string> = {
-    deepseek: 'https://api.deepseek.com/v1',
-    openai: 'https://api.openai.com/v1',
-    anthropic: 'https://api.anthropic.com/v1',
-    ollama: 'http://localhost:11434/v1',
-  }
-  return baseUrls[provider] ?? ''
-}
 
 export default router

@@ -21,6 +21,13 @@ async function start() {
     console.error('[seed] Business seed failed:', err instanceof Error ? err.message : String(err))
   }
 
+  try {
+    const { ensureModelConfigs } = await import('./utils/seedModelConfigs.js')
+    await ensureModelConfigs()
+  } catch (err) {
+    console.error('[seed] Model config ensure failed:', err instanceof Error ? err.message : String(err))
+  }
+
   scheduleRagStartupSync()
 
   initWebhookDispatcher()
