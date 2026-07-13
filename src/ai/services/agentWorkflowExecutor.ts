@@ -24,9 +24,11 @@ import { getDocumentWithText, reprocessDocumentFromStorage, analyzeDocumentVisio
 import { processFile, performVisionAnalysis, isImageType } from './fileService.js'
 import { extractNodeOutputError, nodeFailure } from './agentWorkflowNodeErrors.js'
 import { dispatchWorkflowCompleteCallback } from './agentWorkflowCompleteCallback.js'
+import { WorkflowNodeMetricModel } from '../models/workflowNodeMetric.js'
 import { pushWorkflowExecutionUpdate, clearWorkflowExecutionPush } from '../workflowExecutionPush.js'
 import { resolveWorkflowApiFile } from './agentWorkflowFileFetch.js'
 import { resolveWorkflowTemplate } from './agentWorkflowTemplateResolver.js'
+import { compressImage } from './imageCompress.js'
 import {
   normalizeConversationTurns,
   trimConversationTurns,
@@ -74,6 +76,11 @@ interface WorkflowGraphNode {
     fetchFilename?: string
     fetchMimetype?: string
     visionPrompt?: string
+    visionImageWidth?: number
+    visionImageQuality?: number
+    outputSource?: 'lastOutput' | 'node' | 'custom'
+    outputNodeId?: string
+    outputTemplate?: string
     memoryMode?: 'read' | 'append' | 'reset'
     memoryRole?: 'user' | 'assistant'
     messageField?: string
@@ -245,6 +252,40 @@ async function streamLLMWithGuard(
 function resolveNodeError(result: NodeRunResult): string | null {
   if (result.error?.trim()) return result.error.trim()
   return extractNodeOutputError(result.output)
+}
+
+async function recordNodeMetric(params: {
+  tenantId: string
+  workflowId: string
+  workflowName: string
+  executionId: string
+  nodeId: string
+  nodeType: string
+  nodeName: string
+  duration: number
+  success: boolean
+  error?: string
+}): Promise<void> {
+  try {
+    await WorkflowNodeMetricModel.create({
+      tenantId: params.tenantId,
+      workflowId: params.workflowId,
+      workflowName: params.workflowName,
+      nodeId: params.nodeId,
+      nodeType: params.nodeType,
+      nodeName: params.nodeName,
+      executionId: params.executionId,
+      duration: params.duration,
+      success: params.success,
+      error: params.error,
+    })
+  } catch (err) {
+    logger.warn({
+      msg: '[agentWorkflow] failed to record node metric',
+      nodeId: params.nodeId,
+      err: err instanceof Error ? err.message : String(err),
+    })
+  }
 }
 
 interface RuntimeContext {
@@ -884,6 +925,11 @@ async function runNode(
       const visionPrompt = data.visionPrompt?.trim()
         ? resolveTemplate(data.visionPrompt, ctx)
         : undefined
+      const compressOpts = {
+        maxWidth: data.visionImageWidth,
+        quality: data.visionImageQuality,
+      }
+      const needCompress = !!(compressOpts.maxWidth || compressOpts.quality)
 
       if (source === 'api') {
         try {
@@ -891,19 +937,25 @@ async function runNode(
           if (!isImageType(streamFile.mimetype)) {
             return nodeFailure(`查询接口返回的不是图片类型: ${streamFile.mimetype}`)
           }
-          const description = await performVisionAnalysis(
-            streamFile.content.toString('base64'),
-            streamFile.mimetype,
-            visionPrompt,
-          )
+          let base64 = streamFile.content.toString('base64')
+          let mimetype = streamFile.mimetype
+          let size = streamFile.content.length
+          if (needCompress) {
+            const compressed = await compressImage(streamFile.content, streamFile.mimetype, compressOpts)
+            base64 = compressed.base64
+            mimetype = compressed.mimeType
+            size = Math.round(compressed.base64.length * 0.75)
+          }
+          const description = await performVisionAnalysis(base64, mimetype, visionPrompt)
           return {
             output: {
               filename: streamFile.filename,
-              mimetype: streamFile.mimetype,
-              size: streamFile.content.length,
+              mimetype,
+              size,
               description,
               mode: 'vision' as const,
               source: 'api',
+              ...(needCompress ? { compressed: true, originalSize: streamFile.content.length } : {}),
             },
           }
         } catch (err) {
@@ -927,19 +979,25 @@ async function runNode(
         if (!isImageType(streamFile.mimetype)) {
           return nodeFailure(`上传流不是图片类型: ${streamFile.mimetype}`)
         }
-        const description = await performVisionAnalysis(
-          streamFile.content.toString('base64'),
-          streamFile.mimetype,
-          visionPrompt,
-        )
+        let base64 = streamFile.content.toString('base64')
+        let mimetype = streamFile.mimetype
+        let size = streamFile.content.length
+        if (needCompress) {
+          const compressed = await compressImage(streamFile.content, streamFile.mimetype, compressOpts)
+          base64 = compressed.base64
+          mimetype = compressed.mimeType
+          size = Math.round(compressed.base64.length * 0.75)
+        }
+        const description = await performVisionAnalysis(base64, mimetype, visionPrompt)
         return {
           output: {
             filename: streamFile.filename,
-            mimetype: streamFile.mimetype,
-            size: streamFile.content.length,
+            mimetype,
+            size,
             description,
             mode: 'vision' as const,
             source: 'stream',
+            ...(needCompress ? { compressed: true, originalSize: streamFile.content.length } : {}),
           },
         }
       }
@@ -1080,8 +1138,22 @@ async function runNode(
       }
     }
 
-    case 'end':
+    case 'end': {
+      const outputSource = data.outputSource ?? 'lastOutput'
+      if (outputSource === 'node' && data.outputNodeId?.trim()) {
+        const nodeOutput = ctx.nodeOutputs[data.outputNodeId.trim()]
+        return { output: nodeOutput ?? ctx.lastOutput }
+      }
+      if (outputSource === 'custom' && data.outputTemplate?.trim()) {
+        const resolved = resolveTemplate(data.outputTemplate, ctx)
+        try {
+          return { output: JSON.parse(resolved) }
+        } catch {
+          return { output: resolved }
+        }
+      }
       return { output: ctx.lastOutput }
+    }
 
     default:
       return { output: ctx.lastOutput }
@@ -1090,10 +1162,21 @@ async function runNode(
 
 export async function executeAgentWorkflow(params: ExecuteParams): Promise<void> {
   const { executionId, graph, input, resumeFromWaiting } = params
-  const executionDoc = leanDoc<{ triggeredBy?: unknown }>(
+  const executionDoc = leanDoc<{
+    triggeredBy?: unknown
+    tenantId?: string
+    workflowId?: unknown
+    workflowName?: string
+  }>(
     await AgentWorkflowExecutionModel.findById(executionId).lean(),
   )
   const triggeredBy = String(executionDoc?.triggeredBy ?? '')
+  const metricBase = {
+    tenantId: executionDoc?.tenantId ?? '000000',
+    workflowId: String(executionDoc?.workflowId ?? ''),
+    workflowName: executionDoc?.workflowName ?? '',
+    executionId,
+  }
   const conversationHistory = resumeFromWaiting
     ? await loadExecutionConversation(executionId)
     : await initExecutionConversation(executionId, input)
@@ -1215,6 +1298,15 @@ export async function executeAgentWorkflow(params: ExecuteParams): Promise<void>
           output: result.output,
           error: nodeError,
         })
+        void recordNodeMetric({
+          ...metricBase,
+          nodeId: node.id,
+          nodeType: node.type,
+          nodeName,
+          duration: durationMs,
+          success: false,
+          error: nodeError,
+        })
         await finishExecution(executionId, 'error', nodeError)
         return
       }
@@ -1227,6 +1319,14 @@ export async function executeAgentWorkflow(params: ExecuteParams): Promise<void>
         finishedAt,
         durationMs,
         output: result.output,
+      })
+      void recordNodeMetric({
+        ...metricBase,
+        nodeId: node.id,
+        nodeType: node.type,
+        nodeName,
+        duration: durationMs,
+        success: true,
       })
 
       if (node.type === 'end') {
@@ -1245,10 +1345,20 @@ export async function executeAgentWorkflow(params: ExecuteParams): Promise<void>
       const cancelled = errorMessage === '用户手动停止'
         || await isExecutionCancelled(executionId)
       logger.error({ msg: '[agentWorkflow] node error', nodeId: node.id, err })
+      const catchDuration = finishedAt.getTime() - startedAt.getTime()
       await updateNodeRecord(executionId, node.id, {
         status: cancelled ? 'skipped' : 'error',
         finishedAt,
-        durationMs: finishedAt.getTime() - startedAt.getTime(),
+        durationMs: catchDuration,
+        error: errorMessage,
+      })
+      void recordNodeMetric({
+        ...metricBase,
+        nodeId: node.id,
+        nodeType: node.type,
+        nodeName,
+        duration: catchDuration,
+        success: false,
         error: errorMessage,
       })
       await finishExecution(executionId, cancelled ? 'cancelled' : 'error', errorMessage)

@@ -9,6 +9,7 @@
 
 import Router from '@koa/router'
 import { AgentMetricModel } from './models/monitor.js'
+import { WorkflowNodeMetricModel } from './models/workflowNodeMetric.js'
 import { authMiddleware } from '../middleware/auth.js'
 
 const router = new Router({ prefix: '/api/ai/monitor' })
@@ -331,6 +332,266 @@ router.get('/summary', async (ctx) => {
       totalTokens: 0,
       slowCalls: 0,
       periodHours: hoursNum,
+    },
+  }
+})
+
+// ────────────────────────────────────────────
+// GET /api/ai/monitor/node-stats — Node-level aggregate stats
+// ────────────────────────────────────────────
+
+/**
+ * Returns per-node performance statistics across workflow executions.
+ * Answers: which node is slowest, which fails most, execution count per node.
+ *
+ * Query params:
+ * - workflowId: Filter by workflow ID
+ * - nodeType: Filter by node type (llm, tool, agent-intent, etc.)
+ * - startDate: Start date for time range filter (ISO 8601)
+ * - endDate: End date for time range filter (ISO 8601)
+ * - sortBy: Sort field — 'avgDuration' | 'failureRate' | 'totalRuns' (default: 'avgDuration')
+ * - sortOrder: 'asc' | 'desc' (default: 'desc')
+ */
+router.get('/node-stats', async (ctx) => {
+  const { workflowId, nodeType, startDate, endDate, sortBy, sortOrder } = ctx.query as {
+    workflowId?: string
+    nodeType?: string
+    startDate?: string
+    endDate?: string
+    sortBy?: string
+    sortOrder?: string
+  }
+
+  const matchStage: Record<string, unknown> = {}
+  if (workflowId) matchStage.workflowId = workflowId
+  if (nodeType) matchStage.nodeType = nodeType
+  if (startDate || endDate) {
+    matchStage.createdAt = {}
+    if (startDate) (matchStage.createdAt as Record<string, Date>).$gte = new Date(startDate)
+    if (endDate) (matchStage.createdAt as Record<string, Date>).$lte = new Date(endDate)
+  }
+
+  // Cap input to prevent $push memory explosion on high-cardinality groups
+  const MAX_DOCS_FOR_STATS = 50_000
+
+  const stats = await WorkflowNodeMetricModel.aggregate([
+    { $match: matchStage },
+    { $limit: MAX_DOCS_FOR_STATS },
+    {
+      $group: {
+        _id: {
+          nodeId: '$nodeId',
+          nodeType: '$nodeType',
+          nodeName: '$nodeName',
+        },
+        avgDuration: { $avg: '$duration' },
+        minDuration: { $min: '$duration' },
+        maxDuration: { $max: '$duration' },
+        durations: { $push: '$duration' },
+        totalRuns: { $sum: 1 },
+        successCount: { $sum: { $cond: ['$success', 1, 0] } },
+        failureCount: { $sum: { $cond: ['$success', 0, 1] } },
+        failureRate: { $avg: { $cond: ['$success', 0, 1] } },
+        recentErrors: {
+          $push: {
+            $cond: [
+              { $not: ['$success'] },
+              { error: '$error', at: '$createdAt' },
+              '$$REMOVE',
+            ],
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        nodeId: '$_id.nodeId',
+        nodeType: '$_id.nodeType',
+        nodeName: '$_id.nodeName',
+        avgDuration: { $round: ['$avgDuration', 2] },
+        minDuration: 1,
+        maxDuration: 1,
+        p95Duration: {
+          $let: {
+            vars: {
+              sorted: { $sortArray: { input: '$durations', sortBy: 1 } },
+              count: { $size: '$durations' },
+            },
+            in: {
+              $arrayElemAt: [
+                '$$sorted',
+                { $subtract: [{ $ceil: { $multiply: ['$$count', 0.95] } }, 1] },
+              ],
+            },
+          },
+        },
+        totalRuns: 1,
+        successCount: 1,
+        failureCount: 1,
+        failureRate: { $round: [{ $multiply: ['$failureRate', 100] }, 2] },
+        recentErrors: { $slice: ['$recentErrors', -5] },
+      },
+    },
+    {
+      $sort: (() => {
+        const field = sortBy === 'failureRate' ? 'failureRate'
+          : sortBy === 'totalRuns' ? 'totalRuns'
+            : 'avgDuration'
+        const dir = sortOrder === 'asc' ? 1 : -1
+        return { [field]: dir } as Record<string, 1 | -1>
+      })(),
+    },
+  ])
+
+  ctx.body = {
+    success: true,
+    data: stats,
+  }
+})
+
+// ────────────────────────────────────────────
+// GET /api/ai/monitor/node-stats/recent — Recent node metric records
+// ────────────────────────────────────────────
+
+/**
+ * Returns raw node metric records (non-aggregated).
+ *
+ * Query params:
+ * - workflowId: Filter by workflow ID
+ * - nodeId: Filter by node ID
+ * - success: Filter by success status (true/false)
+ * - page: Page number (default 1)
+ * - pageSize: Items per page (default 20, max 100)
+ */
+router.get('/node-stats/recent', async (ctx) => {
+  const { workflowId, nodeId, success: successStr, page: pageStr, pageSize: pageSizeStr } = ctx.query as {
+    workflowId?: string
+    nodeId?: string
+    success?: string
+    page?: string
+    pageSize?: string
+  }
+
+  const page = Math.max(1, parseInt(pageStr as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(pageSizeStr as string) || 20))
+
+  const filter: Record<string, unknown> = {}
+  if (workflowId) filter.workflowId = workflowId
+  if (nodeId) filter.nodeId = nodeId
+  if (successStr !== undefined) filter.success = successStr === 'true'
+
+  const [records, total] = await Promise.all([
+    WorkflowNodeMetricModel.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean(),
+    WorkflowNodeMetricModel.countDocuments(filter),
+  ])
+
+  ctx.body = {
+    success: true,
+    data: {
+      items: records.map((r) => ({
+        id: r._id,
+        workflowId: r.workflowId,
+        workflowName: r.workflowName,
+        nodeId: r.nodeId,
+        nodeType: r.nodeType,
+        nodeName: r.nodeName,
+        executionId: r.executionId,
+        duration: r.duration,
+        success: r.success,
+        error: r.error,
+        createdAt: r.createdAt,
+      })),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  }
+})
+
+// ────────────────────────────────────────────
+// GET /api/ai/monitor/node-stats/timeline — Node metrics over time
+// ────────────────────────────────────────────
+
+/**
+ * Returns node metrics grouped by time bucket for trend analysis.
+ *
+ * Query params:
+ * - workflowId: Filter by workflow ID (required)
+ * - nodeId: Filter by specific node ID
+ * - hours: Time window in hours (default 24)
+ * - bucketMinutes: Bucket size in minutes (default 60)
+ */
+router.get('/node-stats/timeline', async (ctx) => {
+  const { workflowId, nodeId, hours: hoursStr, bucketMinutes: bucketStr } = ctx.query as {
+    workflowId?: string
+    nodeId?: string
+    hours?: string
+    bucketMinutes?: string
+  }
+
+  if (!workflowId) {
+    ctx.status = 400
+    ctx.body = { success: false, error: 'workflowId is required' }
+    return
+  }
+
+  const hoursNum = parseInt(hoursStr ?? '24', 10) || 24
+  const bucketMs = (parseInt(bucketStr ?? '60', 10) || 60) * 60 * 1000
+  const since = new Date(Date.now() - hoursNum * 60 * 60 * 1000)
+
+  const matchStage: Record<string, unknown> = {
+    workflowId,
+    createdAt: { $gte: since },
+  }
+  if (nodeId) matchStage.nodeId = nodeId
+
+  const timeline = await WorkflowNodeMetricModel.aggregate([
+    { $match: matchStage },
+    {
+      $group: {
+        _id: {
+          bucket: {
+            $toDate: {
+              $multiply: [
+                { $floor: { $divide: [{ $toLong: '$createdAt' }, bucketMs] } },
+                bucketMs,
+              ],
+            },
+          },
+          nodeId: '$nodeId',
+          nodeType: '$nodeType',
+        },
+        avgDuration: { $avg: '$duration' },
+        totalRuns: { $sum: 1 },
+        failureCount: { $sum: { $cond: ['$success', 0, 1] } },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        bucket: '$_id.bucket',
+        nodeId: '$_id.nodeId',
+        nodeType: '$_id.nodeType',
+        avgDuration: { $round: ['$avgDuration', 2] },
+        totalRuns: 1,
+        failureCount: 1,
+      },
+    },
+    { $sort: { bucket: 1, nodeId: 1 } },
+  ])
+
+  ctx.body = {
+    success: true,
+    data: {
+      timeline,
+      periodHours: hoursNum,
+      bucketMinutes: bucketMs / 60000,
     },
   }
 })
