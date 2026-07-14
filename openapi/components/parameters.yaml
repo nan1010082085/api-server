@@ -1,0 +1,72 @@
+# 公共参数定义
+parameters:
+  # 分页参数
+  PageParam:
+    name: page
+    in: query
+    description: 页码
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+
+  PageSizeParam:
+    name: pageSize
+    in: query
+    description: 每页数量
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 20
+
+  # 搜索参数
+  KeywordParam:
+    name: keyword
+    in: query
+    description: 搜索关键词
+    schema:
+      type: string
+
+  SearchParam:
+    name: search
+    in: query
+    description: 搜索关键词
+    schema:
+      type: string
+
+  # ID 参数
+  ObjectIdParam:
+    name: id
+    in: path
+    required: true
+    description: "资源 ID（MongoDB ObjectId，24 位十六进制字符串）"
+    schema:
+      type: string
+      pattern: "^[0-9a-fA-F]{24}$"
+      example: "685faa86c32e0839b4f9de6f"
+
+  # 租户参数
+  TenantIdHeader:
+    name: X-Tenant-Id
+    in: header
+    description: 租户 ID
+    schema:
+      type: string
+      default: "000000"
+
+  # 排序参数
+  SortParam:
+    name: sort
+    in: query
+    description: "排序字段和方向（如: createdAt:desc）"
+    schema:
+      type: string
+
+  # 状态参数
+  StatusParam:
+    name: status
+    in: query
+    description: 状态筛选
+    schema:
+      type: string

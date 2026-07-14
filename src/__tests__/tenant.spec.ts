@@ -177,7 +177,7 @@ describe('Tenant CRUD API', () => {
   })
 
   it('GET /api/tenants/:id returns 404 for missing tenant', async () => {
-    const { status, body } = await request('GET', '/api/tenants/00000000-0000-0000-0000-000000000000')
+    const { status, body } = await request('GET', '/api/tenants/aaaaaaaaaaaaaaaaaaaaaaaa')
 
     expect(status).toBe(404)
     expect(body.success).toBe(false)
@@ -221,14 +221,14 @@ describe('Tenant CRUD API', () => {
     await TenantModel.create({ name: 'A', code: 'code-a' })
     const tenantB = await TenantModel.create({ name: 'B', code: 'code-b' })
 
-    const { status, body } = await request('PUT', `/api/tenants/${idB}`, { code: 'code-a' })
+    const { status, body } = await request('PUT', `/api/tenants/${tenantB._id}`, { code: 'code-a' })
 
     expect(status).toBe(409)
     expect(body.error.message).toContain('already exists')
   })
 
   it('PUT /api/tenants/:id returns 404 for missing tenant', async () => {
-    const { status } = await request('PUT', '/api/tenants/00000000-0000-0000-0000-000000000000', { name: 'Nope' })
+    const { status } = await request('PUT', '/api/tenants/aaaaaaaaaaaaaaaaaaaaaaaa', { name: 'Nope' })
 
     expect(status).toBe(404)
   })
@@ -249,7 +249,7 @@ describe('Tenant CRUD API', () => {
   })
 
   it('DELETE /api/tenants/:id returns 404 for missing tenant', async () => {
-    const { status } = await request('DELETE', '/api/tenants/00000000-0000-0000-0000-000000000000')
+    const { status } = await request('DELETE', '/api/tenants/aaaaaaaaaaaaaaaaaaaaaaaa')
 
     expect(status).toBe(404)
   })
@@ -271,10 +271,10 @@ describe('Tenant CRUD API', () => {
 
 describe('Default Tenant Initialization', () => {
   it('initDefaultTenant creates default tenant when none exists', async () => {
-    const { initDefaultTenant, DEFAULT_TENANT_ID } = await import('../utils/initDefaultTenant.js')
+    const { initDefaultTenant } = await import('../utils/initDefaultTenant.js')
     await initDefaultTenant()
 
-    const tenant = await TenantModel.findById(DEFAULT_TENANT_ID)
+    const tenant = await TenantModel.findOne({ code: 'default' })
     expect(tenant).not.toBeNull()
     expect(tenant!.code).toBe('default')
     expect(tenant!.name).toBe('默认租户')
@@ -343,7 +343,7 @@ describe('Tenant Switch API', () => {
 
   it('POST /api/tenants/switch returns 404 for non-existent tenant', async () => {
     const { status, body } = await request('POST', '/api/tenants/switch', {
-      tenantId: '00000000-0000-0000-0000-000000000000',
+      tenantId: 'aaaaaaaaaaaaaaaaaaaaaaaa',
     })
 
     expect(status).toBe(404)

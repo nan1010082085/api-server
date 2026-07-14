@@ -1,0 +1,1298 @@
+openapi: "3.0.3"
+
+info:
+  title: 平台扩展 API
+  description: |
+    平台扩展模块，包含：
+    - API Key 管理
+    - Key 使用量统计
+    - 凭证管理
+    - LLM 模型配置
+    - Webhook
+    - 统计分析
+    - 仪表盘
+    - MCP 协议
+    - AI 运行时决策
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3001
+    description: 开发环境
+
+tags:
+  - name: api-keys
+    description: API Key 管理
+  - name: key-usage
+    description: Key 使用量统计
+  - name: credentials
+    description: 凭证管理
+  - name: model-configs
+    description: LLM 模型配置
+  - name: webhooks
+    description: Webhook
+  - name: stats
+    description: 统计分析
+  - name: dashboard
+    description: 仪表盘
+  - name: mcp
+    description: MCP 协议
+  - name: ai-runtime
+    description: AI 运行时决策
+
+paths:
+  # ==================== API Key 管理 ====================
+  /api/keys:
+    get:
+      tags: [api-keys]
+      summary: API Key 列表
+      description: |
+        API Key 列表（脱敏）。
+        非管理员只返回自己创建的 Key，管理员返回租户内全部。
+      operationId: listApiKeys
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - name: status
+          in: query
+          description: "状态筛选"
+          schema:
+            type: string
+            enum: ["active", "disabled"]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [api-keys]
+      summary: 创建 API Key
+      description: 创建 API Key（返回完整 key，仅此一次）。`createdBy` 自动设为当前用户。
+      operationId: createApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: "Key 名称"
+                  example: "生产环境 Key"
+                description:
+                  type: string
+                  description: "描述"
+                expiresIn:
+                  type: integer
+                  description: "过期时间（天），不填则永不过期"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      key:
+                        type: string
+                        description: "完整的 API Key（仅此一次返回）"
+                        example: "sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+                      prefix:
+                        type: string
+                        example: "sk-xxxx"
+                      createdAt:
+                        type: string
+                        format: date-time
+
+  /api/keys/{id}:
+    get:
+      tags: [api-keys]
+      summary: 获取 API Key 详情
+      description: 非管理员只能查看自己的 Key，否则返回 404
+      operationId: getApiKey
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/ApiKeyInfo"
+        "404":
+          description: 不存在或无权限
+    delete:
+      tags: [api-keys]
+      summary: 删除 API Key
+      description: 非管理员只能删除自己的 Key，否则返回 404
+      operationId: deleteApiKey
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/keys/{id}/status:
+    patch:
+      tags: [api-keys]
+      summary: 启用/禁用
+      description: 非管理员只能修改自己的 Key，否则返回 404
+      operationId: updateApiKeyStatus
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: ["active", "disabled"]
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== Key 使用量统计 ====================
+  /api/key-usage/stats:
+    get:
+      tags: [key-usage]
+      summary: 使用量统计
+      operationId: getKeyUsageStats
+      parameters:
+        - name: keyId
+          in: query
+          description: "API Key ID"
+          schema:
+            type: string
+        - name: days
+          in: query
+          description: "统计天数"
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      totalCalls:
+                        type: integer
+                      successCalls:
+                        type: integer
+                      failedCalls:
+                        type: integer
+                      byDay:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                              format: date
+                            calls:
+                              type: integer
+
+  /api/key-usage/history:
+    get:
+      tags: [key-usage]
+      summary: 使用历史
+      operationId: getKeyUsageHistory
+      parameters:
+        - name: keyId
+          in: query
+          description: "API Key ID"
+          schema:
+            type: string
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  # ==================== 凭证管理 ====================
+  /api/credentials:
+    get:
+      tags: [credentials]
+      summary: 凭证列表
+      description: 凭证列表（不含 data）
+      operationId: listCredentials
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [credentials]
+      summary: 创建凭证
+      description: 创建凭证（data 加密存储）
+      operationId: createCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - type
+                - data
+              properties:
+                name:
+                  type: string
+                  example: "GitHub Token"
+                type:
+                  type: string
+                  enum: ["api_key", "oauth", "basic_auth", "custom"]
+                  example: "api_key"
+                description:
+                  type: string
+                data:
+                  type: object
+                  description: "凭证数据（将被加密存储）"
+                  example:
+                    token: "ghp_xxxxxxxxxxxx"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/credentials/{id}:
+    get:
+      tags: [credentials]
+      summary: 获取凭证详情
+      description: 获取凭证详情（data 解密）
+      operationId: getCredential
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      type:
+                        type: string
+                      description:
+                        type: string
+                      data:
+                        type: object
+                        description: "解密后的凭证数据"
+                      createdAt:
+                        type: string
+                        format: date-time
+    put:
+      tags: [credentials]
+      summary: 更新凭证
+      operationId: updateCredential
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                data:
+                  type: object
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [credentials]
+      summary: 删除凭证
+      operationId: deleteCredential
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== LLM 模型配置 ====================
+  /api/model-configs:
+    get:
+      tags: [model-configs]
+      summary: 模型配置列表
+      description: 模型配置列表。`apiKey` 字段脱敏返回（保留前4后4，中间 `****`）
+      operationId: listModelConfigs
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ModelConfig"
+                      total:
+                        type: integer
+    post:
+      tags: [model-configs]
+      summary: 创建模型配置
+      description: 创建模型配置。响应返回完整 `apiKey`（一次性回显）
+      operationId: createModelConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - provider
+                - model
+              properties:
+                name:
+                  type: string
+                  example: "GPT-4o"
+                provider:
+                  type: string
+                  enum: ["openai", "anthropic", "deepseek", "custom"]
+                  example: "openai"
+                model:
+                  type: string
+                  example: "gpt-4o"
+                apiKey:
+                  type: string
+                  description: "API Key"
+                baseUrl:
+                  type: string
+                  format: uri
+                  description: "自定义 Base URL（可选）"
+                description:
+                  type: string
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/ModelConfig"
+
+  /api/model-configs/{id}:
+    get:
+      tags: [model-configs]
+      summary: 获取模型配置
+      description: 获取模型配置。`apiKey` 字段脱敏返回
+      operationId: getModelConfig
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/ModelConfig"
+    put:
+      tags: [model-configs]
+      summary: 更新模型配置
+      description: 更新模型配置。响应返回完整 `apiKey`（一次性回显）
+      operationId: updateModelConfig
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                provider:
+                  type: string
+                model:
+                  type: string
+                apiKey:
+                  type: string
+                baseUrl:
+                  type: string
+                  format: uri
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: ["active", "disabled"]
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/ModelConfig"
+    delete:
+      tags: [model-configs]
+      summary: 删除模型配置
+      operationId: deleteModelConfig
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/model-configs/{id}/test:
+    post:
+      tags: [model-configs]
+      summary: 测试模型连通性
+      operationId: testModelConfig
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 测试成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: ["ok", "error"]
+                      message:
+                        type: string
+                      latency:
+                        type: number
+                        description: "响应时间（ms）"
+
+  # ==================== Webhook ====================
+  /api/webhooks:
+    get:
+      tags: [webhooks]
+      summary: Webhook 列表
+      operationId: listWebhooks
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [webhooks]
+      summary: 创建 Webhook
+      operationId: createWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - url
+                - events
+              properties:
+                name:
+                  type: string
+                  example: "流程触发"
+                url:
+                  type: string
+                  format: uri
+                  example: "https://example.com/hook"
+                events:
+                  type: array
+                  items:
+                    type: string
+                  example: ["schema.published", "flow.completed"]
+                secret:
+                  type: string
+                  description: "HMAC 签名密钥"
+                flowDefinitionId:
+                  type: string
+                  description: "关联的流程定义 ID"
+                bodyMapping:
+                  type: object
+                  description: "请求体映射"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/WebhookInfo"
+
+  /api/webhooks/{id}:
+    get:
+      tags: [webhooks]
+      summary: 获取 Webhook
+      operationId: getWebhook
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/WebhookInfo"
+    put:
+      tags: [webhooks]
+      summary: 更新 Webhook
+      operationId: updateWebhook
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+                secret:
+                  type: string
+                flowDefinitionId:
+                  type: string
+                bodyMapping:
+                  type: object
+                status:
+                  type: string
+                  enum: ["active", "disabled"]
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [webhooks]
+      summary: 删除 Webhook
+      operationId: deleteWebhook
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/webhooks/{id}/logs:
+    get:
+      tags: [webhooks]
+      summary: 发送日志
+      operationId: getWebhookLogs
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /api/webhooks/{webhookId}/trigger:
+    post:
+      tags: [webhooks]
+      summary: 外部触发 Webhook
+      description: 外部触发 Webhook（HMAC 签名验证 → 启动流程实例）
+      operationId: triggerWebhook
+      security: []
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Webhook-Signature
+          in: header
+          required: true
+          description: "HMAC 签名"
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: 触发成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      instanceId:
+                        type: string
+                        description: "启动的流程实例 ID"
+    get:
+      tags: [webhooks]
+      summary: GET 方式触发
+      description: GET 方式触发（查询参数 HMAC 验证）
+      operationId: triggerWebhookGet
+      security: []
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: timestamp
+          in: query
+          required: true
+          description: "时间戳"
+          schema:
+            type: string
+        - name: signature
+          in: query
+          required: true
+          description: "HMAC 签名"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 触发成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      instanceId:
+                        type: string
+
+  # ==================== 统计分析 ====================
+  /api/stats:
+    get:
+      tags: [stats]
+      summary: 平台聚合统计
+      description: 平台聚合统计（Schema/Flow/AI/活动）
+      operationId: getPlatformStats
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      schemas:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          published:
+                            type: integer
+                      flows:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          published:
+                            type: integer
+                          activeInstances:
+                            type: integer
+                      ai:
+                        type: object
+                        properties:
+                          totalConversations:
+                            type: integer
+                          totalMessages:
+                            type: integer
+                      users:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          activeToday:
+                            type: integer
+
+  /api/stats/conversations:
+    get:
+      tags: [stats]
+      summary: 最近 AI 对话列表
+      operationId: getRecentConversations
+      parameters:
+        - name: limit
+          in: query
+          description: "返回数量"
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        messageCount:
+                          type: integer
+                        lastMessageAt:
+                          type: string
+                          format: date-time
+
+  # ==================== 仪表盘 ====================
+  /api/dashboard/stats:
+    get:
+      tags: [dashboard]
+      summary: 仪表盘统计
+      operationId: getDashboardStats
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      todayVisits:
+                        type: integer
+                      todaySubmissions:
+                        type: integer
+                      pendingTasks:
+                        type: integer
+                      activeFlows:
+                        type: integer
+                      recentActivities:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            type:
+                              type: string
+                            description:
+                              type: string
+                            createdAt:
+                              type: string
+                              format: date-time
+
+  # ==================== MCP 协议 ====================
+  /api/mcp:
+    get:
+      tags: [mcp]
+      summary: MCP SSE 传输
+      description: "MCP (Model Context Protocol) SSE 传输端点"
+      operationId: mcpSse
+      parameters:
+        - name: transport
+          in: query
+          description: "传输类型"
+          schema:
+            type: string
+            enum: ["sse"]
+            default: "sse"
+      responses:
+        "200":
+          description: SSE 流
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  # ==================== AI 运行时决策 ====================
+  /api/ai/runtime/recommend-assignee:
+    post:
+      tags: [ai-runtime]
+      summary: 智能指派人推荐
+      description: 智能指派人推荐（当前: 规则引擎）
+      operationId: recommendAssignee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - nodeId
+                - instanceId
+              properties:
+                nodeId:
+                  type: string
+                  description: "节点 ID"
+                instanceId:
+                  type: string
+                  description: "流程实例 ID"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      assignees:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            userId:
+                              type: string
+                            userName:
+                              type: string
+                            score:
+                              type: number
+                              description: "推荐分数"
+
+  /api/ai/runtime/evaluate-condition:
+    post:
+      tags: [ai-runtime]
+      summary: 条件表达式评估
+      description: 条件表达式评估（当前: 返回固定 true）
+      operationId: evaluateCondition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - condition
+              properties:
+                condition:
+                  type: string
+                  description: "条件表达式"
+                context:
+                  type: object
+                  description: "评估上下文"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      result:
+                        type: boolean
+                        description: "评估结果"
+
+  /api/ai/runtime/predict-outcome:
+    post:
+      tags: [ai-runtime]
+      summary: 预测审批结果
+      description: 预测审批结果（当前: 返回默认值）
+      operationId: predictOutcome
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instanceId
+              properties:
+                instanceId:
+                  type: string
+                  description: "流程实例 ID"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      prediction:
+                        type: string
+                        enum: ["approve", "reject", "uncertain"]
+                      confidence:
+                        type: number
+                        description: "置信度（0-1）"
+                      factors:
+                        type: array
+                        items:
+                          type: string
+                        description: "影响因素"
+
+  /api/ai/runtime/detect-anomaly:
+    post:
+      tags: [ai-runtime]
+      summary: 异常检测
+      description: 异常检测（当前: 超时检测）
+      operationId: detectAnomaly
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instanceId
+              properties:
+                instanceId:
+                  type: string
+                  description: "流程实例 ID"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      hasAnomaly:
+                        type: boolean
+                      anomalies:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              enum: ["timeout", "stuck", "unusual_pattern"]
+                            message:
+                              type: string
+                            severity:
+                              type: string
+                              enum: ["low", "medium", "high"]
+
+  /api/ai/runtime/approval-suggestion:
+    post:
+      tags: [ai-runtime]
+      summary: 审批建议
+      description: 审批建议（当前: 返回通用建议）
+      operationId: getApprovalSuggestion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - taskId
+              properties:
+                taskId:
+                  type: string
+                  description: "任务 ID"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      suggestion:
+                        type: string
+                        description: "审批建议"
+                      reasons:
+                        type: array
+                        items:
+                          type: string
+                        description: "建议原因"
+
+components:
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+    PaginatedResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+            total:
+              type: integer
+            page:
+              type: integer
+            pageSize:
+              type: integer
+            totalPages:
+              type: integer
+    ApiKeyInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        prefix:
+          type: string
+        status:
+          type: string
+          enum: ["active", "disabled"]
+        lastUsedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    WebhookInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: ["active", "disabled"]
+        createdAt:
+          type: string
+          format: date-time
+    ModelConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        apiKey:
+          type: string
+          description: "脱敏后的 API Key"
+        baseUrl:
+          type: string
+          format: uri
+        status:
+          type: string
+          enum: ["active", "disabled"]
+        createdAt:
+          type: string
+          format: date-time
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: 页码
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      name: pageSize
+      in: query
+      description: 每页数量
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    ObjectIdParam:
+      name: id
+      in: path
+      required: true
+      description: "资源 ID（MongoDB ObjectId）"
+      schema:
+        type: string
+        pattern: "^[0-9a-fA-F]{24}$"
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key

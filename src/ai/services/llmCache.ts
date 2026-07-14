@@ -1,20 +1,23 @@
 /**
  * LLM Instance Cache — ChatOpenAI singleton per model.
  *
- * Resolves LLM configuration with user config > DB > platform env priority:
+ * Resolves LLM configuration with a 4-tier priority:
  *
  *   1. Request user config — per-request apiKey/provider/baseURL (highest priority)
- *   2. Tenant default — ModelConfig from DB (isDefault=true, auto-scoped by tenantPlugin)
+ *   2. Tenant default — Provider + Model two-level query from DB (new schema)
+ *      — falls back to legacy ModelConfig when Provider/Model tables are empty
  *   3. Platform demo  — LLMManager providers from env vars (skipped when PLATFORM_LLM_ENABLED=false)
  *   4. Env fallback   — direct DEEPSEEK_API_KEY (skipped when PLATFORM_LLM_ENABLED=false)
  *
  * Cache key includes provider name and source to avoid collisions.
  *
  * Usage:
- *   import { getLLM } from '../services/llmCache.js'
- *   const model = getLLM()           // default provider from llmManager
+ *   import { getLLM, listProviders, listModels } from '../services/llmCache.js'
+ *   const model = getLLM()           // default provider from DB or llmManager
  *   const fast = getLLM({ temperature: 0 })  // cached separately
  *   const custom = getLLM({ userConfig: { apiKey: 'user-key' } })  // user's own key
+ *   const providers = await listProviders()  // all active providers
+ *   const models = await listModels()        // all active models (optionally filtered)
  */
 
 import { ChatOpenAI } from '@langchain/openai'
@@ -44,8 +47,8 @@ interface ResolvedConfig {
   model: string
   temperature: number
   maxTokens: number
-  /** Where the config was resolved from: 'db' = tenant ModelConfig, 'env' = LLMManager/env vars. */
-  source: 'db' | 'env'
+  /** Where the config was resolved from: 'models' = Provider+Model tables, 'db' = legacy ModelConfig, 'env' = LLMManager/env vars. */
+  source: 'models' | 'db' | 'env'
 }
 
 const llmCache = new Map<string, ChatOpenAI>()
@@ -60,11 +63,11 @@ function cacheKey(providerName: string, opts: LLMOptions, resolved: ResolvedConf
  *
  * Priority (user config > DB > platform env):
  * 1. Request user config — per-request apiKey/provider/baseURL (highest priority)
- * 2. Tenant default — ModelConfig with isDefault=true from DB (auto-scoped by tenantPlugin)
+ * 2. Tenant default — Provider + Model two-level query (new schema); falls back to legacy ModelConfig
  * 3. Platform demo — LLMManager providers registered from env vars (skipped when PLATFORM_LLM_ENABLED=false)
  * 4. Environment variable fallback — direct DEEPSEEK_API_KEY (skipped when PLATFORM_LLM_ENABLED=false)
  *
- * When PLATFORM_LLM_ENABLED=false, only DB-stored ModelConfig records and user config are used.
+ * When PLATFORM_LLM_ENABLED=false, only DB-stored records and user config are used.
  */
 async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
   const platformEnabled = process.env.PLATFORM_LLM_ENABLED !== 'false'
@@ -80,15 +83,85 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
       model: opts.userConfig.model ?? opts.model ?? 'deepseek-v4-flash',
       temperature: opts.temperature ?? 0.7,
       maxTokens: opts.maxTokens ?? 8192,
-      source: 'db', // treat as DB-like (direct construction, not via LLMManager)
+      source: 'models',
     }
   }
 
-  // ── Tier 2: Tenant default from DB ──
+  // ── Tier 2: Tenant default from DB (Provider + Model two-level) ──
   // tenantPlugin auto-scopes queries to the current tenant via AsyncLocalStorage.
+  const { ProviderModel } = await import('../../models/Provider.js')
+  const { ModelModel } = await import('../../models/Model.js')
+
+  type JoinedConfig = {
+    providerName: string
+    apiKey: string
+    baseURL: string
+    model: string
+    parameters?: { temperature?: number; maxTokens?: number }
+  }
+
+  type RawDoc = Record<string, unknown>
+
+  /**
+   * Join a Model document with its Provider to produce a complete config.
+   * Returns null if the Provider is missing or inactive.
+   */
+  const joinModelWithProvider = async (modelDoc: RawDoc | null): Promise<JoinedConfig | null> => {
+    if (!modelDoc || Array.isArray(modelDoc)) return null
+    const providerId = modelDoc.providerId
+    if (!providerId) return null
+    const provider: RawDoc | null = await ProviderModel.findById(providerId).lean() as RawDoc | null
+    if (!provider || Array.isArray(provider)) return null
+    if (provider.isActive === false) return null
+    return {
+      providerName: provider.type as string,
+      apiKey: (provider.apiKey as string) || '',
+      baseURL: (provider.baseUrl as string) || '',
+      model: modelDoc.model as string,
+      parameters: modelDoc.parameters as { temperature?: number; maxTokens?: number } | undefined,
+    }
+  }
+
+  let joined: JoinedConfig | null = null
+
+  // 2a. Try new Provider + Model tables first
+  try {
+    // If caller specified a model name, try to find a matching active Model
+    if (opts.model) {
+      const modelDoc = await ModelModel.findOne({ model: opts.model, isActive: true }).lean() as RawDoc | null
+      joined = await joinModelWithProvider(modelDoc)
+    }
+
+    // Fall back to tenant default Model
+    if (!joined) {
+      const defaultModel = await ModelModel.findOne({ isDefault: true, isActive: true }).lean() as RawDoc | null
+      joined = await joinModelWithProvider(defaultModel)
+    }
+
+    // Fall back to any active Model if no default set
+    if (!joined) {
+      const anyModel = await ModelModel.findOne({ isActive: true }).lean() as RawDoc | null
+      joined = await joinModelWithProvider(anyModel)
+    }
+  } catch {
+    // Provider/Model collections may not exist yet — fall through to legacy
+  }
+
+  if (joined) {
+    return {
+      providerName: joined.providerName,
+      apiKey: joined.apiKey || (platformEnabled ? resolveProviderEnvApiKey(joined.providerName) : '') || '',
+      baseURL: joined.baseURL || getProviderDefaultBaseUrl(joined.providerName),
+      model: opts.model ?? joined.model,
+      temperature: opts.temperature ?? joined.parameters?.temperature ?? 0.7,
+      maxTokens: opts.maxTokens ?? joined.parameters?.maxTokens ?? 8192,
+      source: 'models',
+    }
+  }
+
+  // 2b. Fallback: legacy ModelConfig table (backward compatibility)
   const { ModelConfigModel } = await import('../../models/ModelConfig.js')
 
-  // If caller specified a model, try to find a matching config first
   type DbConfigLean = {
     provider: string
     apiKey: string
@@ -98,7 +171,7 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
   }
 
   const loadDbConfig = async (filter: Record<string, unknown>): Promise<DbConfigLean | null> => {
-    const doc = await ModelConfigModel.findOne(filter).lean()
+    const doc = await ModelConfigModel.findOne(filter).lean() as Record<string, unknown> | null
     if (!doc || Array.isArray(doc)) return null
     return doc as unknown as DbConfigLean
   }
@@ -164,9 +237,9 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
   throw new Error(
     platformEnabled
       ? 'No LLM provider configured. '
-        + 'Create a ModelConfig in Settings > Model, or set DEEPSEEK_API_KEY environment variable.'
-      : 'PLATFORM_LLM_ENABLED is false and no ModelConfig found in database. '
-        + 'Create a ModelConfig in Settings > Model to enable LLM features.',
+        + 'Create a Model in Settings > Model, or set DEEPSEEK_API_KEY environment variable.'
+      : 'PLATFORM_LLM_ENABLED is false and no Model found in database. '
+        + 'Create a Model in Settings > Model to enable LLM features.',
   )
 }
 
@@ -188,7 +261,7 @@ export async function getLLM(opts: LLMOptions = {}): Promise<ChatOpenAI> {
   const key = cacheKey(resolved.providerName, opts, resolved)
 
   if (!llmCache.has(key)) {
-    // DB config uses its own credentials — always construct directly.
+    // DB-stored configs (models/db) use their own credentials — construct directly.
     // Only use LLMManager's createLangChainModel when config came from env.
     if (resolved.source === 'env') {
       try {
@@ -252,5 +325,73 @@ export function getCurrentProvider(): { name: string; defaultModel: string } | n
     return { name: provider.name, defaultModel: provider.defaultModel }
   } catch {
     return null
+  }
+}
+
+// ────────────────────────────────────────────
+// Provider + Model listing (for API consumers)
+// ────────────────────────────────────────────
+
+export interface ProviderListItem {
+  id: string
+  name: string
+  type: string
+  baseUrl: string
+  isActive: boolean
+}
+
+export interface ModelListItem {
+  id: string
+  name: string
+  providerId: string
+  model: string
+  parameters: { temperature: number; maxTokens: number; topP: number }
+  isDefault: boolean
+  isActive: boolean
+}
+
+/**
+ * List all active Providers from DB.
+ * Scoped to the current tenant via tenantPlugin.
+ * Returns an empty array when the Provider collection doesn't exist yet.
+ */
+export async function listProviders(): Promise<ProviderListItem[]> {
+  try {
+    const { ProviderModel } = await import('../../models/Provider.js')
+    const docs = await ProviderModel.find({ isActive: true }).lean() as Record<string, unknown>[]
+    return docs.map((doc) => ({
+      id: String(doc._id),
+      name: doc.name as string,
+      type: doc.type as string,
+      baseUrl: doc.baseUrl as string,
+      isActive: doc.isActive as boolean,
+    }))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * List active Models from DB, optionally filtered by providerId.
+ * Scoped to the current tenant via tenantPlugin.
+ * Returns an empty array when the Model collection doesn't exist yet.
+ */
+export async function listModels(providerId?: string): Promise<ModelListItem[]> {
+  try {
+    const { ModelModel } = await import('../../models/Model.js')
+    const filter: Record<string, unknown> = { isActive: true }
+    if (providerId) filter.providerId = providerId
+    const docs = await ModelModel.find(filter).lean() as Record<string, unknown>[]
+    return docs.map((doc) => ({
+      id: String(doc._id),
+      name: doc.name as string,
+      providerId: String(doc.providerId),
+      model: doc.model as string,
+      parameters: (doc.parameters as ModelListItem['parameters']) ?? { temperature: 0.7, maxTokens: 4096, topP: 1 },
+      isDefault: doc.isDefault as boolean,
+      isActive: doc.isActive as boolean,
+    }))
+  } catch {
+    return []
   }
 }

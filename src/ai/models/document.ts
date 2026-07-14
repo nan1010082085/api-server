@@ -26,6 +26,7 @@ export type DocumentExtractionMethod =
   | 'docx'
   | 'doc'
   | 'csv'
+  | 'xlsx'
   | 'ofd'
   | 'txt'
   | 'empty'
@@ -87,7 +88,7 @@ const documentSchema = new mongoose.Schema(
     storagePath: { type: String, default: null },
     extractionMethod: {
       type: String,
-      enum: ['ocr', 'pdf', 'docx', 'doc', 'csv', 'ofd', 'txt', 'empty'],
+      enum: ['ocr', 'pdf', 'docx', 'doc', 'csv', 'xlsx', 'ofd', 'txt', 'empty'],
       default: null,
     },
     uploadedBy: { type: String, required: true, index: true },

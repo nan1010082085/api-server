@@ -2,25 +2,87 @@
  * RAG Management Routes.
  *
  * Provides administrative endpoints for the RAG knowledge base:
- * - POST   /api/ai/rag/reindex       — Batch rebuild all schema embeddings
- * - GET    /api/ai/rag/status         — Index status and statistics
- * - DELETE /api/ai/rag/:schemaId      — Delete a single schema's embedding
+ * - POST   /api/ai/rag/upload            — Upload a document and index it
+ * - POST   /api/ai/rag/reindex           — Batch rebuild all schema embeddings
+ * - GET    /api/ai/rag/status            — Index status and statistics
+ * - DELETE /api/ai/rag/:schemaId         — Delete a single schema's embedding
  * - POST   /api/ai/rag/reindex/:schemaId — Re-index a single schema
  */
 
 import Router from '@koa/router'
-import { reindexAll, indexSchema } from './services/ragService.js'
+import multer from '@koa/multer'
+import { reindexAll, indexSchema, indexDocument } from './services/ragService.js'
 import { isEmbeddingConfigured } from './services/embeddingService.js'
+import { createDocumentFromUpload } from './services/documentService.js'
 import { FormSchemaModel } from '../models/FormSchema.js'
 import { SchemaEmbeddingModel } from '../models/SchemaEmbedding.js'
 import { FlowDefinitionModel } from '../flow-models/FlowDefinition.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { logger } from '../utils/logger.js'
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+})
+
 const router = new Router({ prefix: '/api/ai/rag' })
 
 // All RAG routes require authentication
 router.use(authMiddleware())
+
+function getUserId(ctx: { state: { user?: { id?: string; userId?: string } } }): string {
+  return ctx.state.user?.id ?? ctx.state.user?.userId ?? 'anonymous'
+}
+
+function getTenantId(ctx: { state: { user?: { tenantId?: string }; tenantId?: string } }): string {
+  return ctx.state.user?.tenantId ?? ctx.state.tenantId ?? '000000'
+}
+
+// ────────────────────────────────────────────
+// POST /api/ai/rag/upload — Upload document and index to RAG
+// ────────────────────────────────────────────
+
+router.post('/upload', upload.single('file'), async (ctx) => {
+  const file = ctx.file
+  if (!file) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'file is required' } }
+    return
+  }
+
+  try {
+    const docResult = await createDocumentFromUpload(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+      getUserId(ctx),
+      getTenantId(ctx),
+    )
+
+    const indexResult = await indexDocument(docResult.id)
+
+    logger.info({
+      msg: 'rag:upload:indexed',
+      documentId: docResult.id,
+      filename: file.originalname,
+      action: indexResult.action,
+    })
+
+    ctx.body = {
+      success: true,
+      data: {
+        documentId: docResult.id,
+        filename: docResult.filename,
+        action: indexResult.action,
+      },
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error({ msg: 'rag:upload:error', error: message })
+    ctx.status = 400
+    ctx.body = { success: false, error: { message } }
+  }
+})
 
 // ────────────────────────────────────────────
 // POST /api/ai/rag/reindex — Batch rebuild all embeddings

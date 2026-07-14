@@ -6,7 +6,7 @@
  */
 
 import { getClient, buildMessages, parseStructuredOutput, withRetry } from '../graph/agentBase.js'
-import { buildEditorSystemPrompt } from '@schema-platform/ai-shared/promptBuilder'
+import { buildEditorSystemPrompt } from '@schema-platform/platform-shared/ai/promptBuilder'
 import { getMetadata } from './toolHandlers.js'
 
 // ────────────────────────────────────────────

@@ -76,8 +76,8 @@ vi.mock('../NotificationService.js', () => ({
   },
 }))
 
-vi.mock('@schema-platform/flow-shared', async () => {
-  const actual = await vi.importActual<typeof import('@schema-platform/flow-shared')>('@schema-platform/flow-shared')
+vi.mock('@/shared/flow', async () => {
+  const actual = await vi.importActual<typeof import('@/shared/flow')>('@/shared/flow')
   return {
     ...actual,
     parseBpmnGraph: vi.fn(),
@@ -91,7 +91,7 @@ import { FlowVersionModel } from '../../flow-models/FlowVersion.js'
 import { FlowDefinitionModel } from '../../flow-models/FlowDefinition.js'
 import { TaskInstanceModel } from '../../flow-models/TaskInstance.js'
 import { notificationService } from '../NotificationService.js'
-import { parseBpmnGraph, BpmnElementType } from '@schema-platform/flow-shared'
+import { parseBpmnGraph, BpmnElementType } from '@/shared/flow'
 
 function mockInstance(overrides: Record<string, unknown> = {}) {
   return {

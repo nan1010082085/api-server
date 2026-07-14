@@ -15,22 +15,23 @@
 
 import { StateGraph, END, START, BaseCheckpointSaver } from '@langchain/langgraph'
 import { ToolNode } from '@langchain/langgraph/prebuilt'
-import { AIMessage, AIMessageChunk, SystemMessage, HumanMessage, ToolMessage } from '@langchain/core/messages'
+import { AIMessage, AIMessageChunk, ToolMessage } from '@langchain/core/messages'
 import { AgentStateAnnotation } from './state.js'
+import type { RequirementAnalysis as StateRequirementAnalysis, TaskPlan, TaskPlanStep as StateTaskPlanStep } from './state.js'
 import { pluginExpertAgentNode } from './pluginExpertAgent.js'
 import { sessionForAgent } from './resolveGraphExpert.js'
-import { getAllToolsSync, getToolsByNames } from '../tools/registry.js'
+import { getAllToolsSync, getToolSync } from '../tools/registry.js'
 import { checkpointer } from './checkpointer.js'
 import { getLLM } from '../services/llmCache.js'
 import { getModelForTask, resolveUserModel } from './agentBase.js'
-import { callLLMWithFallback } from './agentErrorHandler.js'
 import { extractAgentContext } from './contextCarrier.js'
-import { ROUTER_SYSTEM_PROMPT } from '@schema-platform/ai-shared/promptBuilder'
 import { logger } from '../../utils/logger.js'
-import { requirementAnalyzerNode, routeAfterRequirementAnalyzer } from './requirementAnalyzer.js'
+import { routeAfterRequirementAnalyzer } from './requirementAnalyzer.js'
 import { requirementConfirmNode } from './requirementConfirm.js'
-import { taskPlannerNode, routeAfterTaskPlanner } from './taskPlanner.js'
-import { resolveRoutedExpert, expertToLegacyAgentKey } from '../plugins/resolveRouterExpert.js'
+import { routeAfterTaskPlanner } from './taskPlanner.js'
+import { resolveIntent, analyzeRequirement, planTasks, generateSummaryText, routeCollaboration } from '../runtime/index.js'
+import type { RequirementAnalysis as RuntimeRequirementAnalysis } from '../runtime/index.js'
+import { getPluginRegistry } from '../plugins/index.js'
 
 // ────────────────────────────────────────────
 // Tool nodes（带错误兜底）
@@ -136,97 +137,45 @@ async function routerNode(
     }
   }
 
-  if (state.context.source === 'editor' || state.context.source === 'flow' || state.context.source === 'page') {
-    const agent = state.context.source
-    console.log(`[router] 显式模式 source=${agent}, 路由到 pluginExpert`)
-    return {
-      session: sessionForAgent(
-        { ...state.session, nodeExecutionCount: nextCount },
-        agent,
-      ),
-      task: { ...state.task, type: 'generate_simple' },
-      tools: { ...state.tools, needsTool: true },
-    }
-  }
-
+  // 任务链进行中（graph-specific state management）
   if (state.task.chain.length > 0) {
     console.log(`[router] 任务链进行中 step=${state.task.currentStepIndex}/${state.task.chain.length}, 路由到 taskChain`)
     return { session: { ...state.session, nodeExecutionCount: nextCount } }
   }
 
-  // v2: standalone — 多意图仍用显式规则，单意图走插件中心 routing
+  // 通过 runtime 纯函数解析意图
   const lastContent = state.messages[state.messages.length - 1]?.content
-  const lower = (typeof lastContent === 'string' ? lastContent : '').toLowerCase()
-  const isFlow = /流程|审批|节点|bpmn|workflow|开始|结束/.test(lower)
-  const isPage = /列表|统计|详情|仪表盘|dashboard|搜索列表|数据表格/.test(lower)
-  const isForm = /表单|表|输入|填写|编辑/.test(lower)
-  const isGeneral = /你好|你是谁|能做什么|帮助|介绍/.test(lower)
+  const userMessage = typeof lastContent === 'string' ? lastContent : ''
 
-  // 多意图检测：同时包含页面相关和表单/流程相关关键词时，创建 chain
-  if (isPage && (isForm || isFlow)) {
-    console.log(`[router] 多意图检测 -> chain (page + ${isForm ? 'form' : 'flow'})`)
-    const chain = isForm
-      ? [
-          { agent: 'page' as const, description: '生成搜索列表页面', status: 'pending' as const },
-          { agent: 'editor' as const, description: '生成新增/编辑表单', status: 'pending' as const },
-        ]
-      : [
-          { agent: 'page' as const, description: '生成业务页面', status: 'pending' as const },
-          { agent: 'flow' as const, description: '生成审批流程', status: 'pending' as const },
-        ]
+  const registry = getPluginRegistry()
+  const intent = await resolveIntent(
+    { message: userMessage, contextSource: state.context.source },
+    { registry },
+  )
+
+  console.log(`[router] ${intent.routeReason}`)
+
+  // 多意图链
+  if (intent.chainPreview && intent.chainPreview.length > 1) {
+    const AGENT_DESCRIPTIONS: Record<string, string> = {
+      page: '生成页面',
+      editor: '生成表单',
+      flow: '生成流程',
+    }
+    const chain = intent.chainPreview.map((agent) => ({
+      agent: agent as 'editor' | 'flow' | 'page',
+      description: AGENT_DESCRIPTIONS[agent] ?? `生成 ${agent}`,
+      status: 'pending' as const,
+    }))
     return {
-      session: sessionForAgent(state.session, chain[0].agent),
+      session: sessionForAgent(state.session, intent.legacyAgentKey, intent.expertId),
       task: { ...state.task, type: 'generate_simple', chain, currentStepIndex: 0 },
       tools: { ...state.tools, needsTool: true },
     }
   }
 
-  const routed = resolveRoutedExpert({
-    text: lower,
-    contextSource: state.context.source,
-  })
-  const routedKey = routed ? expertToLegacyAgentKey(routed) : null
-  if (routed) {
-    if (routedKey && routedKey !== 'general') {
-      console.log(`[router] pluginRegistry match -> ${routedKey} (${routed.id})`)
-      return {
-        session: sessionForAgent(
-          { ...state.session, nodeExecutionCount: nextCount },
-          routedKey,
-          routed.id,
-        ),
-        task: {
-          ...state.task,
-          type: 'generate_simple',
-          chain: [{
-            agent: routedKey as 'editor' | 'flow' | 'page',
-            description: routed.label,
-            status: 'pending' as const,
-          }],
-          currentStepIndex: 0,
-        },
-        tools: { ...state.tools, needsTool: true },
-      }
-    }
-    console.log(`[router] pluginRegistry custom expert -> ${routed.id}`)
-    return {
-      session: sessionForAgent(
-        { ...state.session, nodeExecutionCount: nextCount },
-        'general',
-        routed.id,
-      ),
-      task: {
-        ...state.task,
-        type: 'generate_simple',
-        chain: [{ agent: 'page' as const, description: routed.label, status: 'pending' }],
-        currentStepIndex: 0,
-      },
-      tools: { ...state.tools, needsTool: true },
-    }
-  }
-
-  if (isGeneral) {
-    console.log(`[router] 通用问候 -> platform.general`)
+  // 通用问候 / 兜底
+  if (intent.routeReason === 'general greeting' || intent.routeReason.startsWith('fallback')) {
     return {
       session: sessionForAgent(state.session, 'general'),
       task: { ...state.task, type: 'general' },
@@ -234,11 +183,24 @@ async function routerNode(
     }
   }
 
-  console.log(`[router] 交给 requirementAnalyzer 深度分析`)
+  // 专家匹配（显式模式 / 插件中心）
   return {
-    session: sessionForAgent(state.session, 'general'),
-    task: { ...state.task, type: 'general' },
-    tools: { ...state.tools, needsTool: false },
+    session: sessionForAgent(
+      { ...state.session, nodeExecutionCount: nextCount },
+      intent.legacyAgentKey,
+      intent.expertId,
+    ),
+    task: {
+      ...state.task,
+      type: 'generate_simple',
+      chain: [{
+        agent: intent.legacyAgentKey as 'editor' | 'flow' | 'page',
+        description: intent.routeReason,
+        status: 'pending' as const,
+      }],
+      currentStepIndex: 0,
+    },
+    tools: { ...state.tools, needsTool: true },
   }
 }
 
@@ -364,10 +326,6 @@ async function taskChainNode(
 // Summarizer node
 // ────────────────────────────────────────────
 
-const SUMMARIZER_SYSTEM_PROMPT = `你是 schema-platform 的 AI 助手。你的任务是对专家智能体的执行结果进行总结。
-
-请以助手身份回答，简洁明了，突出重点，给出后续建议。`
-
 async function summarizerNode(
   state: typeof AgentStateAnnotation.State,
 ): Promise<Partial<typeof AgentStateAnnotation.State>> {
@@ -379,50 +337,247 @@ async function summarizerNode(
     ? (typeof lastUserMessage.content === 'string' ? lastUserMessage.content : JSON.stringify(lastUserMessage.content))
     : '你好'
 
-  const taskResults = state.task.chain
+  const steps = state.task.chain
     .filter((step) => step.status === 'done')
-    .map((step) => `✅ ${step.agent} 专家：${step.description}`)
-    .join('\n')
+    .map((step) => ({
+      description: `${step.agent} 专家：${step.description}`,
+      output: '',
+      status: step.status,
+    }))
 
-  const model = await getLLM({
-    model: resolveUserModel(state.interaction.preferences, getModelForTask('analyze')),
-    temperature: 0.7,
-    maxTokens: 2048,
-  })
+  const model = resolveUserModel(state.interaction.preferences, getModelForTask('analyze'))
 
-  const prompt = `${SUMMARIZER_SYSTEM_PROMPT}
-
-## 用户需求
-${userContent}
-
-## 执行结果
-${taskResults || '无'}
-
-请以助手身份总结执行结果，并给出后续建议。`
-
-  // 降级内容：LLM 失败时直接返回任务列表
-  const fallbackContent = `## 执行完成\n\n${taskResults || '无执行结果'}\n\n如需进一步调整，请继续描述需求。`
-
-  const result = await callLLMWithFallback('summarizer', async () => {
-    const stream = await model.stream([
-      new SystemMessage(prompt),
-      new HumanMessage(userContent),
-    ])
-
-    let content = ''
-    for await (const chunk of stream) {
-      const chunkContent = typeof chunk.content === 'string' ? chunk.content : ''
-      if (chunkContent) content += chunkContent
-    }
-
-    return new AIMessage({ content })
-  }, fallbackContent)
-
-  const response = result instanceof AIMessage ? result : new AIMessage({ content: fallbackContent })
+  const content = await generateSummaryText(
+    { steps, userMessage: userContent, model },
+    {
+      getLLM: async (opts) => {
+        const llm = await getLLM(opts)
+        return { stream: (msgs: unknown[]) => llm.stream(msgs as any) as any }
+      },
+    },
+  )
 
   return {
-    messages: [response],
+    messages: [new AIMessage({ content })],
     session: sessionForAgent(state.session, 'general'),
+  }
+}
+
+// ────────────────────────────────────────────
+// Requirement Analyzer node — runtime wrapper
+// ────────────────────────────────────────────
+
+function runtimeToStateAnalysis(rt: RuntimeRequirementAnalysis): StateRequirementAnalysis {
+  const entities: StateRequirementAnalysis['entities'] = {}
+  for (const e of rt.entities) {
+    const key = e.type === 'form' ? 'forms' : e.type === 'flow' ? 'flows' : 'pages'
+    if (!entities[key]) entities[key] = []
+    entities[key].push({ name: e.value })
+  }
+
+  return {
+    intent: rt.intent as StateRequirementAnalysis['intent'],
+    type: rt.recommendedExperts.length > 1 ? 'mixed'
+      : rt.recommendedExperts[0] === 'editor' ? 'form'
+        : rt.recommendedExperts[0] === 'flow' ? 'flow'
+          : rt.recommendedExperts[0] === 'page' ? 'page'
+            : 'general',
+    complexity: rt.completeness >= 80 ? 'simple' : rt.completeness >= 60 ? 'medium' : 'complex',
+    entities,
+    completeness: { score: rt.completeness, missing: [], assumptions: [] },
+    confirmQuestions: rt.confirmQuestions.map((q, i) => ({
+      id: `q${i + 1}`,
+      question: q,
+      required: true,
+    })),
+    suggestedChain: rt.recommendedExperts.map((expert, i) => ({
+      agent: expert as 'editor' | 'flow' | 'page',
+      description: `由 ${expert} 专家处理`,
+      priority: i + 1,
+      dependencies: [],
+    })),
+  }
+}
+
+const RAG_TOOL_NAME = 'rag__search'
+
+async function requirementAnalyzerNode(
+  state: typeof AgentStateAnnotation.State,
+): Promise<Partial<typeof AgentStateAnnotation.State>> {
+  const lastHumanMessage = [...state.messages]
+    .reverse()
+    .find((m) => m.constructor.name === 'HumanMessage')
+  const userContent = lastHumanMessage
+    ? (typeof lastHumanMessage.content === 'string' ? lastHumanMessage.content : JSON.stringify(lastHumanMessage.content))
+    : ''
+
+  if (!userContent) {
+    logger.warn({ msg: '[requirementAnalyzer] No user content found' })
+    return {
+      requirement: { analysis: null, userConfirmations: {}, needsConfirmation: false, status: 'pending' },
+    }
+  }
+
+  const model = resolveUserModel(state.interaction.preferences, getModelForTask('analyze'))
+
+  const result = await analyzeRequirement(
+    {
+      message: userContent,
+      contextSource: state.context.source,
+      model,
+    },
+    {
+      getLLM: async (opts) => {
+        const llm = await getLLM(opts)
+        return {
+          invoke: async (msgs: unknown[]) => {
+            const result = await llm.invoke(msgs as any)
+            return {
+              content: typeof result.content === 'string' ? result.content : '',
+              tool_calls: result.tool_calls as Array<{ id: string; name: string; args: Record<string, unknown> }> | undefined,
+            }
+          },
+        }
+      },
+      ragSearch: async (query: string, limit?: number) => {
+        const ragTool = getToolSync(RAG_TOOL_NAME) as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> } | undefined
+        if (!ragTool) return ''
+        const res = await ragTool.invoke({ query, limit: limit ?? 5 })
+        return typeof res === 'string' ? res : ''
+      },
+      callTool: async (name: string, args: Record<string, unknown>) => {
+        const tool = getToolSync(name) as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> } | undefined
+        if (!tool) throw new Error(`Tool not found: ${name}`)
+        const res = await tool.invoke(args)
+        return typeof res === 'string' ? res : JSON.stringify(res)
+      },
+    },
+  )
+
+  if (!result) {
+    logger.warn({ msg: '[requirementAnalyzer] Analysis returned null' })
+    return {
+      requirement: { analysis: null, userConfirmations: {}, needsConfirmation: false, status: 'pending' },
+    }
+  }
+
+  const analysis = runtimeToStateAnalysis(result)
+  const needsConfirmation = analysis.complexity !== 'simple' || analysis.completeness.score < 80
+
+  logger.info({
+    msg: '[requirementAnalyzer] Analysis complete',
+    intent: analysis.intent,
+    type: analysis.type,
+    complexity: analysis.complexity,
+    completeness: analysis.completeness.score,
+    needsConfirmation,
+  })
+
+  return {
+    requirement: { analysis, userConfirmations: {}, needsConfirmation, status: 'analyzed' },
+  }
+}
+
+// ────────────────────────────────────────────
+// Task Planner node — runtime wrapper
+// ────────────────────────────────────────────
+
+async function taskPlannerNode(
+  state: typeof AgentStateAnnotation.State,
+): Promise<Partial<typeof AgentStateAnnotation.State>> {
+  const { requirement, context } = state
+
+  logger.info({
+    msg: '[taskPlanner] Planning tasks',
+    hasAnalysis: !!requirement.analysis,
+    source: context.source,
+  })
+
+  // 显式模式：简单计划
+  if (context.source !== 'standalone') {
+    const agent = context.source
+    const plan: TaskPlan = {
+      chain: [{
+        id: 'step-1',
+        agent,
+        description: `生成${agent === 'editor' ? '表单' : agent === 'flow' ? '流程' : '页面'}`,
+        inputs: {},
+        outputs: {},
+        dependencies: [],
+        priority: 1,
+        status: 'pending',
+      }],
+      strategy: { mode: 'sequential', retryPolicy: 'simple', timeout: 300000 },
+      contextFlow: [],
+    }
+    return {
+      taskPlan: { plan, currentStepId: 'step-1', executionLog: [] },
+      task: {
+        ...state.task,
+        type: 'planned',
+        chain: plan.chain.map((s) => ({ agent: s.agent, description: s.description, status: 'pending' as const })),
+        currentStepIndex: 0,
+      },
+    }
+  }
+
+  const model = resolveUserModel(state.interaction.preferences, getModelForTask('analyze'))
+  const lastHumanMessage = [...state.messages].reverse().find((m) => m.constructor.name === 'HumanMessage')
+  const userContent = lastHumanMessage
+    ? (typeof lastHumanMessage.content === 'string' ? lastHumanMessage.content : JSON.stringify(lastHumanMessage.content))
+    : ''
+
+  const result = await planTasks(
+    {
+      message: userContent,
+      requirementAnalysis: requirement.analysis ? {
+        intent: requirement.analysis.intent,
+        type: requirement.analysis.type,
+        complexity: requirement.analysis.complexity,
+        entities: requirement.analysis.entities,
+        suggestedChain: requirement.analysis.suggestedChain,
+      } : undefined,
+      model,
+    },
+    {
+      getLLM: async (opts) => {
+        const llm = await getLLM(opts)
+        return { stream: (msgs: unknown[]) => llm.stream(msgs as any) as any }
+      },
+    },
+  )
+
+  const chain: StateTaskPlanStep[] = result.chain.map((step, i) => ({
+    id: step.id || `step-${i + 1}`,
+    agent: (step.legacyAgentKey ?? 'editor') as 'editor' | 'flow' | 'page',
+    description: step.description,
+    inputs: {},
+    outputs: {},
+    dependencies: [],
+    priority: i + 1,
+    status: 'pending' as const,
+  }))
+
+  const plan: TaskPlan = {
+    chain,
+    strategy: { mode: (result.strategy as TaskPlan['strategy']['mode']) ?? 'sequential', retryPolicy: 'simple', timeout: 300000 },
+    contextFlow: [],
+  }
+
+  logger.info({
+    msg: '[taskPlanner] Plan generated',
+    steps: chain.length,
+    strategy: result.strategy,
+  })
+
+  return {
+    taskPlan: { plan, currentStepId: chain[0]?.id ?? null, executionLog: [] },
+    task: {
+      ...state.task,
+      type: 'planned',
+      chain: chain.map((s) => ({ agent: s.agent, description: s.description, status: 'pending' as const })),
+      currentStepIndex: 0,
+    },
   }
 }
 
@@ -493,47 +648,77 @@ async function afterToolsNode(
     }
   }
 
+  // 从消息中提取工具调用，供 routeCollaboration 使用
+  const toolResults: Array<{ toolName: string; output: any }> = []
   for (let i = state.messages.length - 1; i >= 0; i--) {
     const msg = state.messages[i]
     if (msg instanceof AIMessage && msg.tool_calls && msg.tool_calls.length > 0) {
-      const collaborationCall = msg.tool_calls.find(
-        (tc) => tc.name === 'request_collaboration'
-      )
-
-      if (collaborationCall) {
-        const targetAgent = collaborationCall.args.targetAgent as string
-        if (targetAgent === 'editor' || targetAgent === 'flow' || targetAgent === 'page') {
-          // Extract context from the current agent before handing off to collaboration
-          const agentContext = extractAgentContext(state)
-          const updatedChain = [...state.task.chain]
-          if (agentContext && updatedChain[state.task.currentStepIndex]) {
-            updatedChain[state.task.currentStepIndex] = {
-              ...updatedChain[state.task.currentStepIndex],
-              context: agentContext as unknown as Record<string, unknown>,
-            }
-          }
-
-          return {
-            session: { ...state.session, nodeExecutionCount: nextNodeCount },
-            tools: { ...state.tools, toolIterationCount: state.tools.toolIterationCount + 1 },
-            task: { ...state.task, chain: updatedChain },
-            interaction: {
-              ...state.interaction,
-              collaborationRequest: {
-                targetAgent: targetAgent as 'editor' | 'flow' | 'page',
-                description: collaborationCall.args.description as string,
-                context: collaborationCall.args.context as Record<string, unknown> | undefined,
-                conversationId: state.session.conversationId,
-              },
-            },
-          }
-        }
+      for (const tc of msg.tool_calls) {
+        toolResults.push({ toolName: tc.name, output: tc.args })
       }
       break
     }
   }
 
-  // Extract context for the current task chain step (for downstream agents)
+  // 构建 routeCollaboration 所需的 taskChain 和 collaborationHistory
+  const taskChain = state.task.chain.length > 0
+    ? {
+        steps: state.task.chain.map((step, i) => ({
+          id: String(i),
+          description: step.description,
+          expertId: step.agent,
+          status: step.status,
+        })),
+        currentStepIndex: state.task.currentStepIndex,
+      }
+    : undefined
+
+  const collaborationHistory = state.interaction.collaborationHistory.map((h) => ({
+    fromExpertId: h.from,
+    toExpertId: h.to,
+    reason: '',
+    timestamp: new Date(h.timestamp),
+  }))
+
+  // 通过 runtime 纯函数检测协作请求
+  const collabResult = routeCollaboration({
+    toolResults,
+    currentExpertId: state.session.currentExpertId ?? state.session.currentAgent,
+    taskChain,
+    collaborationHistory,
+  })
+
+  // 检测到有效协作请求
+  if (collabResult.next === 'expert' && collabResult.collaborationRequest) {
+    const { targetExpert, reason, context } = collabResult.collaborationRequest
+
+    // Extract context from the current agent before collaboration handoff
+    const agentContext = extractAgentContext(state)
+    const updatedChain = [...state.task.chain]
+    if (agentContext && updatedChain[state.task.currentStepIndex]) {
+      updatedChain[state.task.currentStepIndex] = {
+        ...updatedChain[state.task.currentStepIndex],
+        context: agentContext as unknown as Record<string, unknown>,
+      }
+    }
+
+    return {
+      session: { ...state.session, nodeExecutionCount: nextNodeCount },
+      tools: { ...state.tools, toolIterationCount: state.tools.toolIterationCount + 1 },
+      task: { ...state.task, chain: updatedChain },
+      interaction: {
+        ...state.interaction,
+        collaborationRequest: {
+          targetAgent: targetExpert as 'editor' | 'flow' | 'page',
+          description: reason,
+          context: context as Record<string, unknown> | undefined,
+          conversationId: state.session.conversationId,
+        },
+      },
+    }
+  }
+
+  // 无协作请求：提取当前步骤上下文
   const agentContext = extractAgentContext(state)
   const updatedChain = [...state.task.chain]
   if (agentContext && updatedChain[state.task.currentStepIndex]) {

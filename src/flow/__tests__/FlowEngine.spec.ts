@@ -13,8 +13,8 @@
  * @vitest-environment node
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { BpmnElementType } from '@schema-platform/flow-shared'
-import type { FlowGraph, FlowNodeData, FlowEdgeData } from '@schema-platform/flow-shared'
+import { BpmnElementType } from '@/shared/flow'
+import type { FlowGraph, FlowNodeData, FlowEdgeData } from '@/shared/flow'
 
 // ── Mock all Mongoose models (vi.hoisted ensures they exist before vi.mock runs) ──
 
@@ -160,6 +160,7 @@ vi.mock('../../services/dataUpdateEngine.js', () => ({
 
 // Import after mocks are set up
 import { FlowEngine } from '../../flow-services/FlowEngine.js'
+import { executeDataUpdateRules as mockExecuteDataUpdateRules } from '../../services/dataUpdateEngine.js'
 
 // ── Helper factories ──
 
@@ -1481,10 +1482,7 @@ describe('FlowEngine', () => {
     })
 
     it('executes dataUpdate service when serviceConfig.type is dataUpdate', async () => {
-      const mockExecuteDataUpdateRules = vi.fn().mockResolvedValue({ submissionId: 'sub1', rulesApplied: 1 })
-      vi.doMock('../../services/dataUpdateEngine.js', () => ({
-        executeDataUpdateRules: mockExecuteDataUpdateRules,
-      }))
+      vi.mocked(mockExecuteDataUpdateRules).mockResolvedValue({ submissionId: 'sub1', rulesApplied: 1 })
 
       const graph: FlowGraph = {
         nodes: [

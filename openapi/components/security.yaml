@@ -1,0 +1,23 @@
+# 认证方案定义
+securitySchemes:
+  bearerAuth:
+    type: http
+    scheme: bearer
+    bearerFormat: JWT
+    description: "JWT Token 认证，通过登录接口获取"
+
+  apiKeyAuth:
+    type: apiKey
+    in: header
+    name: X-API-Key
+    description: "API Key 认证，通过 POST /api/keys 创建"
+
+  workflowKeyAuth:
+    type: apiKey
+    in: header
+    name: X-Workflow-Key
+    description: "Workflow 专用 Key，格式 wf_...，发布 workflow 时生成"
+
+# 全局安全要求
+defaultSecurity:
+  - bearerAuth: []

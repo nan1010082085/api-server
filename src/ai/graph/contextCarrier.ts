@@ -12,7 +12,7 @@
  * 3. 下游 Agent 的 buildContextMessage 中注入 context 摘要
  */
 
-import { normalizeToolName, isSchemaWidgetValidateTool, isFlowWriteOrValidateTool } from '@schema-platform/ai-shared/toolNames'
+import { normalizeToolName, isSchemaWidgetValidateTool, isFlowWriteOrValidateTool } from '@schema-platform/platform-shared/ai/toolNames'
 import type { AIMessage, TaskStep } from './state.js'
 
 // ────────────────────────────────────────────

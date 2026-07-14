@@ -1,0 +1,380 @@
+# 公共 Schema 定义
+schemas:
+  # 通用响应格式
+  ApiResponse:
+    type: object
+    properties:
+      success:
+        type: boolean
+        description: 请求是否成功
+      data:
+        type: object
+        description: 响应数据
+      error:
+        $ref: "#/components/schemas/ErrorDetail"
+    required:
+      - success
+
+  ErrorDetail:
+    type: object
+    properties:
+      message:
+        type: string
+        description: 错误信息
+      details:
+        type: object
+        description: 错误详情
+    required:
+      - message
+
+  # 分页响应格式
+  PaginatedResponse:
+    type: object
+    properties:
+      success:
+        type: boolean
+      data:
+        type: object
+        properties:
+          items:
+            type: array
+            items:
+              type: object
+          total:
+            type: integer
+            description: 总记录数
+          page:
+            type: integer
+            description: 当前页码
+          pageSize:
+            type: integer
+            description: 每页数量
+          totalPages:
+            type: integer
+            description: 总页数
+        required:
+          - items
+          - total
+          - page
+          - pageSize
+          - totalPages
+
+  # 通用 ID 格式
+  ObjectId:
+    type: string
+    pattern: "^[0-9a-fA-F]{24}$"
+    description: "MongoDB ObjectId（24 位十六进制字符串）"
+    example: "685faa86c32e0839b4f9de6f"
+
+  # 时间戳格式
+  Timestamp:
+    type: string
+    format: date-time
+    description: ISO 8601 时间戳
+
+  # 用户信息
+  UserInfo:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      username:
+        type: string
+      displayName:
+        type: string
+      email:
+        type: string
+      roles:
+        type: array
+        items:
+          type: string
+      status:
+        type: integer
+        enum: [0, 1, 2]
+        description: "0-禁用, 1-启用, 2-锁定"
+      tenantId:
+        $ref: "#/components/schemas/ObjectId"
+
+  # 角色信息
+  RoleInfo:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      name:
+        type: string
+      code:
+        type: string
+      description:
+        type: string
+      permissions:
+        type: array
+        items:
+          type: string
+      data_scope:
+        type: string
+        enum: ["all", "custom", "self"]
+      dept_ids:
+        type: array
+        items:
+          $ref: "#/components/schemas/ObjectId"
+
+  # 部门信息
+  DeptInfo:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      name:
+        type: string
+      parentId:
+        oneOf:
+          - $ref: "#/components/schemas/ObjectId"
+          - type: "null"
+      sort:
+        type: integer
+      status:
+        type: integer
+      children:
+        type: array
+        items:
+          $ref: "#/components/schemas/DeptInfo"
+
+  # 菜单信息
+  MenuInfo:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      name:
+        type: string
+      path:
+        type: string
+      icon:
+        type: string
+      parentId:
+        oneOf:
+          - $ref: "#/components/schemas/ObjectId"
+          - type: "null"
+      sort:
+        type: integer
+      type:
+        type: string
+        enum: ["directory", "menu", "button"]
+      permission:
+        type: string
+      visible:
+        type: boolean
+      children:
+        type: array
+        items:
+          $ref: "#/components/schemas/MenuInfo"
+
+  # Schema 信息
+  SchemaInfo:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      name:
+        type: string
+      type:
+        type: string
+        enum: ["form", "table", "chart", "custom"]
+      json:
+        type: object
+        description: Schema JSON 结构
+      status:
+        type: string
+        enum: ["draft", "published"]
+      version:
+        type: integer
+      createdAt:
+        $ref: "#/components/schemas/Timestamp"
+      updatedAt:
+        $ref: "#/components/schemas/Timestamp"
+
+  # 流程定义信息
+  FlowDefinition:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      name:
+        type: string
+      description:
+        type: string
+      category:
+        type: string
+      status:
+        type: string
+        enum: ["draft", "published", "archived"]
+      formSchemaId:
+        $ref: "#/components/schemas/ObjectId"
+      permissions:
+        type: object
+        properties:
+          editors:
+            type: array
+            items:
+              $ref: "#/components/schemas/ObjectId"
+          launchers:
+            type: array
+            items:
+              $ref: "#/components/schemas/ObjectId"
+          viewers:
+            type: array
+            items:
+              $ref: "#/components/schemas/ObjectId"
+      createdAt:
+        $ref: "#/components/schemas/Timestamp"
+      updatedAt:
+        $ref: "#/components/schemas/Timestamp"
+
+  # 流程实例信息
+  FlowInstance:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      definitionId:
+        $ref: "#/components/schemas/ObjectId"
+      status:
+        type: string
+        enum: ["running", "completed", "cancelled", "terminated"]
+      formData:
+        type: object
+        description: 表单数据
+      currentNodeId:
+        type: string
+      startedBy:
+        $ref: "#/components/schemas/ObjectId"
+      startedAt:
+        $ref: "#/components/schemas/Timestamp"
+      completedAt:
+        $ref: "#/components/schemas/Timestamp"
+
+  # 流程任务信息
+  FlowTask:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      instanceId:
+        $ref: "#/components/schemas/ObjectId"
+      nodeId:
+        type: string
+      nodeName:
+        type: string
+      assigneeId:
+        $ref: "#/components/schemas/ObjectId"
+      status:
+        type: string
+        enum: ["pending", "completed", "rejected", "cancelled"]
+      formData:
+        type: object
+      comment:
+        type: string
+      createdAt:
+        $ref: "#/components/schemas/Timestamp"
+      completedAt:
+        $ref: "#/components/schemas/Timestamp"
+
+  # Webhook 信息
+  WebhookInfo:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      name:
+        type: string
+      url:
+        type: string
+        format: uri
+      events:
+        type: array
+        items:
+          type: string
+      secret:
+        type: string
+      status:
+        type: string
+        enum: ["active", "disabled"]
+      createdAt:
+        $ref: "#/components/schemas/Timestamp"
+
+  # API Key 信息
+  ApiKeyInfo:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      name:
+        type: string
+      key:
+        type: string
+        description: "仅创建时返回完整 key"
+      prefix:
+        type: string
+        description: "Key 前缀（用于显示）"
+      status:
+        type: string
+        enum: ["active", "disabled"]
+      lastUsedAt:
+        $ref: "#/components/schemas/Timestamp"
+      createdAt:
+        $ref: "#/components/schemas/Timestamp"
+
+  # LLM 模型配置
+  ModelConfig:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      name:
+        type: string
+      provider:
+        type: string
+      model:
+        type: string
+      apiKey:
+        type: string
+        description: "脱敏后的 API Key"
+      baseUrl:
+        type: string
+        format: uri
+      status:
+        type: string
+        enum: ["active", "disabled"]
+      createdAt:
+        $ref: "#/components/schemas/Timestamp"
+
+  # Agent Workflow
+  AgentWorkflow:
+    type: object
+    properties:
+      id:
+        $ref: "#/components/schemas/ObjectId"
+      name:
+        type: string
+      slug:
+        type: string
+        description: "唯一标识符，用于 invoke"
+      description:
+        type: string
+      status:
+        type: string
+        enum: ["draft", "published"]
+      draftGraph:
+        type: object
+        description: "工作流图定义"
+      publishedGraph:
+        type: object
+        description: "已发布的工作流图"
+      invokeKey:
+        type: string
+        description: "发布时生成的调用密钥"
+      createdAt:
+        $ref: "#/components/schemas/Timestamp"
+      updatedAt:
+        $ref: "#/components/schemas/Timestamp"

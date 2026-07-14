@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
-import { parseBpmnGraph, BpmnElementType, evaluateScript } from '@schema-platform/flow-shared'
-import type { FlowToken, FlowInstanceStatus, RejectPolicy } from '@schema-platform/flow-shared'
-import type { AssigneeType, FlowApiConfig, NodeFormDataMap, UpstreamNodeData } from '@schema-platform/flow-shared'
+import { parseBpmnGraph, BpmnElementType, evaluateScript } from '@/shared/flow'
+import type { FlowToken, FlowInstanceStatus, RejectPolicy } from '@/shared/flow'
+import type { AssigneeType, FlowApiConfig, NodeFormDataMap, UpstreamNodeData } from '@/shared/flow'
 
 /**
  * Evaluate an assignee expression against instance variables.
@@ -37,7 +37,7 @@ import { messageQueue } from './MessageQueue.js'
 import { notificationService } from './NotificationService.js'
 import { eventBus } from '../services/eventBus.js'
 import { logNodeStart, logNodeComplete, logNodeFail } from '../services/executionLogger.js'
-import type { RejectTargetNode } from '@schema-platform/flow-shared'
+import type { RejectTargetNode } from '@/shared/flow'
 
 export class FlowEngine {
   private async getRejectPolicy(instance: { versionId: string }, nodeId: string): Promise<RejectPolicy> {
@@ -492,8 +492,8 @@ export class FlowEngine {
             const serviceType = (serviceConfig?.type ?? node.config.serviceType) as string | undefined
 
             if (serviceType === 'dataUpdate') {
-              // Data update service task: placeholder for future implementation
-              console.warn('[FlowEngine] dataUpdate service type is not yet implemented')
+              const { executeDataUpdateRules } = await import('../services/dataUpdateEngine.js')
+              await executeDataUpdateRules(instance as unknown as import('../flow-models/FlowInstance.js').IFlowInstance)
             }
 
             await logNodeComplete(instance._id, token.nodeId, { serviceType })
@@ -519,7 +519,7 @@ export class FlowEngine {
 
             for (const edge of outEdges) {
               if (edge.conditionExpression && !edge.isDefault) {
-                const { evaluateExpression } = await import('@schema-platform/flow-shared')
+                const { evaluateExpression } = await import('@/shared/flow')
                 const result = evaluateExpression(edge.conditionExpression, instance.variables)
                 if (result) {
                   targetEdge = edge
@@ -821,7 +821,7 @@ export class FlowEngine {
             } else {
               // Fork behavior (diverging): evaluate all conditions, fork to every matching edge
               token.state = 'completed'
-              const { evaluateExpression } = await import('@schema-platform/flow-shared')
+              const { evaluateExpression } = await import('@/shared/flow')
               const matchingEdges = outEdges.filter((edge) => {
                 if (!edge.conditionExpression) return false
                 return evaluateExpression(edge.conditionExpression, instance.variables)

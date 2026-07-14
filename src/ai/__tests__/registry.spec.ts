@@ -17,7 +17,7 @@ import {
   RAG_SEARCH,
   UPDATE_SCHEMA,
   INDUSTRY_SEARCH_TEMPLATES,
-} from '@schema-platform/ai-shared/toolNames'
+} from '@schema-platform/platform-shared/ai/toolNames'
 
 describe('tools registry', () => {
   it('initializes MCP bridge and langgraph-only tools', async () => {

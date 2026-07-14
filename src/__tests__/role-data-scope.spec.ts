@@ -9,7 +9,6 @@ import http from 'node:http'
 import Koa from 'koa'
 import cors from '@koa/cors'
 import bodyParser from 'koa-bodyparser'
-import { v4 as uuidv4 } from 'uuid'
 import { errorHandler } from '../middleware/errorHandler.js'
 import rolesRouter from '../routes/roles.js'
 import { RoleModel, type DataScope } from '../models/Role.js'
@@ -48,6 +47,11 @@ function request(method: string, path: string, body?: unknown): Promise<{ status
   })
 }
 
+/** Generate a valid ObjectId string */
+function oid(): string {
+  return new mongoose.Types.ObjectId().toHexString()
+}
+
 beforeAll(async () => {
   await connectDatabase()
 
@@ -74,6 +78,15 @@ beforeEach(async () => {
   await RoleModel.deleteMany({})
   await UserModel.deleteMany({})
   await DeptModel.deleteMany({})
+  // Re-create admin user so authMiddleware dev fallback works
+  await UserModel.create({
+    username: 'admin',
+    password: 'hashed',
+    displayName: 'Admin',
+    roles: [],
+    tenantId: '000000',
+    status: 'active',
+  })
 })
 
 // ── Role CRUD with data_scope ──
@@ -98,8 +111,8 @@ describe('Role API with data_scope', () => {
   })
 
   it('POST /api/roles creates a role with data_scope=custom and dept_ids', async () => {
-    const deptA = uuidv4()
-    const deptB = uuidv4()
+    const deptA = oid()
+    const deptB = oid()
     const { status, body } = await request('POST', '/api/roles', {
       name: 'Custom Role',
       data_scope: 'custom',
@@ -133,7 +146,7 @@ describe('Role API with data_scope', () => {
 
   it('PUT /api/roles/:id updates dept_ids for custom scope', async () => {
     const role = await RoleModel.create({ name: 'Custom Update' })
-    const deptId = uuidv4()
+    const deptId = oid()
 
     const { status, body } = await request('PUT', `/api/roles/${role._id}`, {
       data_scope: 'custom',
@@ -162,34 +175,34 @@ describe('Role API with data_scope', () => {
 
 describe('resolveAllowedDeptIds', () => {
   it('returns null for scope=all (no restriction)', async () => {
-    const roleId = uuidv4()
+    const roleId = oid()
     await RoleModel.create({ _id: roleId, name: 'All', data_scope: 'all' })
 
-    const result = await resolveAllowedDeptIds(uuidv4(), [roleId])
+    const result = await resolveAllowedDeptIds(oid(), [roleId])
 
     expect(result).toBeNull()
   })
 
   it('returns null for empty roles (no restriction)', async () => {
-    const result = await resolveAllowedDeptIds(uuidv4(), [])
+    const result = await resolveAllowedDeptIds(oid(), [])
 
     expect(result).toBeNull()
   })
 
   it('returns ["__self__"] for scope=self', async () => {
-    const roleId = uuidv4()
+    const roleId = oid()
     await RoleModel.create({ _id: roleId, name: 'Self', data_scope: 'self' })
 
-    const result = await resolveAllowedDeptIds(uuidv4(), [roleId])
+    const result = await resolveAllowedDeptIds(oid(), [roleId])
 
     expect(result).toEqual(['__self__'])
   })
 
   it('returns dept + descendants for scope=dept', async () => {
-    const roleId = uuidv4()
-    const userId = uuidv4()
-    const parentDeptId = uuidv4()
-    const childDeptId = uuidv4()
+    const roleId = oid()
+    const userId = oid()
+    const parentDeptId = oid()
+    const childDeptId = oid()
 
     await DeptModel.create({ _id: parentDeptId, name: 'Parent' })
     await DeptModel.create({ _id: childDeptId, name: 'Child', parentId: parentDeptId })
@@ -206,11 +219,11 @@ describe('resolveAllowedDeptIds', () => {
   })
 
   it('returns custom dept_ids with descendants for scope=custom', async () => {
-    const roleId = uuidv4()
-    const userId = uuidv4()
-    const deptA = uuidv4()
-    const deptAChild = uuidv4()
-    const deptB = uuidv4()
+    const roleId = oid()
+    const userId = oid()
+    const deptA = oid()
+    const deptAChild = oid()
+    const deptB = oid()
 
     await DeptModel.create({ _id: deptA, name: 'Dept A' })
     await DeptModel.create({ _id: deptAChild, name: 'Dept A Child', parentId: deptA })
@@ -226,9 +239,9 @@ describe('resolveAllowedDeptIds', () => {
   })
 
   it('returns null when any role has scope=all (most permissive wins)', async () => {
-    const selfRoleId = uuidv4()
-    const allRoleId = uuidv4()
-    const userId = uuidv4()
+    const selfRoleId = oid()
+    const allRoleId = oid()
+    const userId = oid()
 
     await RoleModel.create({ _id: selfRoleId, name: 'Self', data_scope: 'self' })
     await RoleModel.create({ _id: allRoleId, name: 'All', data_scope: 'all' })
@@ -244,8 +257,8 @@ describe('resolveAllowedDeptIds', () => {
 
 describe('buildDataScopeFilter', () => {
   it('returns null for scope=all', async () => {
-    const roleId = uuidv4()
-    const userId = uuidv4()
+    const roleId = oid()
+    const userId = oid()
     await RoleModel.create({ _id: roleId, name: 'All', data_scope: 'all' })
     await UserModel.create({ _id: userId, username: 'u1', password: 'p', displayName: 'U1', roles: [roleId] })
 
@@ -255,8 +268,8 @@ describe('buildDataScopeFilter', () => {
   })
 
   it('returns {createdBy: userId} for scope=self', async () => {
-    const roleId = uuidv4()
-    const userId = uuidv4()
+    const roleId = oid()
+    const userId = oid()
     await RoleModel.create({ _id: roleId, name: 'Self', data_scope: 'self' })
     await UserModel.create({ _id: userId, username: 'u2', password: 'p', displayName: 'U2', roles: [roleId] })
 
@@ -266,10 +279,10 @@ describe('buildDataScopeFilter', () => {
   })
 
   it('returns {createdBy: {$in: [...]}} for scope=dept', async () => {
-    const roleId = uuidv4()
-    const userId = uuidv4()
-    const parentDeptId = uuidv4()
-    const childDeptId = uuidv4()
+    const roleId = oid()
+    const userId = oid()
+    const parentDeptId = oid()
+    const childDeptId = oid()
 
     await DeptModel.create({ _id: parentDeptId, name: 'Parent' })
     await DeptModel.create({ _id: childDeptId, name: 'Child', parentId: parentDeptId })
@@ -287,7 +300,7 @@ describe('buildDataScopeFilter', () => {
   })
 
   it('returns null for empty roles', async () => {
-    const filter = await buildDataScopeFilter(uuidv4(), [], 'createdBy')
+    const filter = await buildDataScopeFilter(oid(), [], 'createdBy')
 
     expect(filter).toBeNull()
   })

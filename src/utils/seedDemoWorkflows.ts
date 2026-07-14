@@ -1,10 +1,11 @@
 /**
  * Seed official demo Agent workflows for template "试用" feature.
  *
- * Creates three demo workflows (idempotent):
+ * Creates four demo workflows (idempotent):
  * - demo-intelligent-assistant
  * - demo-document-summary
  * - demo-doc-image
+ * - demo-chat-parity
  *
  * These are published workflows that users can directly try from the template tab.
  */
@@ -14,7 +15,8 @@ import {
   createIntelligentAssistantWorkflowGraph,
   createDocumentSummaryWorkflowGraph,
   createDocImageRecognitionWorkflowGraph,
-} from '@schema-platform/ai-shared'
+  createChatParityAssistantWorkflowGraph,
+} from '@schema-platform/platform-shared/ai'
 import { AgentWorkflowModel } from '../ai/models/agentWorkflow.js'
 import { DEFAULT_TENANT_ID } from './initDefaultTenant.js'
 
@@ -43,6 +45,12 @@ const DEMO_WORKFLOWS: DemoWorkflowSpec[] = [
     name: '文档图片识别 Demo',
     description: '解析上传文件，图片走 OCR 分支，文档走结构化提取，可直接在对话中体验。',
     buildGraph: createDocImageRecognitionWorkflowGraph,
+  },
+  {
+    slug: 'demo-chat-parity',
+    name: '智能助手 v2 Demo',
+    description: '意图路由 → 需求分析 → 人工确认 → 任务规划 → 多专家协作 → 摘要输出，可直接在对话中体验。',
+    buildGraph: createChatParityAssistantWorkflowGraph,
   },
 ]
 

@@ -8,6 +8,7 @@ import { PDFParse } from 'pdf-parse'
 import mammoth from 'mammoth'
 import JSZip from 'jszip'
 import WordExtractor from 'word-extractor'
+import ExcelJS from 'exceljs'
 import {
   DOCUMENT_FORMAT_LABEL,
   isAllowedUploadFile,
@@ -163,6 +164,45 @@ function collectOfdTextFromXml(xml: string): string[] {
   return parts
 }
 
+async function extractExcelText(buffer: Buffer): Promise<string> {
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(buffer)
+  const parts: string[] = []
+
+  workbook.eachSheet((sheet, sheetId) => {
+    if (sheet.rowCount === 0) return
+    parts.push(`=== Sheet ${sheetId}: ${sheet.name} ===`)
+
+    sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      const cells: string[] = []
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        const val = cell.value
+        if (val === null || val === undefined) return
+        if (typeof val === 'object') {
+          if ('richText' in val) {
+            cells.push(val.richText.map((r: { text: string }) => r.text).join(''))
+          } else if ('text' in val && 'hyperlink' in val) {
+            cells.push(val.text)
+          } else if ('formula' in val) {
+            cells.push(String(val.result ?? ''))
+          } else if (val instanceof Date) {
+            cells.push(val.toISOString())
+          } else {
+            cells.push(String(val))
+          }
+        } else {
+          cells.push(String(val))
+        }
+      })
+      if (cells.length > 0) {
+        parts.push(cells.join('\t'))
+      }
+    })
+  })
+
+  return parts.join('\n').trim()
+}
+
 async function extractOfdText(buffer: Buffer): Promise<string> {
   const zip = await JSZip.loadAsync(buffer)
   const parts: string[] = []
@@ -205,6 +245,8 @@ async function extractDocumentText(
       return extractDocText(buffer)
     case 'csv':
       return extractPlainText(buffer)
+    case 'xlsx':
+      return extractExcelText(buffer)
     case 'ofd':
       return extractOfdText(buffer)
     default:

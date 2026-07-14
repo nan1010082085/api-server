@@ -21,6 +21,7 @@ const {
   mockFindOne,
   mockFindByIdAndUpdate,
   mockFindByIdAndDelete,
+  mockUpdateOne,
 } = vi.hoisted(() => ({
   mockFindChain: vi.fn(),
   mockCountDocuments: vi.fn(),
@@ -29,6 +30,7 @@ const {
   mockFindOne: vi.fn(),
   mockFindByIdAndUpdate: vi.fn(),
   mockFindByIdAndDelete: vi.fn(),
+  mockUpdateOne: vi.fn().mockResolvedValue({ acknowledged: true }),
 }))
 
 vi.mock('../flow-models/FlowTemplate.js', () => ({
@@ -40,6 +42,7 @@ vi.mock('../flow-models/FlowTemplate.js', () => ({
     findOne: mockFindOne,
     findByIdAndUpdate: mockFindByIdAndUpdate,
     findByIdAndDelete: mockFindByIdAndDelete,
+    updateOne: mockUpdateOne,
   },
 }))
 
@@ -49,6 +52,14 @@ vi.mock('../flow-models/FlowDefinition.js', () => ({
 
 vi.mock('../flow-models/FlowVersion.js', () => ({
   FlowVersionModel: { create: vi.fn() },
+}))
+
+// Mock auth middleware to bypass DB-dependent dev user resolution
+vi.mock('../middleware/auth.js', () => ({
+  authMiddleware: () => async (ctx: any, next: () => Promise<void>) => {
+    ctx.state.user = { id: 'test-user', username: 'admin', roles: [], tenantId: '000000', tokenType: 'access' }
+    await next()
+  },
 }))
 
 import flowTemplateRouter from '../flow-routes/flowTemplate.js'
@@ -214,7 +225,7 @@ describe('Flow Template API', () => {
     })
 
     it('returns 404 for non-existent template', async () => {
-      const { status, body } = await get('/api/flow-templates/00000000-0000-0000-0000-000000000000')
+      const { status, body } = await get('/api/flow-templates/aaaaaaaaaaaaaaaaaaaaaaaa')
       expect(status).toBe(404)
       expect(body.success).toBe(false)
     })
@@ -228,7 +239,7 @@ describe('Flow Template API', () => {
     })
 
     it('returns 404 for non-existent template', async () => {
-      const { status, body } = await request('/api/flow-templates/00000000-0000-0000-0000-000000000000', 'DELETE')
+      const { status, body } = await request('/api/flow-templates/aaaaaaaaaaaaaaaaaaaaaaaa', 'DELETE')
       expect(status).toBe(404)
       expect(body.success).toBe(false)
     })
@@ -242,7 +253,7 @@ describe('Flow Template API', () => {
     })
 
     it('returns 404 for non-existent template', async () => {
-      const { status, body } = await request('/api/flow-templates/00000000-0000-0000-0000-000000000000/apply', 'POST', {})
+      const { status, body } = await request('/api/flow-templates/aaaaaaaaaaaaaaaaaaaaaaaa/apply', 'POST', {})
       expect(status).toBe(404)
       expect(body.success).toBe(false)
     })
@@ -252,33 +263,32 @@ describe('Flow Template API', () => {
     it('seeds built-in templates', async () => {
       // findOne returns null → all templates are "new"
       mockFindOne.mockResolvedValue(null)
+      mockCreate.mockImplementation((data: Record<string, unknown>) => Promise.resolve({ ...data, _id: 'new-id', toObject() { return this } }))
 
       const { status, body } = await request('/api/flow-templates/seed', 'POST')
       expect(status).toBe(200)
       expect(body.success).toBe(true)
       const data = body.data as Record<string, unknown>
       expect(typeof data.created).toBe('number')
-      expect(typeof data.skipped).toBe('number')
+      expect(data.created).toBeGreaterThan(0)
+      expect(typeof data.updated).toBe('number')
     })
 
     it('is idempotent on second call', async () => {
-      // First call: findOne returns null (templates don't exist yet)
-      // Second call: findOne returns truthy (templates already exist)
-      let callCount = 0
-      mockFindOne.mockImplementation(() => {
-        callCount++
-        // 5 built-in templates × 2 calls = 10 findOne calls
-        // First 5 return null, next 5 return existing doc
-        return Promise.resolve(callCount <= 5 ? null : { _id: 'existing' })
-      })
+      // First call: create all templates
+      mockFindOne.mockResolvedValue(null)
+      mockCreate.mockImplementation((data: Record<string, unknown>) => Promise.resolve({ ...data, _id: 'new-id', toObject() { return this } }))
 
       const { body: first } = await request('/api/flow-templates/seed', 'POST')
       const firstData = first.data as Record<string, unknown>
-      const totalFirst = (firstData.created as number) + (firstData.skipped as number)
+      const totalFirst = (firstData.created as number) + (firstData.updated as number)
+
+      // Second call: all templates already exist → updated
+      mockFindOne.mockResolvedValue({ _id: 'existing', toObject() { return { _id: 'existing' } } })
 
       const { body: second } = await request('/api/flow-templates/seed', 'POST')
       const secondData = second.data as Record<string, unknown>
-      expect(secondData.skipped).toBe(totalFirst)
+      expect(secondData.updated).toBe(totalFirst)
       expect(secondData.created).toBe(0)
     })
   })

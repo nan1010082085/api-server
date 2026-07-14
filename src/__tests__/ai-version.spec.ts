@@ -308,8 +308,7 @@ describe('AI Version Management', () => {
     it('getVersion returns a single version by id', async () => {
       const v = await getVersion(versionIds[0])
       expect(v).not.toBeNull()
-      expect(v!._id).toBe(versionIds[0])
-      expect(v!._id).toBe(versionIds[0])
+      expect(String(v!._id)).toBe(String(versionIds[0]))
       expect(v!.type).toBe('schema')
       expect(v!.content).toEqual(SCHEMA_V1)
     })
@@ -373,7 +372,7 @@ describe('AI Version Management', () => {
       const { status, body } = await get(`/api/ai/versions/${versionIds[0]}`)
       expect(status).toBe(200)
       expect(body.success).toBe(true)
-      expect(body.data.id).toBe(versionIds[0])
+      expect(body.data.id).toBe(String(versionIds[0]))
       expect(body.data.type).toBe('schema')
       expect(body.data.content).toEqual(SCHEMA_V1)
       expect(body.data.description).toBe('Initial schema')
@@ -399,7 +398,7 @@ describe('AI Version Management', () => {
       expect(body.data.type).toBe('schema')
       expect(body.data.content).toEqual(SCHEMA_V1)
       expect(body.data.description).toContain('回滚')
-      expect(body.data.rollbackFrom).toBe(versionIds[0])
+      expect(body.data.rollbackFrom).toBe(String(versionIds[0]))
     })
 
     it('returns 400 when versionId is missing', async () => {
@@ -435,8 +434,8 @@ describe('AI Version Management', () => {
       )
       expect(status).toBe(200)
       expect(body.success).toBe(true)
-      expect(body.data.v1.id).toBe(versionIds[0])
-      expect(body.data.v2.id).toBe(versionIds[1])
+      expect(body.data.v1.id).toBe(String(versionIds[0]))
+      expect(body.data.v2.id).toBe(String(versionIds[1]))
       expect(body.data.diff).toBeDefined()
       expect(body.data.diff.summary).toBeDefined()
       // V1: 2 widgets, V2: 3 widgets (w1 modified, w3 added)

@@ -1,0 +1,2090 @@
+openapi: "3.0.3"
+
+info:
+  title: 系统管理 API
+  description: |
+    系统管理模块，包含：
+    - 健康检查
+    - 认证与 SSO
+    - 用户管理
+    - 角色管理
+    - 部门管理
+    - 菜单管理
+    - 岗位管理
+    - 租户管理
+    - 系统配置
+    - 审计日志
+    - 登录日志
+    - 在线用户
+    - 微前端应用
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3001
+    description: 开发环境
+
+tags:
+  - name: health
+    description: 健康检查
+  - name: auth
+    description: 认证
+  - name: sso
+    description: SSO 单点登录
+  - name: users
+    description: 用户管理
+  - name: roles
+    description: 角色管理
+  - name: depts
+    description: 部门管理
+  - name: menus
+    description: 菜单管理
+  - name: posts
+    description: 岗位管理
+  - name: tenants
+    description: 租户管理
+  - name: config
+    description: 系统配置
+  - name: audit-logs
+    description: 审计日志
+  - name: login-logs
+    description: 登录日志
+  - name: online-users
+    description: 在线用户
+  - name: micro-apps
+    description: 微前端应用
+
+paths:
+  # ==================== 健康检查 ====================
+  /api/health:
+    get:
+      tags: [health]
+      summary: 健康检查
+      description: 返回服务状态、运行时间、数据库连接状态
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  uptime:
+                    type: number
+                    description: 运行时间（秒）
+                    example: 12345
+                  database:
+                    type: string
+                    example: "connected"
+
+  # ==================== 认证 ====================
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: 用户登录
+      description: |
+        用户登录，支持 `tenantCode` 或 `X-Tenant-Id` 解析租户。
+        租户解析优先级：
+        1. 请求体中的 `tenantCode`
+        2. 请求头 `X-Tenant-Id`
+        3. 默认租户 `000000`
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  minLength: 2
+                  example: "admin"
+                password:
+                  type: string
+                  minLength: 1
+                  example: "admin123"
+                tenantCode:
+                  type: string
+                  description: "租户编码（可选）"
+                  example: "default"
+      responses:
+        "200":
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                        description: "Access Token"
+                        example: "eyJhbGciOiJIUzI1NiIs..."
+                      refreshToken:
+                        type: string
+                        description: "Refresh Token"
+                        example: "eyJhbGciOiJIUzI1NiIs..."
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          username:
+                            type: string
+                            example: "admin"
+                          displayName:
+                            type: string
+                            example: "管理员"
+                          roles:
+                            type: array
+                            items:
+                              type: string
+                            example: ["admin"]
+        "401":
+          description: 认证失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: false
+                error:
+                  message: "Invalid username or password."
+
+  /api/auth/register:
+    post:
+      tags: [auth]
+      summary: 用户注册
+      description: 用户自主注册（开放接口）
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  minLength: 2
+                  example: "newuser"
+                password:
+                  type: string
+                  minLength: 6
+                  example: "pass123"
+                displayName:
+                  type: string
+                  example: "新用户"
+                email:
+                  type: string
+                  format: email
+                  example: "newuser@example.com"
+      responses:
+        "201":
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/auth/refresh:
+    post:
+      tags: [auth]
+      summary: 刷新 Token
+      description: 使用 Refresh Token 获取新的 Access Token
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIs..."
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                      refreshToken:
+                        type: string
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      summary: 登出
+      description: 登出，清除 token 黑名单和 SSO 会话
+      operationId: logout
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/auth/me:
+    get:
+      tags: [auth]
+      summary: 获取当前用户信息
+      description: 获取当前用户信息及权限
+      operationId: getCurrentUser
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: "#/components/schemas/UserInfo"
+
+  /api/auth/change-password:
+    post:
+      tags: [auth]
+      summary: 修改密码
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPassword
+                - newPassword
+              properties:
+                oldPassword:
+                  type: string
+                  example: "old123"
+                newPassword:
+                  type: string
+                  minLength: 6
+                  example: "new456"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== SSO 单点登录 ====================
+  /api/auth/sso/authorize:
+    get:
+      tags: [sso]
+      summary: SSO 授权端点
+      description: OAuth2 授权码模式
+      operationId: ssoAuthorize
+      security: []
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          description: OAuth 客户端 ID
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: true
+          description: 回调地址
+          schema:
+            type: string
+            format: uri
+        - name: response_type
+          in: query
+          required: true
+          description: 固定为 `code`
+          schema:
+            type: string
+            enum: ["code"]
+        - name: scope
+          in: query
+          description: 权限范围
+          schema:
+            type: string
+        - name: state
+          in: query
+          description: 防 CSRF 状态码
+          schema:
+            type: string
+      responses:
+        "302":
+          description: 重定向到授权页面
+
+  /api/auth/sso/token:
+    post:
+      tags: [sso]
+      summary: 用授权码换 Token
+      operationId: ssoToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - grant_type
+                - code
+                - client_id
+                - client_secret
+                - redirect_uri
+              properties:
+                grant_type:
+                  type: string
+                  enum: ["authorization_code"]
+                code:
+                  type: string
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+                redirect_uri:
+                  type: string
+                  format: uri
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: "Bearer"
+                  expires_in:
+                    type: integer
+                    description: 过期时间（秒）
+
+  /api/auth/sso/refresh:
+    post:
+      tags: [sso]
+      summary: Token 轮换
+      operationId: ssoRefresh
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: 成功
+
+  /api/auth/sso/session:
+    get:
+      tags: [sso]
+      summary: 检查 SSO 会话状态
+      operationId: ssoSession
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      active:
+                        type: boolean
+                      user:
+                        $ref: "#/components/schemas/UserInfo"
+
+  /api/auth/sso/logout:
+    post:
+      tags: [sso]
+      summary: 销毁 SSO 会话
+      operationId: ssoLogout
+      responses:
+        "200":
+          description: 成功
+
+  # ==================== 用户管理 ====================
+  /api/users:
+    get:
+      tags: [users]
+      summary: 用户列表
+      description: 用户列表（分页 + 搜索 + 租户/部门/状态/角色筛选）
+      operationId: listUsers
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/KeywordParam"
+        - name: tenantId
+          in: query
+          description: 租户 ID
+          schema:
+            type: string
+        - name: deptId
+          in: query
+          description: 部门 ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: "状态（0-禁用, 1-启用, 2-锁定）"
+          schema:
+            type: integer
+            enum: [0, 1, 2]
+        - name: roleId
+          in: query
+          description: 角色 ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [users]
+      summary: 创建用户
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  minLength: 2
+                  example: "user1"
+                password:
+                  type: string
+                  minLength: 6
+                  example: "pass123"
+                displayName:
+                  type: string
+                  example: "用户1"
+                email:
+                  type: string
+                  format: email
+                phone:
+                  type: string
+                roles:
+                  type: array
+                  items:
+                    type: string
+                  description: "角色 ID 列表"
+                deptId:
+                  type: string
+                  description: "部门 ID"
+                postId:
+                  type: string
+                  description: "岗位 ID"
+                status:
+                  type: integer
+                  enum: [0, 1, 2]
+                  default: 1
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/UserInfo"
+
+  /api/users/export:
+    get:
+      tags: [users]
+      summary: 导出用户
+      description: 导出用户为 Excel
+      operationId: exportUsers
+      responses:
+        "200":
+          description: Excel 文件
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+
+  /api/users/import:
+    post:
+      tags: [users]
+      summary: 导入用户
+      description: 从 Excel 导入用户
+      operationId: importUsers
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Excel 文件
+      responses:
+        "200":
+          description: 导入结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      success:
+                        type: integer
+                      failed:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: object
+
+  /api/users/{id}:
+    get:
+      tags: [users]
+      summary: 获取用户详情
+      operationId: getUser
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/UserInfo"
+    put:
+      tags: [users]
+      summary: 更新用户
+      operationId: updateUser
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                phone:
+                  type: string
+                roles:
+                  type: array
+                  items:
+                    type: string
+                deptId:
+                  type: string
+                postId:
+                  type: string
+                status:
+                  type: integer
+                  enum: [0, 1, 2]
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [users]
+      summary: 删除用户
+      operationId: deleteUser
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/users/{id}/password:
+    put:
+      tags: [users]
+      summary: 重置用户密码
+      operationId: resetUserPassword
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  minLength: 6
+                  example: "newpass123"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 角色管理 ====================
+  /api/roles/permissions:
+    get:
+      tags: [roles]
+      summary: 获取可用权限列表
+      description: 获取可用权限列表（按模块分组）
+      operationId: listPermissions
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        module:
+                          type: string
+                          description: "模块名称"
+                        permissions:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                                example: "system:user:list"
+                              name:
+                                type: string
+                                example: "查看用户列表"
+
+  /api/roles:
+    get:
+      tags: [roles]
+      summary: 角色列表
+      operationId: listRoles
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/KeywordParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [roles]
+      summary: 创建角色
+      operationId: createRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "管理员"
+                code:
+                  type: string
+                  example: "admin"
+                description:
+                  type: string
+                  example: "系统管理员"
+                permissions:
+                  type: array
+                  items:
+                    type: string
+                  description: "权限 code 列表"
+                data_scope:
+                  type: string
+                  enum: ["all", "custom", "self"]
+                  default: "self"
+                dept_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: "自定义数据范围的部门 ID 列表"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/RoleInfo"
+
+  /api/roles/{id}:
+    get:
+      tags: [roles]
+      summary: 获取角色详情
+      operationId: getRole
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/RoleInfo"
+    put:
+      tags: [roles]
+      summary: 更新角色
+      operationId: updateRole
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                permissions:
+                  type: array
+                  items:
+                    type: string
+                data_scope:
+                  type: string
+                  enum: ["all", "custom", "self"]
+                dept_ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [roles]
+      summary: 删除角色
+      description: 删除角色（自动从用户中移除）
+      operationId: deleteRole
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/roles/{id}/users:
+    get:
+      tags: [roles]
+      summary: 获取角色下的用户
+      operationId: getRoleUsers
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  # ==================== 部门管理 ====================
+  /api/depts:
+    get:
+      tags: [depts]
+      summary: 部门列表
+      description: "部门列表（支持 `?tree=true` 树形返回）"
+      operationId: listDepts
+      parameters:
+        - name: tree
+          in: query
+          description: "是否返回树形结构"
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DeptInfo"
+    post:
+      tags: [depts]
+      summary: 创建部门
+      operationId: createDept
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "技术部"
+                parentId:
+                  type: string
+                  description: "父部门 ID（为空则为顶级部门）"
+                sort:
+                  type: integer
+                  default: 0
+                leader:
+                  type: string
+                  description: "负责人"
+                phone:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                status:
+                  type: integer
+                  enum: [0, 1]
+                  default: 1
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/DeptInfo"
+
+  /api/depts/{id}:
+    get:
+      tags: [depts]
+      summary: 获取部门详情
+      operationId: getDept
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/DeptInfo"
+    put:
+      tags: [depts]
+      summary: 更新部门
+      operationId: updateDept
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                sort:
+                  type: integer
+                leader:
+                  type: string
+                phone:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                status:
+                  type: integer
+                  enum: [0, 1]
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [depts]
+      summary: 删除部门
+      description: 删除部门（有子部门或关联用户时拒绝）
+      operationId: deleteDept
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "400":
+          description: 删除失败（有子部门或关联用户）
+
+  /api/depts/{id}/move:
+    patch:
+      tags: [depts]
+      summary: 移动部门
+      description: 移动部门（含循环检测）
+      operationId: moveDept
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - parentId
+              properties:
+                parentId:
+                  type: string
+                  description: "新的父部门 ID（为空则移动到顶级）"
+      responses:
+        "200":
+          description: 移动成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 菜单管理 ====================
+  /api/menus:
+    get:
+      tags: [menus]
+      summary: 菜单列表
+      description: "菜单列表（支持 `?tree=true` 树形返回）"
+      operationId: listMenus
+      parameters:
+        - name: tree
+          in: query
+          description: "是否返回树形结构"
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MenuInfo"
+    post:
+      tags: [menus]
+      summary: 创建菜单
+      operationId: createMenu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - type
+              properties:
+                name:
+                  type: string
+                  example: "用户管理"
+                path:
+                  type: string
+                  example: "/system/users"
+                icon:
+                  type: string
+                  example: "user"
+                parentId:
+                  type: string
+                  description: "父菜单 ID"
+                sort:
+                  type: integer
+                  default: 0
+                type:
+                  type: string
+                  enum: ["directory", "menu", "button"]
+                permission:
+                  type: string
+                  example: "system:user:list"
+                visible:
+                  type: boolean
+                  default: true
+                component:
+                  type: string
+                  example: "system/users/index"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/MenuInfo"
+
+  /api/menus/route:
+    get:
+      tags: [menus]
+      summary: 当前用户可见菜单树
+      description: 当前用户可见菜单树（前端动态路由）
+      operationId: getUserMenuRoute
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MenuInfo"
+
+  /api/menus/{id}:
+    get:
+      tags: [menus]
+      summary: 获取菜单详情
+      operationId: getMenu
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/MenuInfo"
+    put:
+      tags: [menus]
+      summary: 更新菜单
+      description: 更新菜单（含循环检测）
+      operationId: updateMenu
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                path:
+                  type: string
+                icon:
+                  type: string
+                parentId:
+                  type: string
+                sort:
+                  type: integer
+                type:
+                  type: string
+                  enum: ["directory", "menu", "button"]
+                permission:
+                  type: string
+                visible:
+                  type: boolean
+                component:
+                  type: string
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [menus]
+      summary: 删除菜单
+      operationId: deleteMenu
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 岗位管理 ====================
+  /api/posts:
+    get:
+      tags: [posts]
+      summary: 岗位列表
+      description: 岗位列表（分页 + 搜索）
+      operationId: listPosts
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/KeywordParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [posts]
+      summary: 创建岗位
+      operationId: createPost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - code
+              properties:
+                name:
+                  type: string
+                  example: "技术总监"
+                code:
+                  type: string
+                  example: "tech_director"
+                description:
+                  type: string
+                sort:
+                  type: integer
+                  default: 0
+                status:
+                  type: integer
+                  enum: [0, 1]
+                  default: 1
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/posts/all:
+    get:
+      tags: [posts]
+      summary: 所有启用岗位
+      description: 所有启用岗位（下拉用）
+      operationId: listAllPosts
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        code:
+                          type: string
+
+  /api/posts/{id}:
+    get:
+      tags: [posts]
+      summary: 获取岗位详情
+      operationId: getPost
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    put:
+      tags: [posts]
+      summary: 更新岗位
+      operationId: updatePost
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                code:
+                  type: string
+                description:
+                  type: string
+                sort:
+                  type: integer
+                status:
+                  type: integer
+                  enum: [0, 1]
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [posts]
+      summary: 删除岗位
+      operationId: deletePost
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 租户管理 ====================
+  /api/tenants:
+    get:
+      tags: [tenants]
+      summary: 租户列表
+      operationId: listTenants
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/KeywordParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [tenants]
+      summary: 创建租户
+      description: 创建租户（自动初始化默认角色/管理员/菜单）
+      operationId: createTenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - code
+              properties:
+                name:
+                  type: string
+                  example: "测试租户"
+                code:
+                  type: string
+                  example: "test"
+                  description: "租户编码（唯一）"
+                description:
+                  type: string
+                contactName:
+                  type: string
+                contactPhone:
+                  type: string
+                contactEmail:
+                  type: string
+                  format: email
+                status:
+                  type: string
+                  enum: ["active", "disabled"]
+                  default: "active"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/tenants/{id}:
+    get:
+      tags: [tenants]
+      summary: 获取租户详情
+      operationId: getTenant
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    put:
+      tags: [tenants]
+      summary: 更新租户
+      operationId: updateTenant
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                contactName:
+                  type: string
+                contactPhone:
+                  type: string
+                contactEmail:
+                  type: string
+                  format: email
+                status:
+                  type: string
+                  enum: ["active", "disabled"]
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [tenants]
+      summary: 删除租户
+      operationId: deleteTenant
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 系统配置 ====================
+  /api/config:
+    get:
+      tags: [config]
+      summary: 参数列表
+      operationId: listConfigs
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/KeywordParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [config]
+      summary: 创建参数
+      operationId: createConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - key
+                - value
+              properties:
+                key:
+                  type: string
+                  example: "site.name"
+                value:
+                  type: string
+                  example: "Schema Platform"
+                name:
+                  type: string
+                  description: "参数名称"
+                description:
+                  type: string
+                  description: "参数描述"
+                type:
+                  type: string
+                  enum: ["string", "number", "boolean", "json"]
+                  default: "string"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/config/key/{key}:
+    get:
+      tags: [config]
+      summary: 按 key 查询参数值
+      operationId: getConfigByKey
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: "参数 key"
+          schema:
+            type: string
+            example: "site.name"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      key:
+                        type: string
+                      value:
+                        type: string
+
+  /api/config/{id}:
+    get:
+      tags: [config]
+      summary: 获取参数详情
+      operationId: getConfig
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    put:
+      tags: [config]
+      summary: 更新参数
+      operationId: updateConfig
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                value:
+                  type: string
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [config]
+      summary: 删除参数
+      operationId: deleteConfig
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 审计日志 ====================
+  /api/audit-logs:
+    get:
+      tags: [audit-logs]
+      summary: 日志列表
+      description: 日志列表（多维筛选）
+      operationId: listAuditLogs
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - name: module
+          in: query
+          description: 模块名称
+          schema:
+            type: string
+        - name: action
+          in: query
+          description: 操作类型
+          schema:
+            type: string
+        - name: userId
+          in: query
+          description: 操作用户 ID
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          description: 开始日期
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          description: 结束日期
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /api/audit-logs/modules/list:
+    get:
+      tags: [audit-logs]
+      summary: 获取所有模块名
+      operationId: listAuditLogModules
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: string
+
+  /api/audit-logs/{id}:
+    get:
+      tags: [audit-logs]
+      summary: 日志详情
+      description: 日志详情（含请求体）
+      operationId: getAuditLog
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 登录日志 ====================
+  /api/login-logs:
+    get:
+      tags: [login-logs]
+      summary: 登录日志列表
+      operationId: listLoginLogs
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - name: username
+          in: query
+          description: 用户名
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: "登录状态（success/fail）"
+          schema:
+            type: string
+            enum: ["success", "fail"]
+        - name: startDate
+          in: query
+          description: 开始日期
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          description: 结束日期
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    delete:
+      tags: [login-logs]
+      summary: 清空登录日志
+      operationId: clearLoginLogs
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 在线用户 ====================
+  /api/online-users:
+    get:
+      tags: [online-users]
+      summary: 在线用户列表
+      description: 在线用户列表（基于 SSO 会话）
+      operationId: listOnlineUsers
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /api/online-users/{sessionId}:
+    delete:
+      tags: [online-users]
+      summary: 强制下线
+      operationId: forceLogoutUser
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: "会话 ID"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 微前端应用 ====================
+  /api/micro-apps:
+    get:
+      tags: [micro-apps]
+      summary: 微应用列表
+      operationId: listMicroApps
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [micro-apps]
+      summary: 创建微应用
+      operationId: createMicroApp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - url
+              properties:
+                name:
+                  type: string
+                  example: "AI 助手"
+                url:
+                  type: string
+                  format: uri
+                  example: "http://localhost:5300"
+                icon:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: ["active", "disabled"]
+                  default: "active"
+                sort:
+                  type: integer
+                  default: 0
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/micro-apps/{id}:
+    get:
+      tags: [micro-apps]
+      summary: 获取微应用详情
+      operationId: getMicroApp
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    put:
+      tags: [micro-apps]
+      summary: 更新微应用
+      operationId: updateMicroApp
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                url:
+                  type: string
+                  format: uri
+                icon:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: ["active", "disabled"]
+                sort:
+                  type: integer
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [micro-apps]
+      summary: 删除微应用
+      operationId: deleteMicroApp
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+components:
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+    PaginatedResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+            total:
+              type: integer
+            page:
+              type: integer
+            pageSize:
+              type: integer
+            totalPages:
+              type: integer
+    UserInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        email:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        status:
+          type: integer
+    RoleInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        data_scope:
+          type: string
+    DeptInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        parentId:
+          type: string
+        sort:
+          type: integer
+        status:
+          type: integer
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeptInfo"
+    MenuInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+        icon:
+          type: string
+        parentId:
+          type: string
+        sort:
+          type: integer
+        type:
+          type: string
+        permission:
+          type: string
+        visible:
+          type: boolean
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/MenuInfo"
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: 页码
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      name: pageSize
+      in: query
+      description: 每页数量
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    KeywordParam:
+      name: keyword
+      in: query
+      description: 搜索关键词
+      schema:
+        type: string
+    ObjectIdParam:
+      name: id
+      in: path
+      required: true
+      description: "资源 ID（MongoDB ObjectId）"
+      schema:
+        type: string
+        pattern: "^[0-9a-fA-F]{24}$"
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key

@@ -1,7 +1,7 @@
 /**
  * Built-in BPMN graph builders for business platform flow seeds.
  */
-import { BpmnElementType } from '@schema-platform/flow-shared'
+import { BpmnElementType } from '@/shared/flow'
 
 interface FlowNode {
   id: string

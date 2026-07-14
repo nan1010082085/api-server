@@ -27,9 +27,7 @@ vi.mock('../services/llmManager.js', () => ({
   },
 }))
 
-// Mock ModelConfigModel — we control DB results
-// findOne returns a thenable with .lean() that resolves to the mock data
-const mockFindOne = vi.fn()
+// Helper to create a query-like object with .lean() and thenable support
 function makeQuery(result: unknown) {
   const query = {
     lean: vi.fn().mockResolvedValue(result),
@@ -38,9 +36,27 @@ function makeQuery(result: unknown) {
   }
   return query
 }
+
+// Mock ModelConfigModel (legacy tier) — we control DB results
+const mockFindOne = vi.fn()
 vi.mock('../../models/ModelConfig.js', () => ({
   ModelConfigModel: {
     findOne: (...args: unknown[]) => mockFindOne(...args),
+  },
+}))
+
+// Mock ProviderModel and ModelModel (new Provider+Model tier)
+// These return null so the code falls through to legacy ModelConfigModel
+vi.mock('../../models/Provider.js', () => ({
+  ProviderModel: {
+    findById: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }),
+    find: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
+  },
+}))
+vi.mock('../../models/Model.js', () => ({
+  ModelModel: {
+    findOne: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }),
+    find: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
   },
 }))
 
@@ -329,7 +345,7 @@ describe('llmCache.resolveConfig priority', () => {
       setupFindOne(null)
       mockNoEnvProvider()
 
-      await expect(getLLM()).rejects.toThrow('Create a ModelConfig in Settings > Model')
+      await expect(getLLM()).rejects.toThrow('Create a Model in Settings > Model')
     })
 
     it('throws with PLATFORM_LLM_ENABLED guidance when disabled and no DB config', async () => {
@@ -337,7 +353,7 @@ describe('llmCache.resolveConfig priority', () => {
       setupFindOne(null)
 
       await expect(getLLM()).rejects.toThrow(
-        'PLATFORM_LLM_ENABLED is false and no ModelConfig found in database',
+        'PLATFORM_LLM_ENABLED is false and no Model found in database',
       )
     })
   })

@@ -12,20 +12,31 @@ import { logger } from '../../utils/logger.js'
 import { leanDoc } from '../../utils/leanDoc.js'
 import {
   ROUTER_SYSTEM_PROMPT,
-} from '@schema-platform/ai-shared/promptBuilder'
-import { normalizeToolName } from '@schema-platform/ai-shared/toolNames'
+} from '@schema-platform/platform-shared/ai/promptBuilder'
+import { normalizeToolName } from '@schema-platform/platform-shared/ai/toolNames'
 import { getToolSync, ensureToolsReady, getToolsByNames, isHttpTool } from '../tools/registry.js'
 import { executeHttpRequest } from '../tools/httpToolExecutor.js'
 import { getPluginRegistry } from '../plugins/index.js'
 import { runRegisteredExpert } from '../plugins/dispatchExpert.js'
 import type { LegacyAgentKey } from '../plugins/types.js'
 import { extractJsonFromResponse } from '../graph/agentBase.js'
+import {
+  resolveIntent,
+  analyzeRequirement,
+  planTasks,
+  generateSummary,
+  routeCollaboration,
+} from '../runtime/index.js'
+import type { SummarizerContext } from '../runtime/summarizer.js'
+import type { RequirementAnalyzerContext } from '../runtime/requirementAnalyzer.js'
+import type { TaskPlannerContext } from '../runtime/taskPlanner.js'
 import { getDocumentWithText, reprocessDocumentFromStorage, analyzeDocumentVision, chunkText } from './documentService.js'
 import { processFile, performVisionAnalysis, isImageType } from './fileService.js'
 import { extractNodeOutputError, nodeFailure } from './agentWorkflowNodeErrors.js'
 import { dispatchWorkflowCompleteCallback } from './agentWorkflowCompleteCallback.js'
 import { WorkflowNodeMetricModel } from '../models/workflowNodeMetric.js'
 import { pushWorkflowExecutionUpdate, clearWorkflowExecutionPush } from '../workflowExecutionPush.js'
+import { getIO } from '../../socket.js'
 import { resolveWorkflowApiFile } from './agentWorkflowFileFetch.js'
 import { resolveWorkflowTemplate } from './agentWorkflowTemplateResolver.js'
 import { compressImage } from './imageCompress.js'
@@ -89,6 +100,34 @@ interface WorkflowGraphNode {
     useConversationHistory?: boolean
     appendAssistantReply?: boolean
     expertId?: string
+    contextSource?: string
+    enableMultiIntentChain?: boolean
+    fallbackExpertId?: string
+    customPrompt?: string
+    enableRag?: boolean
+    enableTools?: boolean
+    completenessThreshold?: number
+    maxSteps?: number
+    strategy?: 'sequential' | 'mixed'
+    taskChain?: {
+      steps: Array<{
+        id: string
+        description: string
+        expertId?: string
+        legacyAgentKey?: string
+        status: string
+      }>
+      currentStepIndex: number
+    }
+    maxExecutions?: number
+    toolResults?: Array<{ toolName: string; output: unknown }>
+    collaborationHistory?: Array<{
+      fromExpertId: string
+      toExpertId: string
+      reason: string
+      timestamp: Date
+    }>
+    maxCollaborationRounds?: number
   }
 }
 
@@ -199,6 +238,24 @@ async function clearStreamingOutput(executionId: string): Promise<void> {
     { _id: executionId },
     { $unset: { streamingOutput: 1 } },
   )
+}
+
+function emitWorkflowNodeEvent(
+  executionId: string,
+  eventType: string,
+  payload: Record<string, unknown>,
+): void {
+  try {
+    const io = getIO()
+    if (!io) return
+    io.to(`workflow:${executionId}`).emit('workflow:node-event', {
+      executionId,
+      eventType,
+      ...payload,
+    })
+  } catch {
+    // best-effort, do not break execution
+  }
 }
 
 async function streamLLMWithGuard(
@@ -1153,6 +1210,260 @@ async function runNode(
         }
       }
       return { output: ctx.lastOutput }
+    }
+
+    case 'intent-router': {
+      const message = data.prompt?.trim()
+        ? resolveTemplate(data.prompt, ctx)
+        : typeof ctx.lastOutput === 'string'
+          ? ctx.lastOutput
+          : JSON.stringify(ctx.lastOutput ?? '')
+      if (!message.trim()) {
+        return nodeFailure('intent-router: 无输入消息')
+      }
+      const registry = getPluginRegistry()
+      const intentResult = await resolveIntent(
+        {
+          message,
+          contextSource: data.contextSource,
+          enableMultiIntentChain: data.enableMultiIntentChain,
+          fallbackExpertId: data.fallbackExpertId,
+        },
+        { registry },
+      )
+      emitWorkflowNodeEvent(ctx.executionId, 'route_decided', {
+        nodeId: node.id,
+        expertId: intentResult.expertId,
+        legacyAgentKey: intentResult.legacyAgentKey,
+        routeReason: intentResult.routeReason,
+      })
+      return {
+        output: {
+          expertId: intentResult.expertId,
+          legacyAgentKey: intentResult.legacyAgentKey,
+          chainPreview: intentResult.chainPreview,
+          routeReason: intentResult.routeReason,
+        },
+      }
+    }
+
+    case 'summarizer': {
+      const steps = data.taskChain?.steps?.map((s) => ({
+        description: s.description,
+        output: String(ctx.nodeOutputs[s.id] ?? ''),
+        status: s.status,
+      })) ?? []
+      const userMessage = data.prompt?.trim()
+        ? resolveTemplate(data.prompt, ctx)
+        : typeof ctx.lastOutput === 'string'
+          ? ctx.lastOutput
+          : undefined
+
+      let summaryText = ''
+      try {
+        for await (const chunk of generateSummary(
+          {
+            steps,
+            userMessage,
+            customPrompt: data.customPrompt,
+          },
+          { getLLM: getLLM as unknown as SummarizerContext['getLLM'] },
+        )) {
+          summaryText += chunk
+          emitWorkflowNodeEvent(ctx.executionId, 'summary_stream', {
+            nodeId: node.id,
+            chunk,
+            accumulated: summaryText,
+          })
+          await setStreamingOutput(ctx.executionId, node.id, node.type, summaryText)
+        }
+      } finally {
+        await clearStreamingOutput(ctx.executionId)
+      }
+
+      return { output: { text: summaryText } }
+    }
+
+    case 'requirement-analyzer': {
+      const message = data.prompt?.trim()
+        ? resolveTemplate(data.prompt, ctx)
+        : typeof ctx.lastOutput === 'string'
+          ? ctx.lastOutput
+          : JSON.stringify(ctx.lastOutput ?? '')
+      if (!message.trim()) {
+        return nodeFailure('requirement-analyzer: 无输入消息')
+      }
+      const analysis = await analyzeRequirement(
+        {
+          message,
+          contextSource: data.contextSource,
+          enableRag: data.enableRag,
+          enableTools: data.enableTools,
+          completenessThreshold: data.completenessThreshold,
+        },
+        {
+          getLLM: getLLM as unknown as RequirementAnalyzerContext['getLLM'],
+          userId: ctx.triggeredBy,
+        },
+      )
+      if (!analysis) {
+        return nodeFailure('需求分析失败：LLM 返回空结果')
+      }
+      emitWorkflowNodeEvent(ctx.executionId, 'requirement_analyzed', {
+        nodeId: node.id,
+        analysis,
+      })
+      return { output: analysis }
+    }
+
+    case 'task-planner': {
+      const message = data.prompt?.trim()
+        ? resolveTemplate(data.prompt, ctx)
+        : typeof ctx.lastOutput === 'string'
+          ? ctx.lastOutput
+          : JSON.stringify(ctx.lastOutput ?? '')
+      if (!message.trim()) {
+        return nodeFailure('task-planner: 无输入消息')
+      }
+      const plan = await planTasks(
+        {
+          message,
+          maxSteps: data.maxSteps,
+          strategy: data.strategy,
+        },
+        {
+          getLLM: getLLM as unknown as TaskPlannerContext['getLLM'],
+        },
+      )
+      return {
+        output: {
+          chain: plan.chain,
+          strategy: plan.strategy,
+          stepCount: plan.chain.length,
+        },
+      }
+    }
+
+    case 'task-chain': {
+      const taskChain = data.taskChain
+      if (!taskChain || !Array.isArray(taskChain.steps) || taskChain.steps.length === 0) {
+        return nodeFailure('task-chain: 无任务步骤')
+      }
+      const steps = taskChain.steps.map((s) => ({ ...s }))
+      const maxExecutions = data.maxExecutions ?? steps.length * 3
+      let currentStepIndex = taskChain.currentStepIndex ?? 0
+      let executionCount = 0
+
+      while (currentStepIndex < steps.length) {
+        if (executionCount >= maxExecutions) {
+          return nodeFailure(`task-chain: 超过最大执行次数 ${maxExecutions}，疑似死循环`)
+        }
+        if (await isExecutionCancelled(ctx.executionId)) {
+          throw new Error('用户手动停止')
+        }
+
+        const step = steps[currentStepIndex]
+        step.status = 'running'
+
+        const ref = step.expertId
+          ? { expertId: step.expertId }
+          : { legacyAgentKey: (step.legacyAgentKey ?? 'general') as LegacyAgentKey }
+
+        const stepInput = typeof ctx.lastOutput === 'string'
+          ? ctx.lastOutput
+          : JSON.stringify(ctx.lastOutput ?? '')
+
+        let stepOutput: unknown
+        try {
+          const result = await runRegisteredExpert({
+            ref,
+            userContent: stepInput,
+            maxToolRounds: AGENT_MAX_TOOL_ROUNDS,
+            isCancelled: () => isExecutionCancelled(ctx.executionId),
+            generalPromptBuilder: () => '你是通用 AI 助手，请完成当前任务步骤。',
+          })
+          stepOutput = { text: result.text, expertId: result.expertId, legacyAgentKey: result.legacyAgentKey }
+          step.status = 'done'
+        } catch (err) {
+          stepOutput = { error: err instanceof Error ? err.message : String(err) }
+          step.status = 'failed'
+        }
+
+        ctx.lastOutput = stepOutput
+        ctx.nodeOutputs[step.id] = stepOutput
+        executionCount++
+
+        emitWorkflowNodeEvent(ctx.executionId, 'task_step_complete', {
+          nodeId: node.id,
+          stepId: step.id,
+          stepIndex: currentStepIndex,
+          status: step.status,
+          output: stepOutput,
+        })
+
+        if (step.status === 'failed') {
+          return {
+            output: {
+              steps,
+              currentStepIndex,
+              executionCount,
+              failedStepId: step.id,
+              error: (stepOutput as Record<string, unknown>)?.error,
+            },
+            error: `task-chain: 步骤「${step.description}」执行失败`,
+          }
+        }
+
+        currentStepIndex++
+      }
+
+      return {
+        output: {
+          steps,
+          currentStepIndex,
+          executionCount,
+          completed: true,
+        },
+      }
+    }
+
+    case 'collaboration-router': {
+      const toolResults = data.toolResults
+        ?? (Array.isArray(ctx.lastOutput) ? ctx.lastOutput as Array<{ toolName: string; output: unknown }> : [])
+      const currentExpertId = data.expertId
+        ?? (typeof ctx.lastOutput === 'object' && ctx.lastOutput !== null
+          ? (ctx.lastOutput as Record<string, unknown>).expertId as string ?? 'unknown'
+          : 'unknown')
+
+      const routeResult = routeCollaboration({
+        toolResults,
+        currentExpertId,
+        taskChain: data.taskChain,
+        collaborationHistory: data.collaborationHistory,
+        maxCollaborationRounds: data.maxCollaborationRounds,
+      })
+
+      emitWorkflowNodeEvent(ctx.executionId, 'collaboration_routed', {
+        nodeId: node.id,
+        next: routeResult.next,
+        targetExpertId: routeResult.targetExpertId,
+        collaborationRequest: routeResult.collaborationRequest,
+      })
+
+      if (routeResult.next === 'expert' && routeResult.targetExpertId) {
+        const agentInput = typeof ctx.lastOutput === 'string'
+          ? ctx.lastOutput
+          : JSON.stringify(ctx.lastOutput ?? '')
+        const result = await dispatchAgent(routeResult.targetExpertId, agentInput, ctx)
+        return {
+          output: {
+            ...routeResult,
+            expertOutput: result.output,
+          },
+        }
+      }
+
+      return { output: routeResult }
     }
 
     default:

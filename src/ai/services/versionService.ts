@@ -4,6 +4,7 @@
  * 提供版本的 CRUD 操作，支持自动版本号递增。
  */
 
+import mongoose from 'mongoose'
 import { AIVersionModel, type IAIVersion } from '../models/version.js'
 
 /**
@@ -46,6 +47,7 @@ export async function getVersions(conversationId: string): Promise<IAIVersion[]>
  * 获取单个版本
  */
 export async function getVersion(id: string): Promise<IAIVersion | null> {
+  if (!mongoose.Types.ObjectId.isValid(id)) return null
   return AIVersionModel.findById(id)
 }
 

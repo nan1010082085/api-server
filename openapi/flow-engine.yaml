@@ -1,0 +1,1590 @@
+openapi: "3.0.3"
+
+info:
+  title: 流程引擎 API
+  description: |
+    流程引擎模块，包含：
+    - 流程定义
+    - 流程版本
+    - 流程实例
+    - 流程任务
+    - 审批日志
+    - 流程消息
+    - 流程通知
+    - 流程模板
+    - 流程监控
+    - 流程定时器
+    - 流程导出
+    - 流程批量操作
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3001
+    description: 开发环境
+
+tags:
+  - name: flows
+    description: 流程定义
+  - name: flow-versions
+    description: 流程版本
+  - name: flow-instances
+    description: 流程实例
+  - name: flow-tasks
+    description: 流程任务
+  - name: flow-approvals
+    description: 审批日志
+  - name: flow-messages
+    description: 流程消息
+  - name: flow-notifications
+    description: 流程通知
+  - name: flow-templates
+    description: 流程模板
+  - name: flow-monitor
+    description: 流程监控
+  - name: flow-timers
+    description: 流程定时器
+  - name: flow-export
+    description: 流程导出
+  - name: flow-batch
+    description: 流程批量操作
+
+paths:
+  # ==================== 流程定义 ====================
+  /api/flows:
+    get:
+      tags: [flows]
+      summary: 流程定义列表
+      operationId: listFlows
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/SearchParam"
+        - name: status
+          in: query
+          description: "状态筛选"
+          schema:
+            type: string
+            enum: ["draft", "published", "archived"]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/FlowDefinition"
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      pageSize:
+                        type: integer
+                      totalPages:
+                        type: integer
+    post:
+      tags: [flows]
+      summary: 创建流程定义
+      operationId: createFlow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "请假审批流程"
+                description:
+                  type: string
+                category:
+                  type: string
+                  example: "人事"
+                formSchemaId:
+                  type: string
+                  description: "关联的表单 Schema ID"
+                formPublishId:
+                  type: string
+                  description: "关联的表单发布 ID"
+                permissions:
+                  type: object
+                  properties:
+                    editors:
+                      type: array
+                      items:
+                        type: string
+                      description: "可编辑的用户 ID 列表"
+                    launchers:
+                      type: array
+                      items:
+                        type: string
+                      description: "可发起的用户 ID 列表"
+                    viewers:
+                      type: array
+                      items:
+                        type: string
+                      description: "可查看的用户 ID 列表"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/FlowDefinition"
+
+  /api/flows/{id}:
+    get:
+      tags: [flows]
+      summary: 获取流程定义
+      operationId: getFlow
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/FlowDefinition"
+    put:
+      tags: [flows]
+      summary: 更新流程定义
+      operationId: updateFlow
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                category:
+                  type: string
+                formSchemaId:
+                  type: string
+                formPublishId:
+                  type: string
+                graph:
+                  type: object
+                  description: "流程图定义（BPMN JSON）"
+                permissions:
+                  type: object
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [flows]
+      summary: 删除流程定义
+      operationId: deleteFlow
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flows/{id}/publish:
+    post:
+      tags: [flows]
+      summary: 发布流程
+      operationId: publishFlow
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 发布成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flows/{id}/archive:
+    post:
+      tags: [flows]
+      summary: 归档流程
+      operationId: archiveFlow
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 归档成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 流程版本 ====================
+  /api/flows/{definitionId}/versions:
+    get:
+      tags: [flow-versions]
+      summary: 版本列表
+      operationId: listFlowVersions
+      parameters:
+        - name: definitionId
+          in: path
+          required: true
+          description: "流程定义 ID"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        version:
+                          type: integer
+                        graph:
+                          type: object
+                        createdAt:
+                          type: string
+                          format: date-time
+    post:
+      tags: [flow-versions]
+      summary: 保存新版本
+      operationId: createFlowVersion
+      parameters:
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                graph:
+                  type: object
+                  description: "流程图定义"
+                description:
+                  type: string
+      responses:
+        "201":
+          description: 保存成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flows/{definitionId}/versions/{versionId}:
+    get:
+      tags: [flow-versions]
+      summary: 获取特定版本
+      operationId: getFlowVersion
+      parameters:
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      version:
+                        type: integer
+                      graph:
+                        type: object
+                      createdAt:
+                        type: string
+                        format: date-time
+
+  # ==================== 流程实例 ====================
+  /api/flow-instances/stats:
+    get:
+      tags: [flow-instances]
+      summary: 实例状态统计
+      description: 实例状态统计（支持时间范围）
+      operationId: getFlowInstanceStats
+      parameters:
+        - name: startDate
+          in: query
+          description: 开始日期
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          description: 结束日期
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      running:
+                        type: integer
+                      completed:
+                        type: integer
+                      cancelled:
+                        type: integer
+                      terminated:
+                        type: integer
+
+  /api/flow-instances:
+    post:
+      tags: [flow-instances]
+      summary: 启动流程实例
+      operationId: startFlowInstance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - definitionId
+              properties:
+                definitionId:
+                  type: string
+                  description: "流程定义 ID"
+                formData:
+                  type: object
+                  description: "表单数据"
+                variables:
+                  type: object
+                  description: "流程变量"
+      responses:
+        "201":
+          description: 启动成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/FlowInstance"
+    get:
+      tags: [flow-instances]
+      summary: 实例列表
+      operationId: listFlowInstances
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - name: definitionId
+          in: query
+          description: "流程定义 ID"
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: "状态筛选"
+          schema:
+            type: string
+            enum: ["running", "completed", "cancelled", "terminated"]
+        - name: startedBy
+          in: query
+          description: "发起人 ID"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/FlowInstance"
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      pageSize:
+                        type: integer
+
+  /api/flow-instances/{id}:
+    get:
+      tags: [flow-instances]
+      summary: 实例详情
+      operationId: getFlowInstance
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/FlowInstance"
+
+  /api/flow-instances/{id}/cancel:
+    post:
+      tags: [flow-instances]
+      summary: 取消实例
+      operationId: cancelFlowInstance
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: "取消原因"
+      responses:
+        "200":
+          description: 取消成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flow-instances/{id}/graph:
+    get:
+      tags: [flow-instances]
+      summary: 获取流程图
+      operationId: getFlowInstanceGraph
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      graph:
+                        type: object
+                        description: "流程图定义"
+                      currentNodeId:
+                        type: string
+                        description: "当前执行节点 ID"
+
+  /api/flow-instances/{id}/state:
+    get:
+      tags: [flow-instances]
+      summary: 获取执行状态
+      operationId: getFlowInstanceState
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                      currentNodeId:
+                        type: string
+                      nodeStates:
+                        type: object
+                        description: "各节点状态"
+
+  /api/flow-instances/{id}/logs:
+    get:
+      tags: [flow-instances]
+      summary: 获取审批日志
+      operationId: getFlowInstanceLogs
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        nodeId:
+                          type: string
+                        nodeName:
+                          type: string
+                        action:
+                          type: string
+                        userId:
+                          type: string
+                        userName:
+                          type: string
+                        comment:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+
+  # ==================== 流程任务 ====================
+  /api/flow-tasks/my:
+    get:
+      tags: [flow-tasks]
+      summary: 我的待办任务
+      operationId: getMyFlowTasks
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - name: status
+          in: query
+          description: "状态筛选"
+          schema:
+            type: string
+            enum: ["pending", "completed", "rejected"]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/FlowTask"
+                      total:
+                        type: integer
+
+  /api/flow-tasks/{id}:
+    get:
+      tags: [flow-tasks]
+      summary: 任务详情
+      operationId: getFlowTask
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/FlowTask"
+
+  /api/flow-tasks/{id}/claim:
+    post:
+      tags: [flow-tasks]
+      summary: 认领任务
+      operationId: claimFlowTask
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 认领成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flow-tasks/{id}/complete:
+    post:
+      tags: [flow-tasks]
+      summary: 完成任务（通过）
+      operationId: completeFlowTask
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                formData:
+                  type: object
+                  description: "表单数据"
+                comment:
+                  type: string
+                  description: "审批意见"
+                variables:
+                  type: object
+                  description: "流程变量"
+      responses:
+        "200":
+          description: 完成成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flow-tasks/{id}/reject:
+    post:
+      tags: [flow-tasks]
+      summary: 驳回任务
+      operationId: rejectFlowTask
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment:
+                  type: string
+                  description: "驳回原因"
+      responses:
+        "200":
+          description: 驳回成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flow-tasks/{id}/reject-to-node:
+    post:
+      tags: [flow-tasks]
+      summary: 驳回到指定节点
+      operationId: rejectFlowTaskToNode
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - targetNodeId
+              properties:
+                targetNodeId:
+                  type: string
+                  description: "目标节点 ID"
+                comment:
+                  type: string
+                  description: "驳回原因"
+      responses:
+        "200":
+          description: 驳回成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flow-tasks/{id}/delegate:
+    post:
+      tags: [flow-tasks]
+      summary: 委派任务
+      operationId: delegateFlowTask
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - assigneeId
+              properties:
+                assigneeId:
+                  type: string
+                  description: "被委派人 ID"
+                comment:
+                  type: string
+                  description: "委派原因"
+      responses:
+        "200":
+          description: 委派成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flow-tasks/{id}/reject-targets:
+    get:
+      tags: [flow-tasks]
+      summary: 获取驳回目标节点列表
+      operationId: getRejectTargets
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        nodeId:
+                          type: string
+                        nodeName:
+                          type: string
+
+  # ==================== 流程批量操作 ====================
+  /api/flow-tasks/batch/approve:
+    post:
+      tags: [flow-batch]
+      summary: 批量审批通过
+      operationId: batchApproveFlowTasks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - taskIds
+              properties:
+                taskIds:
+                  type: array
+                  items:
+                    type: string
+                  description: "任务 ID 列表"
+                comment:
+                  type: string
+                  description: "审批意见"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      processed:
+                        type: integer
+                      success:
+                        type: integer
+                      failed:
+                        type: integer
+
+  /api/flow-tasks/batch/reject:
+    post:
+      tags: [flow-batch]
+      summary: 批量驳回
+      operationId: batchRejectFlowTasks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - taskIds
+              properties:
+                taskIds:
+                  type: array
+                  items:
+                    type: string
+                comment:
+                  type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      processed:
+                        type: integer
+                      success:
+                        type: integer
+                      failed:
+                        type: integer
+
+  /api/flow-tasks/batch/delegate:
+    post:
+      tags: [flow-batch]
+      summary: 批量委派
+      operationId: batchDelegateFlowTasks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - taskIds
+                - assigneeId
+              properties:
+                taskIds:
+                  type: array
+                  items:
+                    type: string
+                assigneeId:
+                  type: string
+                comment:
+                  type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      processed:
+                        type: integer
+                      success:
+                        type: integer
+                      failed:
+                        type: integer
+
+  # ==================== 审批日志 ====================
+  /api/flow-approvals:
+    get:
+      tags: [flow-approvals]
+      summary: 查询审批日志
+      description: 查询审批日志（按 instanceId）
+      operationId: listFlowApprovals
+      parameters:
+        - name: instanceId
+          in: query
+          required: true
+          description: "流程实例 ID"
+          schema:
+            type: string
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  # ==================== 流程消息 ====================
+  /api/flow-messages:
+    post:
+      tags: [flow-messages]
+      summary: 发送消息到通道
+      description: 发送消息到通道（外部触发）
+      operationId: sendFlowMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - channelType
+                - channelId
+              properties:
+                channelType:
+                  type: string
+                  enum: ["webhook", "email", "sms"]
+                channelId:
+                  type: string
+                data:
+                  type: object
+      responses:
+        "200":
+          description: 发送成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flow-messages/complete:
+    post:
+      tags: [flow-messages]
+      summary: 完成消息任务
+      operationId: completeFlowMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - taskId
+              properties:
+                taskId:
+                  type: string
+                data:
+                  type: object
+      responses:
+        "200":
+          description: 完成成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 流程通知 ====================
+  /api/flow/notifications:
+    get:
+      tags: [flow-notifications]
+      summary: 通知列表
+      description: 通知列表（分页 + 未读筛选）
+      operationId: listFlowNotifications
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - name: unreadOnly
+          in: query
+          description: "仅未读"
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /api/flow/notifications/unread-count:
+    get:
+      tags: [flow-notifications]
+      summary: 未读通知数
+      operationId: getUnreadNotificationCount
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                        example: 5
+
+  /api/flow/notifications/{id}/read:
+    put:
+      tags: [flow-notifications]
+      summary: 标记已读
+      operationId: markNotificationRead
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flow/notifications/read-all:
+    put:
+      tags: [flow-notifications]
+      summary: 全部已读
+      operationId: markAllNotificationsRead
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 流程模板 ====================
+  /api/flow-templates:
+    get:
+      tags: [flow-templates]
+      summary: 流程模板列表
+      operationId: listFlowTemplates
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/KeywordParam"
+        - name: category
+          in: query
+          description: 分类
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [flow-templates]
+      summary: 创建流程模板
+      operationId: createFlowTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - graph
+              properties:
+                name:
+                  type: string
+                  example: "请假审批模板"
+                description:
+                  type: string
+                category:
+                  type: string
+                graph:
+                  type: object
+                  description: "流程图定义"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flow-templates/{id}:
+    get:
+      tags: [flow-templates]
+      summary: 获取模板
+      operationId: getFlowTemplate
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    put:
+      tags: [flow-templates]
+      summary: 更新模板
+      operationId: updateFlowTemplate
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                category:
+                  type: string
+                graph:
+                  type: object
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [flow-templates]
+      summary: 删除模板
+      operationId: deleteFlowTemplate
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/flow-templates/{id}/apply:
+    post:
+      tags: [flow-templates]
+      summary: 应用模板
+      description: 应用模板（创建流程定义+版本）
+      operationId: applyFlowTemplate
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: "新流程名称"
+      responses:
+        "200":
+          description: 应用成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/FlowDefinition"
+
+  /api/flow-templates/seed:
+    post:
+      tags: [flow-templates]
+      summary: 种子内置模板
+      operationId: seedFlowTemplates
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 流程监控 ====================
+  /api/flow-monitor/overview:
+    get:
+      tags: [flow-monitor]
+      summary: 监控概览
+      operationId: getFlowMonitorOverview
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      totalFlows:
+                        type: integer
+                      activeInstances:
+                        type: integer
+                      pendingTasks:
+                        type: integer
+                      avgCompletionTime:
+                        type: number
+                        description: "平均完成时间（小时）"
+
+  /api/flow-monitor/bottleneck:
+    get:
+      tags: [flow-monitor]
+      summary: 瓶颈分析
+      operationId: getFlowBottleneck
+      parameters:
+        - name: definitionId
+          in: query
+          description: "流程定义 ID"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        nodeId:
+                          type: string
+                        nodeName:
+                          type: string
+                        avgWaitTime:
+                          type: number
+                          description: "平均等待时间（小时）"
+                        avgProcessTime:
+                          type: number
+                          description: "平均处理时间（小时）"
+                        taskCount:
+                          type: integer
+
+  /api/flow-monitor/trends:
+    get:
+      tags: [flow-monitor]
+      summary: 趋势分析
+      operationId: getFlowTrends
+      parameters:
+        - name: days
+          in: query
+          description: "天数"
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        started:
+                          type: integer
+                        completed:
+                          type: integer
+                        cancelled:
+                          type: integer
+
+  # ==================== 流程定时器 ====================
+  /api/flow-timers/check:
+    get:
+      tags: [flow-timers]
+      summary: 检查并触发到期定时器
+      description: 检查并触发到期定时器（Cron 调用）
+      operationId: checkFlowTimers
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      checked:
+                        type: integer
+                      triggered:
+                        type: integer
+
+  # ==================== 流程导出 ====================
+  /api/flow-export/approval-logs:
+    get:
+      tags: [flow-export]
+      summary: 导出审批日志
+      description: 导出审批日志为 CSV/Excel
+      operationId: exportApprovalLogs
+      parameters:
+        - name: instanceId
+          in: query
+          description: "流程实例 ID"
+          schema:
+            type: string
+        - name: format
+          in: query
+          description: "导出格式"
+          schema:
+            type: string
+            enum: ["csv", "xlsx"]
+            default: "xlsx"
+      responses:
+        "200":
+          description: 文件下载
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+components:
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+    PaginatedResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+            total:
+              type: integer
+            page:
+              type: integer
+            pageSize:
+              type: integer
+            totalPages:
+              type: integer
+    FlowDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+          enum: ["draft", "published", "archived"]
+        formSchemaId:
+          type: string
+        permissions:
+          type: object
+          properties:
+            editors:
+              type: array
+              items:
+                type: string
+            launchers:
+              type: array
+              items:
+                type: string
+            viewers:
+              type: array
+              items:
+                type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    FlowInstance:
+      type: object
+      properties:
+        id:
+          type: string
+        definitionId:
+          type: string
+        status:
+          type: string
+          enum: ["running", "completed", "cancelled", "terminated"]
+        formData:
+          type: object
+        currentNodeId:
+          type: string
+        startedBy:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+    FlowTask:
+      type: object
+      properties:
+        id:
+          type: string
+        instanceId:
+          type: string
+        nodeId:
+          type: string
+        nodeName:
+          type: string
+        assigneeId:
+          type: string
+        status:
+          type: string
+          enum: ["pending", "completed", "rejected", "cancelled"]
+        formData:
+          type: object
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: 页码
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      name: pageSize
+      in: query
+      description: 每页数量
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    SearchParam:
+      name: search
+      in: query
+      description: 搜索关键词
+      schema:
+        type: string
+    KeywordParam:
+      name: keyword
+      in: query
+      description: 搜索关键词
+      schema:
+        type: string
+    ObjectIdParam:
+      name: id
+      in: path
+      required: true
+      description: "资源 ID（MongoDB ObjectId）"
+      schema:
+        type: string
+        pattern: "^[0-9a-fA-F]{24}$"
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key

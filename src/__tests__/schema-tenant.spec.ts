@@ -27,6 +27,30 @@ async function withTenant<T>(tenantId: string, fn: () => Promise<T>): Promise<T>
   })
 }
 
+// Pre-generate valid ObjectIds for test data
+const OID = {
+  fs1: new mongoose.Types.ObjectId(),
+  fs2: new mongoose.Types.ObjectId(),
+  fsA1: new mongoose.Types.ObjectId(),
+  fsA2: new mongoose.Types.ObjectId(),
+  fsB1: new mongoose.Types.ObjectId(),
+  fsC1: new mongoose.Types.ObjectId(),
+  fsC2: new mongoose.Types.ObjectId(),
+  fsC3: new mongoose.Types.ObjectId(),
+  fsF1: new mongoose.Types.ObjectId(),
+  fsF2: new mongoose.Types.ObjectId(),
+  fsU1: new mongoose.Types.ObjectId(),
+  fsU2: new mongoose.Types.ObjectId(),
+  fsD1: new mongoose.Types.ObjectId(),
+  fsD2: new mongoose.Types.ObjectId(),
+  ps1: new mongoose.Types.ObjectId(),
+  psA1: new mongoose.Types.ObjectId(),
+  psB1: new mongoose.Types.ObjectId(),
+  psUpsert1: new mongoose.Types.ObjectId(),
+  psD1: new mongoose.Types.ObjectId(),
+  psD2: new mongoose.Types.ObjectId(),
+}
+
 const TEST_MONGO_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/test-schema-tenant'
 
 beforeAll(async () => {
@@ -57,7 +81,7 @@ describe('FormSchema — tenant isolation on create', () => {
   it('create() auto-injects tenantId from tenant context', async () => {
     const schema = await withTenant('tenant-Alpha', async () => {
       return FormSchemaModel.create({
-        _id: 'fs-1',
+        _id: OID.fs1,
         editId: 'ed-1',
         version: '20260101000000',
         name: 'Test Form',
@@ -71,7 +95,7 @@ describe('FormSchema — tenant isolation on create', () => {
 
   it('create() without tenant context uses default tenantId', async () => {
     const schema = await FormSchemaModel.create({
-      _id: 'fs-2',
+      _id: OID.fs2,
       editId: 'ed-2',
       version: '20260101000000',
       name: 'No Context Form',
@@ -86,33 +110,34 @@ describe('FormSchema — tenant isolation on create', () => {
 describe('FormSchema — tenant isolation on find', () => {
   it('find() returns only documents from current tenant', async () => {
     await withTenant('T-A', () =>
-      FormSchemaModel.create({ _id: 'fs-a1', editId: 'ed-a1', version: 'v1', name: 'A1', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsA1, editId: 'ed-a1', version: 'v1', name: 'A1', type: 'form', json: [] }),
     )
     await withTenant('T-A', () =>
-      FormSchemaModel.create({ _id: 'fs-a2', editId: 'ed-a2', version: 'v1', name: 'A2', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsA2, editId: 'ed-a2', version: 'v1', name: 'A2', type: 'form', json: [] }),
     )
     await withTenant('T-B', () =>
-      FormSchemaModel.create({ _id: 'fs-b1', editId: 'ed-b1', version: 'v1', name: 'B1', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsB1, editId: 'ed-b1', version: 'v1', name: 'B1', type: 'form', json: [] }),
     )
 
     const resultsA = await withTenant('T-A', () => FormSchemaModel.find().lean())
     expect(resultsA).toHaveLength(2)
-    expect(resultsA.map(r => r._id).sort()).toEqual(['fs-a1', 'fs-a2'])
+    const idsA = resultsA.map(r => String(r._id)).sort()
+    expect(idsA).toEqual([String(OID.fsA1), String(OID.fsA2)].sort())
 
     const resultsB = await withTenant('T-B', () => FormSchemaModel.find().lean())
     expect(resultsB).toHaveLength(1)
-    expect(resultsB[0]._id).toBe('fs-b1')
+    expect(String(resultsB[0]._id)).toBe(String(OID.fsB1))
   })
 
   it('countDocuments() counts only current tenant', async () => {
     await withTenant('CNT-A', () =>
-      FormSchemaModel.create({ _id: 'fs-c1', editId: 'ed-c1', version: 'v1', name: 'C1', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsC1, editId: 'ed-c1', version: 'v1', name: 'C1', type: 'form', json: [] }),
     )
     await withTenant('CNT-A', () =>
-      FormSchemaModel.create({ _id: 'fs-c2', editId: 'ed-c2', version: 'v1', name: 'C2', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsC2, editId: 'ed-c2', version: 'v1', name: 'C2', type: 'form', json: [] }),
     )
     await withTenant('CNT-B', () =>
-      FormSchemaModel.create({ _id: 'fs-c3', editId: 'ed-c3', version: 'v1', name: 'C3', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsC3, editId: 'ed-c3', version: 'v1', name: 'C3', type: 'form', json: [] }),
     )
 
     expect(await withTenant('CNT-A', () => FormSchemaModel.countDocuments())).toBe(2)
@@ -123,37 +148,37 @@ describe('FormSchema — tenant isolation on find', () => {
 describe('FormSchema — tenant isolation on findOne', () => {
   it('findOne() returns only matching document from current tenant', async () => {
     await withTenant('F-A', () =>
-      FormSchemaModel.create({ _id: 'fs-f1', editId: 'ed-f1', version: 'v1', name: 'Shared', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsF1, editId: 'ed-f1', version: 'v1', name: 'Shared', type: 'form', json: [] }),
     )
     await withTenant('F-B', () =>
-      FormSchemaModel.create({ _id: 'fs-f2', editId: 'ed-f2', version: 'v1', name: 'Shared', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsF2, editId: 'ed-f2', version: 'v1', name: 'Shared', type: 'form', json: [] }),
     )
 
     const found = await withTenant('F-A', () =>
       FormSchemaModel.findOne({ name: 'Shared' }).lean(),
     )
     expect(found).not.toBeNull()
-    expect(found!._id).toBe('fs-f1')
+    expect(String(found!._id)).toBe(String(OID.fsF1))
   })
 })
 
 describe('FormSchema — tenant isolation on findByIdAndUpdate', () => {
   it('findByIdAndUpdate() only updates document in current tenant', async () => {
     await withTenant('UP-A', () =>
-      FormSchemaModel.create({ _id: 'fs-u1', editId: 'ed-u1', version: 'v1', name: 'Old', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsU1, editId: 'ed-u1', version: 'v1', name: 'Old', type: 'form', json: [] }),
     )
     await withTenant('UP-B', () =>
-      FormSchemaModel.create({ _id: 'fs-u2', editId: 'ed-u2', version: 'v1', name: 'Old', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsU2, editId: 'ed-u2', version: 'v1', name: 'Old', type: 'form', json: [] }),
     )
 
     const updated = await withTenant('UP-A', () =>
-      FormSchemaModel.findByIdAndUpdate('fs-u1', { name: 'New' }, { new: true }).lean(),
+      FormSchemaModel.findByIdAndUpdate(OID.fsU1, { name: 'New' }, { new: true }).lean(),
     )
     expect(updated).not.toBeNull()
     expect(updated!.name).toBe('New')
 
     // Other tenant's document untouched
-    const other = await FormSchemaModel.findById('fs-u2').lean()
+    const other = await FormSchemaModel.findById(OID.fsU2).lean()
     expect(other!.name).toBe('Old')
   })
 })
@@ -161,20 +186,20 @@ describe('FormSchema — tenant isolation on findByIdAndUpdate', () => {
 describe('FormSchema — tenant isolation on findByIdAndDelete', () => {
   it('findByIdAndDelete() only deletes document in current tenant', async () => {
     await withTenant('DL-A', () =>
-      FormSchemaModel.create({ _id: 'fs-d1', editId: 'ed-d1', version: 'v1', name: 'DeleteMe', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsD1, editId: 'ed-d1', version: 'v1', name: 'DeleteMe', type: 'form', json: [] }),
     )
     await withTenant('DL-B', () =>
-      FormSchemaModel.create({ _id: 'fs-d2', editId: 'ed-d2', version: 'v1', name: 'DeleteMe', type: 'form', json: [] }),
+      FormSchemaModel.create({ _id: OID.fsD2, editId: 'ed-d2', version: 'v1', name: 'DeleteMe', type: 'form', json: [] }),
     )
 
     const deleted = await withTenant('DL-A', () =>
-      FormSchemaModel.findByIdAndDelete('fs-d1').lean(),
+      FormSchemaModel.findByIdAndDelete(OID.fsD1).lean(),
     )
     expect(deleted).not.toBeNull()
-    expect(deleted!._id).toBe('fs-d1')
+    expect(String(deleted!._id)).toBe(String(OID.fsD1))
 
     // Other tenant's document still exists
-    const other = await FormSchemaModel.findById('fs-d2').lean()
+    const other = await FormSchemaModel.findById(OID.fsD2).lean()
     expect(other).not.toBeNull()
   })
 })
@@ -185,7 +210,7 @@ describe('PublishedSchema — tenant isolation on create', () => {
   it('create() auto-injects tenantId from tenant context', async () => {
     const pub = await withTenant('pub-T1', async () => {
       return PublishedSchemaModel.create({
-        _id: 'ps-1',
+        _id: OID.ps1,
         sourceId: 'ed-1',
         name: 'Published Form',
         type: 'form',
@@ -204,24 +229,24 @@ describe('PublishedSchema — tenant isolation on find', () => {
   it('find() returns only documents from current tenant', async () => {
     await withTenant('PUB-A', () =>
       PublishedSchemaModel.create({
-        _id: 'ps-a1', sourceId: 'ed-a1', name: 'PA1', type: 'form',
+        _id: OID.psA1, sourceId: 'ed-a1', name: 'PA1', type: 'form',
         json: [], publishId: 'pid-a1', version: 'v1', publishedAt: new Date(),
       }),
     )
     await withTenant('PUB-B', () =>
       PublishedSchemaModel.create({
-        _id: 'ps-b1', sourceId: 'ed-b1', name: 'PB1', type: 'form',
+        _id: OID.psB1, sourceId: 'ed-b1', name: 'PB1', type: 'form',
         json: [], publishId: 'pid-b1', version: 'v1', publishedAt: new Date(),
       }),
     )
 
     const resultsA = await withTenant('PUB-A', () => PublishedSchemaModel.find().lean())
     expect(resultsA).toHaveLength(1)
-    expect(resultsA[0]._id).toBe('ps-a1')
+    expect(String(resultsA[0]._id)).toBe(String(OID.psA1))
 
     const resultsB = await withTenant('PUB-B', () => PublishedSchemaModel.find().lean())
     expect(resultsB).toHaveLength(1)
-    expect(resultsB[0]._id).toBe('ps-b1')
+    expect(String(resultsB[0]._id)).toBe(String(OID.psB1))
   })
 })
 
@@ -232,7 +257,7 @@ describe('PublishedSchema — tenant isolation on findOneAndUpdate with upsert',
         { sourceId: 'ed-upsert-1' },
         {
           $set: { name: 'Upserted', version: 'v1', publishedAt: new Date(), json: [], publishId: 'pid-upsert', type: 'form' },
-          $setOnInsert: { _id: 'ps-upsert-1', sourceId: 'ed-upsert-1', tenantId: 'UPSERT-A' },
+          $setOnInsert: { _id: OID.psUpsert1, sourceId: 'ed-upsert-1', tenantId: 'UPSERT-A' },
         },
         { upsert: true, new: true },
       ).lean()
@@ -253,13 +278,13 @@ describe('PublishedSchema — tenant isolation on delete', () => {
   it('deleteOne() only deletes documents in current tenant', async () => {
     await withTenant('DEL-A', () =>
       PublishedSchemaModel.create({
-        _id: 'ps-d1', sourceId: 'ed-d1', name: 'DA', type: 'form',
+        _id: OID.psD1, sourceId: 'ed-d1', name: 'DA', type: 'form',
         json: [], publishId: 'pid-d1', version: 'v1', publishedAt: new Date(),
       }),
     )
     await withTenant('DEL-B', () =>
       PublishedSchemaModel.create({
-        _id: 'ps-d2', sourceId: 'ed-d2', name: 'DB', type: 'form',
+        _id: OID.psD2, sourceId: 'ed-d2', name: 'DB', type: 'form',
         json: [], publishId: 'pid-d2', version: 'v1', publishedAt: new Date(),
       }),
     )
@@ -269,11 +294,11 @@ describe('PublishedSchema — tenant isolation on delete', () => {
     )
 
     // Tenant A's doc deleted
-    const a = await PublishedSchemaModel.findById('ps-d1').lean()
+    const a = await PublishedSchemaModel.findById(OID.psD1).lean()
     expect(a).toBeNull()
 
     // Tenant B's doc still exists
-    const b = await PublishedSchemaModel.findById('ps-d2').lean()
+    const b = await PublishedSchemaModel.findById(OID.psD2).lean()
     expect(b).not.toBeNull()
   })
 })

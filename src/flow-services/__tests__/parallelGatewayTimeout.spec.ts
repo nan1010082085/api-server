@@ -13,8 +13,8 @@
  * @vitest-environment node
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { BpmnElementType } from '@schema-platform/flow-shared'
-import type { FlowToken, FlowGraph, FlowNodeData, FlowEdgeData } from '@schema-platform/flow-shared'
+import { BpmnElementType } from '@/shared/flow'
+import type { FlowToken, FlowGraph, FlowNodeData, FlowEdgeData } from '@/shared/flow'
 
 // ── Mock all Mongoose models ──
 

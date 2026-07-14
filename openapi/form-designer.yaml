@@ -1,0 +1,1257 @@
+openapi: "3.0.3"
+
+info:
+  title: 表单设计器 API
+  description: |
+    表单设计器模块，包含：
+    - Schema 管理
+    - 组件模板
+    - 字典管理
+    - 系统参数
+    - 表单提交
+    - Mock 数据
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3001
+    description: 开发环境
+
+tags:
+  - name: schemas
+    description: Schema 管理
+  - name: templates
+    description: 组件模板
+  - name: dict
+    description: 字典管理
+  - name: options
+    description: 系统参数
+  - name: submissions
+    description: 表单提交
+  - name: mock
+    description: Mock 数据
+
+paths:
+  # ==================== Schema 管理 ====================
+  /api/schemas:
+    get:
+      tags: [schemas]
+      summary: Schema 列表
+      description: Schema 列表（分页 + 搜索 + 类型筛选）
+      operationId: listSchemas
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/KeywordParam"
+        - name: type
+          in: query
+          description: "Schema 类型筛选"
+          schema:
+            type: string
+            enum: ["form", "table", "chart", "custom"]
+        - name: status
+          in: query
+          description: "状态筛选"
+          schema:
+            type: string
+            enum: ["draft", "published"]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [schemas]
+      summary: 创建 Schema
+      operationId: createSchema
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - type
+                - json
+              properties:
+                name:
+                  type: string
+                  example: "请假表单"
+                type:
+                  type: string
+                  enum: ["form", "table", "chart", "custom"]
+                  example: "form"
+                json:
+                  type: object
+                  description: "Schema JSON 结构"
+                  example:
+                    widgets:
+                      - id: "field1"
+                        type: "input"
+                        label: "姓名"
+                description:
+                  type: string
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/SchemaInfo"
+
+  /api/schemas/import:
+    post:
+      tags: [schemas]
+      summary: 导入 Schema
+      description: 导入 Schema（深度校验 widget 树 + ID 重生成）
+      operationId: importSchema
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - json
+              properties:
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: ["form", "table", "chart", "custom"]
+                json:
+                  type: object
+      responses:
+        "200":
+          description: 导入成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/SchemaInfo"
+
+  /api/schemas/published:
+    get:
+      tags: [schemas]
+      summary: 已发布 Schema 列表
+      operationId: listPublishedSchemas
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /api/schemas/published/{sourceId}:
+    get:
+      tags: [schemas]
+      summary: 按 sourceId 查看已发布 Schema
+      operationId: getPublishedSchemaBySourceId
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          description: "源 Schema ID"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/SchemaInfo"
+
+  /api/schemas/published/by-publish-id/{publishId}:
+    get:
+      tags: [schemas]
+      summary: 按 publishId 查看已发布 Schema
+      operationId: getPublishedSchemaByPublishId
+      parameters:
+        - name: publishId
+          in: path
+          required: true
+          description: "发布 ID"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/SchemaInfo"
+
+  /api/schemas/{param}/versions:
+    get:
+      tags: [schemas]
+      summary: 查看 Schema 版本历史
+      operationId: listSchemaVersions
+      parameters:
+        - name: param
+          in: path
+          required: true
+          description: "Schema ID 或 publishId"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version:
+                          type: integer
+                        json:
+                          type: object
+                        createdAt:
+                          type: string
+                          format: date-time
+
+  /api/schemas/{param}/versions/{version}:
+    get:
+      tags: [schemas]
+      summary: 查看特定版本
+      operationId: getSchemaVersion
+      parameters:
+        - name: param
+          in: path
+          required: true
+          description: "Schema ID 或 publishId"
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          description: "版本号"
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      version:
+                        type: integer
+                      json:
+                        type: object
+    delete:
+      tags: [schemas]
+      summary: 删除特定版本
+      description: 删除特定版本（不能删当前版本）
+      operationId: deleteSchemaVersion
+      parameters:
+        - name: param
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/schemas/{id}:
+    get:
+      tags: [schemas]
+      summary: 获取单个 Schema
+      operationId: getSchema
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/SchemaInfo"
+    put:
+      tags: [schemas]
+      summary: 更新 Schema
+      description: 更新 Schema（自动推入版本快照，最多15个）
+      operationId: updateSchema
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                json:
+                  type: object
+                description:
+                  type: string
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [schemas]
+      summary: 删除 Schema
+      description: 删除 Schema（同时删除已发布版本）
+      operationId: deleteSchema
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/schemas/{id}/publish:
+    post:
+      tags: [schemas]
+      summary: 发布 Schema
+      description: 发布 Schema（可指定版本）
+      operationId: publishSchema
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version:
+                  type: integer
+                  description: "指定版本号（可选）"
+      responses:
+        "200":
+          description: 发布成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 组件模板 ====================
+  /api/templates:
+    get:
+      tags: [templates]
+      summary: 模板列表
+      description: 模板列表（搜索 + 分类 + 标签 + 组件类型筛选）
+      operationId: listTemplates
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/KeywordParam"
+        - name: category
+          in: query
+          description: 分类
+          schema:
+            type: string
+        - name: tag
+          in: query
+          description: 标签
+          schema:
+            type: string
+        - name: componentType
+          in: query
+          description: 组件类型
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [templates]
+      summary: 创建模板
+      operationId: createTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - widgets
+              properties:
+                name:
+                  type: string
+                  example: "用户信息表单"
+                category:
+                  type: string
+                  example: "常用"
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  example: ["用户", "基础"]
+                componentType:
+                  type: string
+                  description: "适用的组件类型"
+                widgets:
+                  type: array
+                  items:
+                    type: object
+                  description: "模板 widgets"
+                description:
+                  type: string
+                thumbnail:
+                  type: string
+                  description: "缩略图 URL"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/templates/{id}:
+    get:
+      tags: [templates]
+      summary: 获取模板
+      operationId: getTemplate
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    put:
+      tags: [templates]
+      summary: 更新模板
+      operationId: updateTemplate
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                category:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                widgets:
+                  type: array
+                  items:
+                    type: object
+                description:
+                  type: string
+                thumbnail:
+                  type: string
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [templates]
+      summary: 删除模板
+      operationId: deleteTemplate
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/templates/{id}/apply:
+    post:
+      tags: [templates]
+      summary: 应用模板
+      description: 应用模板（返回带重生成 ID 的 widgets）
+      operationId: applyTemplate
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      widgets:
+                        type: array
+                        items:
+                          type: object
+                        description: "重生成 ID 后的 widgets"
+
+  # ==================== 字典管理 ====================
+  /api/dict/types:
+    get:
+      tags: [dict]
+      summary: 字典类型列表
+      operationId: listDictTypes
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - $ref: "#/components/parameters/KeywordParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [dict]
+      summary: 创建字典类型
+      operationId: createDictType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - code
+              properties:
+                name:
+                  type: string
+                  example: "性别"
+                code:
+                  type: string
+                  example: "gender"
+                description:
+                  type: string
+                status:
+                  type: integer
+                  enum: [0, 1]
+                  default: 1
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/dict/types/{id}:
+    get:
+      tags: [dict]
+      summary: 获取字典类型
+      operationId: getDictType
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    put:
+      tags: [dict]
+      summary: 更新字典类型
+      operationId: updateDictType
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: integer
+                  enum: [0, 1]
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [dict]
+      summary: 删除字典类型
+      description: 删除字典类型（级联删除数据）
+      operationId: deleteDictType
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/dict/data:
+    get:
+      tags: [dict]
+      summary: 字典数据列表
+      operationId: listDictData
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - name: typeId
+          in: query
+          description: 字典类型 ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 状态
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+    post:
+      tags: [dict]
+      summary: 创建字典数据
+      operationId: createDictData
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - typeId
+                - label
+                - value
+              properties:
+                typeId:
+                  type: string
+                  description: "字典类型 ID"
+                label:
+                  type: string
+                  example: "男"
+                value:
+                  type: string
+                  example: "male"
+                sort:
+                  type: integer
+                  default: 0
+                status:
+                  type: integer
+                  enum: [0, 1]
+                  default: 1
+                remark:
+                  type: string
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/dict/data/by-type/{code}:
+    get:
+      tags: [dict]
+      summary: 按类型编码获取数据项
+      description: 按类型编码获取数据项（公开接口）
+      operationId: getDictDataByTypeCode
+      security: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: "字典类型编码"
+          schema:
+            type: string
+            example: "gender"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        label:
+                          type: string
+                          example: "男"
+                        value:
+                          type: string
+                          example: "male"
+                        sort:
+                          type: integer
+
+  /api/dict/data/{id}:
+    get:
+      tags: [dict]
+      summary: 获取字典数据
+      operationId: getDictData
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    put:
+      tags: [dict]
+      summary: 更新字典数据
+      operationId: updateDictData
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                value:
+                  type: string
+                sort:
+                  type: integer
+                status:
+                  type: integer
+                  enum: [0, 1]
+                remark:
+                  type: string
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [dict]
+      summary: 删除字典数据
+      operationId: deleteDictData
+      parameters:
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  # ==================== 系统参数 ====================
+  /api/options:
+    get:
+      tags: [options]
+      summary: 静态选项数据
+      description: 静态选项数据（城市/部门/角色/技能等，支持树形）
+      operationId: getOptions
+      parameters:
+        - name: type
+          in: query
+          required: true
+          description: "选项类型"
+          schema:
+            type: string
+            enum: ["city", "department", "role", "skill"]
+        - name: tree
+          in: query
+          description: "是否返回树形结构"
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value:
+                          type: string
+                        label:
+                          type: string
+                        children:
+                          type: array
+                          items:
+                            type: object
+
+  # ==================== 表单提交 ====================
+  /api/submissions/{schemaId}:
+    post:
+      tags: [submissions]
+      summary: 提交表单数据
+      operationId: createSubmission
+      parameters:
+        - name: schemaId
+          in: path
+          required: true
+          description: "Schema ID"
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - data
+              properties:
+                data:
+                  type: object
+                  description: "表单数据"
+      responses:
+        "201":
+          description: 提交成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    get:
+      tags: [submissions]
+      summary: 查询提交
+      description: 查询提交（分页 + 状态筛选）
+      operationId: listSubmissions
+      parameters:
+        - name: schemaId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - name: status
+          in: query
+          description: "状态筛选"
+          schema:
+            type: string
+            enum: ["pending", "approved", "rejected"]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /api/submissions/{schemaId}/export:
+    get:
+      tags: [submissions]
+      summary: 导出为 CSV/Excel
+      operationId: exportSubmissions
+      parameters:
+        - name: schemaId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          description: "导出格式"
+          schema:
+            type: string
+            enum: ["csv", "xlsx"]
+            default: "xlsx"
+      responses:
+        "200":
+          description: 文件下载
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /api/submissions/{schemaId}/{id}:
+    get:
+      tags: [submissions]
+      summary: 获取单条提交
+      operationId: getSubmission
+      parameters:
+        - name: schemaId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+    delete:
+      tags: [submissions]
+      summary: 删除提交
+      operationId: deleteSubmission
+      parameters:
+        - name: schemaId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/ObjectIdParam"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/submissions/{schemaId}/{id}/status:
+    patch:
+      tags: [submissions]
+      summary: 更新提交状态
+      description: 更新提交状态（审批/驳回）
+      operationId: updateSubmissionStatus
+      parameters:
+        - name: schemaId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/ObjectIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: ["pending", "approved", "rejected"]
+                comment:
+                  type: string
+                  description: "审批意见"
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /api/submissions/{schemaId}/batch/delete:
+    post:
+      tags: [submissions]
+      summary: 批量删除
+      operationId: batchDeleteSubmissions
+      parameters:
+        - name: schemaId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  description: "要删除的提交 ID 列表"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      deleted:
+                        type: integer
+                        description: "删除数量"
+
+  /api/submissions/{schemaId}/batch/status:
+    post:
+      tags: [submissions]
+      summary: 批量更新状态
+      operationId: batchUpdateSubmissionStatus
+      parameters:
+        - name: schemaId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+                - status
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                status:
+                  type: string
+                  enum: ["pending", "approved", "rejected"]
+                comment:
+                  type: string
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      updated:
+                        type: integer
+
+  # ==================== Mock 数据 ====================
+  /api/mock:
+    get:
+      tags: [mock]
+      summary: 生成模拟表单数据
+      description: 根据 Schema 生成模拟表单数据
+      operationId: generateMockData
+      parameters:
+        - name: schemaId
+          in: query
+          description: "Schema ID"
+          schema:
+            type: string
+        - name: count
+          in: query
+          description: "生成数量"
+          schema:
+            type: integer
+            default: 10
+            maximum: 100
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: "模拟数据"
+
+components:
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+    PaginatedResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+            total:
+              type: integer
+            page:
+              type: integer
+            pageSize:
+              type: integer
+            totalPages:
+              type: integer
+    SchemaInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        json:
+          type: object
+        status:
+          type: string
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: 页码
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      name: pageSize
+      in: query
+      description: 每页数量
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    KeywordParam:
+      name: keyword
+      in: query
+      description: 搜索关键词
+      schema:
+        type: string
+    ObjectIdParam:
+      name: id
+      in: path
+      required: true
+      description: "资源 ID（MongoDB ObjectId）"
+      schema:
+        type: string
+        pattern: "^[0-9a-fA-F]{24}$"
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key

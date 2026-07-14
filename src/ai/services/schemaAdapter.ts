@@ -138,7 +138,7 @@ const TYPE_NAME_RULES: Record<string, string> = {
 function loadMetadata(): AIMetadata {
   if (!metadata) {
     const require = createRequire(import.meta.url)
-    const pkgPath = require.resolve('@schema-platform/ai-shared/package.json')
+    const pkgPath = require.resolve('@schema-platform/platform-shared/ai/package.json')
     const jsonPath = join(dirname(pkgPath), 'metadata.json')
     metadata = JSON.parse(readFileSync(jsonPath, 'utf-8')) as AIMetadata
   }

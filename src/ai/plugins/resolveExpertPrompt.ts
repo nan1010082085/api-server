@@ -6,7 +6,7 @@ import {
   buildEditorSystemPrompt,
   buildFlowSystemPrompt,
   buildPageSystemPrompt,
-} from '@schema-platform/ai-shared/promptBuilder'
+} from '@schema-platform/platform-shared/ai/promptBuilder'
 import { getMetadata } from '../tools/toolHandlers.js'
 import type { ExpertDeclaration } from './types.js'
 import type { PluginRegistry } from './registry.js'

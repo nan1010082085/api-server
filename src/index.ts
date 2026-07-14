@@ -22,6 +22,13 @@ async function start() {
   }
 
   try {
+    const { seedProvidersAndModels } = await import('./utils/seedModelConfigs.js')
+    await seedProvidersAndModels()
+  } catch (err) {
+    console.error('[seed] Provider/Model seed failed:', err instanceof Error ? err.message : String(err))
+  }
+
+  try {
     const { ensureModelConfigs } = await import('./utils/seedModelConfigs.js')
     await ensureModelConfigs()
   } catch (err) {

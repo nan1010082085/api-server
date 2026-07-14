@@ -71,7 +71,7 @@ async function findDescendantDepts(deptIds: string | string[]): Promise<string[]
     const children = await DeptModel.find({ parentId: { $in: currentLevel } }).select('_id').lean()
     const nextLevel: string[] = []
     for (const child of children) {
-      const childId = (child as { _id: string })._id
+      const childId = String((child as { _id: unknown })._id)
       result.push(childId)
       nextLevel.push(childId)
     }
@@ -107,7 +107,7 @@ export async function buildDataScopeFilter(
     // Need to look up users in those departments
     const { UserModel } = await import('../models/User.js')
     const usersInDepts = await UserModel.find({ deptId: { $in: allowedDeptIds } }).select('_id').lean()
-    const userIds = usersInDepts.map(u => (u as { _id: string })._id)
+    const userIds = usersInDepts.map(u => String((u as { _id: unknown })._id))
     return { [ownerField]: { $in: userIds } }
   }
 

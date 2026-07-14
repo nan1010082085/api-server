@@ -70,6 +70,15 @@ afterAll(async () => {
 beforeEach(async () => {
   await DeptModel.deleteMany({})
   await UserModel.deleteMany({})
+  // Re-create admin user so authMiddleware dev fallback works
+  await UserModel.create({
+    username: 'admin',
+    password: 'hashed',
+    displayName: 'Admin',
+    roles: [],
+    tenantId: '000000',
+    status: 'active',
+  })
 })
 
 describe('Dept CRUD API', () => {
@@ -102,7 +111,7 @@ describe('Dept CRUD API', () => {
     })
 
     expect(status).toBe(201)
-    expect(body.data.parentId).toBe(parent._id)
+    expect(body.data.parentId).toBe(String(parent._id))
     expect(body.data.sort).toBe(1)
     expect(body.data.leader).toBe('张三')
   })
@@ -115,9 +124,10 @@ describe('Dept CRUD API', () => {
   })
 
   it('POST /api/depts rejects non-existent parentId', async () => {
+    const fakeId = 'aaaaaaaaaaaaaaaaaaaaaaaa'
     const { status, body } = await request('POST', '/api/depts', {
       name: 'Test',
-      parentId: '00000000-0000-0000-0000-000000000000',
+      parentId: fakeId,
     })
 
     expect(status).toBe(400)
@@ -241,7 +251,8 @@ describe('Dept CRUD API', () => {
   })
 
   it('GET /api/depts/:id returns 404 for missing dept', async () => {
-    const { status, body } = await request('GET', '/api/depts/00000000-0000-0000-0000-000000000000')
+    const fakeId = 'aaaaaaaaaaaaaaaaaaaaaaaa'
+    const { status, body } = await request('GET', `/api/depts/${fakeId}`)
 
     expect(status).toBe(404)
     expect(body.success).toBe(false)
@@ -277,7 +288,8 @@ describe('Dept CRUD API', () => {
   })
 
   it('PUT /api/depts/:id returns 404 for missing dept', async () => {
-    const { status } = await request('PUT', '/api/depts/00000000-0000-0000-0000-000000000000', { name: 'Nope' })
+    const fakeId = 'aaaaaaaaaaaaaaaaaaaaaaaa'
+    const { status } = await request('PUT', `/api/depts/${fakeId}`, { name: 'Nope' })
 
     expect(status).toBe(404)
   })
@@ -292,7 +304,7 @@ describe('Dept CRUD API', () => {
     const { status, body } = await request('PATCH', `/api/depts/${dept._id}/move`, { parentId: a._id })
 
     expect(status).toBe(200)
-    expect(body.data.parentId).toBe(a._id)
+    expect(body.data.parentId).toBe(String(a._id))
   })
 
   it('PATCH /api/depts/:id/move moves to root', async () => {
@@ -367,14 +379,15 @@ describe('Dept CRUD API', () => {
     const dept = await DeptModel.create({ name: 'With Users' })
     await UserModel.create({ username: 'testuser', password: 'pass123', displayName: 'Test User', deptId: dept._id })
 
-    const { status, body } = await request('DELETE', `/api/depts/${deptId}`)
+    const { status, body } = await request('DELETE', `/api/depts/${dept._id}`)
 
     expect(status).toBe(400)
     expect(body.error.message).toContain('associated users')
   })
 
   it('DELETE /api/depts/:id returns 404 for missing dept', async () => {
-    const { status } = await request('DELETE', '/api/depts/00000000-0000-0000-0000-000000000000')
+    const fakeId = 'aaaaaaaaaaaaaaaaaaaaaaaa'
+    const { status } = await request('DELETE', `/api/depts/${fakeId}`)
 
     expect(status).toBe(404)
   })

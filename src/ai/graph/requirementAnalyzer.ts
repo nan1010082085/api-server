@@ -15,7 +15,7 @@ import { getModelForTask, resolveUserModel } from './agentBase.js'
 import { callLLMWithFallback } from './agentErrorHandler.js'
 import { logger } from '../../utils/logger.js'
 import { getAllToolsSync, getToolSync, getToolsByNames, ensureToolsReady } from '../tools/registry.js'
-import { REQUIREMENT_ANALYZER_TOOLS_PROMPT } from '@schema-platform/ai-shared/toolNames'
+import { REQUIREMENT_ANALYZER_TOOLS_PROMPT } from '@schema-platform/platform-shared/ai/toolNames'
 import type { AgentStateAnnotation, RequirementAnalysis } from './state.js'
 
 // RAG 检索工具名称（MCP 工具名）

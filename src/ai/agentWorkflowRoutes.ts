@@ -17,7 +17,7 @@
  */
 
 import Router from '@koa/router'
-import type { AgentWorkflowTemplateId } from '@schema-platform/ai-shared'
+import type { AgentWorkflowTemplateId } from '@schema-platform/platform-shared/ai'
 import { authMiddleware } from '../middleware/auth.js'
 import { isValidObjectId } from '../utils/objectId.js'
 import {

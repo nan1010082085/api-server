@@ -72,6 +72,15 @@ beforeEach(async () => {
   await MenuModel.deleteMany({})
   await RoleModel.deleteMany({})
   await UserModel.deleteMany({})
+  // Re-create admin user so authMiddleware dev fallback works
+  await UserModel.create({
+    username: 'admin',
+    password: 'hashed',
+    displayName: 'Admin',
+    roles: [],
+    tenantId: '000000',
+    status: 'active',
+  })
 })
 
 describe('Menu CRUD API', () => {
@@ -109,7 +118,7 @@ describe('Menu CRUD API', () => {
     })
 
     expect(status).toBe(201)
-    expect(body.data.parentId).toBe(parent._id)
+    expect(body.data.parentId).toBe(String(parent._id))
     expect(body.data.sort).toBe(1)
     expect(body.data.component).toBe('system/Users')
   })
@@ -134,9 +143,10 @@ describe('Menu CRUD API', () => {
   })
 
   it('POST /api/menus rejects non-existent parentId', async () => {
+    const fakeId = 'aaaaaaaaaaaaaaaaaaaaaaaa'
     const { status, body } = await request('POST', '/api/menus', {
       name: 'Test',
-      parentId: '00000000-0000-0000-0000-000000000000',
+      parentId: fakeId,
     })
 
     expect(status).toBe(400)
@@ -257,7 +267,8 @@ describe('Menu CRUD API', () => {
   })
 
   it('GET /api/menus/:id returns 404 for missing menu', async () => {
-    const { status, body } = await request('GET', '/api/menus/00000000-0000-0000-0000-000000000000')
+    const fakeId = 'aaaaaaaaaaaaaaaaaaaaaaaa'
+    const { status, body } = await request('GET', `/api/menus/${fakeId}`)
 
     expect(status).toBe(404)
     expect(body.success).toBe(false)
@@ -282,7 +293,8 @@ describe('Menu CRUD API', () => {
   })
 
   it('PUT /api/menus/:id returns 404 for missing menu', async () => {
-    const { status } = await request('PUT', '/api/menus/00000000-0000-0000-0000-000000000000', { name: 'Nope' })
+    const fakeId = 'aaaaaaaaaaaaaaaaaaaaaaaa'
+    const { status } = await request('PUT', `/api/menus/${fakeId}`, { name: 'Nope' })
 
     expect(status).toBe(404)
   })
@@ -333,7 +345,8 @@ describe('Menu CRUD API', () => {
   })
 
   it('DELETE /api/menus/:id returns 404 for missing menu', async () => {
-    const { status } = await request('DELETE', '/api/menus/00000000-0000-0000-0000-000000000000')
+    const fakeId = 'aaaaaaaaaaaaaaaaaaaaaaaa'
+    const { status } = await request('DELETE', `/api/menus/${fakeId}`)
 
     expect(status).toBe(404)
   })
@@ -354,19 +367,6 @@ describe('Menu CRUD API', () => {
 })
 
 describe('GET /api/menus/route — dynamic route tree', () => {
-  beforeEach(async () => {
-    // Create dev user that auth middleware falls back to in non-production
-    await UserModel.create({
-      _id: 'dev',
-      username: 'dev',
-      password: 'dev',
-      displayName: 'Dev User',
-      roles: [],
-      tenantId: '000000',
-      status: 'active',
-    })
-  })
-
   it('returns empty tree when no menus exist', async () => {
     const { status, body } = await request('GET', '/api/menus/route')
 

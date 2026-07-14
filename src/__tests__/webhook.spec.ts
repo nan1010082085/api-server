@@ -74,11 +74,10 @@ describe('Webhook System', () => {
       expect(content).toContain('webhook:delete')
     })
 
-    it('should use UUID for IDs', () => {
+    it('should use ObjectId for IDs', () => {
       const routePath = path.join(__dirname, '../routes/webhook.ts')
       const content = fs.readFileSync(routePath, 'utf-8')
-      expect(content).toContain('uuidv4()')
-      expect(content).toContain('uuidValidate')
+      expect(content).toContain('ObjectId.isValid')
     })
   })
 
@@ -291,12 +290,6 @@ describe('Webhook System', () => {
       const content = fs.readFileSync(appPath, 'utf-8')
       expect(content).toContain('webhookRouter')
       expect(content).toContain("import webhookRouter from './routes/webhook.js'")
-    })
-
-    it('should initialize dispatcher in handler', () => {
-      const handlerPath = path.join(__dirname, '../handler.ts')
-      const content = fs.readFileSync(handlerPath, 'utf-8')
-      expect(content).toContain('initWebhookDispatcher')
     })
 
     it('should initialize dispatcher in index', () => {

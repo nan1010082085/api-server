@@ -3,7 +3,7 @@ import {
   createIntelligentAssistantWorkflowGraph,
   createDocumentSummaryWorkflowGraph,
   createDocImageRecognitionWorkflowGraph,
-} from '@schema-platform/ai-shared'
+} from '@schema-platform/platform-shared/ai'
 import { AgentWorkflowModel } from '../ai/models/agentWorkflow.js'
 import { DEFAULT_TENANT_ID } from './initDefaultTenant.js'
 

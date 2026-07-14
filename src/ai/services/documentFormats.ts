@@ -10,6 +10,7 @@ export type DocumentExtractionKind =
   | 'docx'
   | 'doc'
   | 'csv'
+  | 'xlsx'
   | 'ofd'
   | 'txt'
   | 'empty'
@@ -29,6 +30,7 @@ const DOC_MIME_TYPES = new Set([
   'text/csv',
   'application/csv',
   'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/ofd',
   'application/x-ofd',
   'application/octet-stream',
@@ -40,14 +42,16 @@ const EXTENSION_MIME_MAP: Record<string, string> = {
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   '.txt': 'text/plain',
   '.csv': 'text/csv',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   '.ofd': 'application/ofd',
 }
 
 export const DOCUMENT_FORMAT_LABEL =
-  'PNG、JPG、GIF、WebP、PDF、DOC、DOCX、TXT、CSV、OFD'
+  'PNG、JPG、GIF、WebP、PDF、DOC、DOCX、TXT、CSV、XLS、XLSX、OFD'
 
 export const DOCUMENT_UPLOAD_ACCEPT =
-  'image/*,.pdf,.doc,.docx,.txt,.csv,.ofd'
+  'image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,.ofd'
 
 export function extensionFromFilename(filename: string): string {
   return path.extname(filename).toLowerCase()
@@ -59,11 +63,14 @@ export function normalizeUploadMimetype(filename: string, mimetype: string): str
 
   if (ext && EXTENSION_MIME_MAP[ext]) {
     const mapped = EXTENSION_MIME_MAP[ext]
-    if (!trimmed || trimmed === 'application/octet-stream' || trimmed === 'application/vnd.ms-excel') {
+    if (!trimmed || trimmed === 'application/octet-stream') {
       return mapped
     }
     if (ext === '.csv' && trimmed.includes('excel')) {
       return 'text/csv'
+    }
+    if ((ext === '.xls' || ext === '.xlsx') && trimmed.includes('excel')) {
+      return mapped
     }
   }
 
@@ -84,7 +91,7 @@ export function isAllowedUploadFile(filename: string, mimetype: string): boolean
   if (DOC_MIME_TYPES.has(normalized)) {
     const ext = extensionFromFilename(filename)
     if (normalized === 'application/octet-stream') {
-      return ext === '.ofd' || ext === '.csv'
+      return ext === '.ofd' || ext === '.csv' || ext === '.xls' || ext === '.xlsx'
     }
     return true
   }
@@ -111,6 +118,14 @@ export function resolveExtractionKind(filename: string, mimetype: string): Docum
     || ext === '.csv'
   ) {
     return 'csv'
+  }
+  if (
+    normalized === 'application/vnd.ms-excel'
+    || normalized === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    || ext === '.xls'
+    || ext === '.xlsx'
+  ) {
+    return 'xlsx'
   }
   if (
     normalized === 'application/ofd'

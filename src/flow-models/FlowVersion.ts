@@ -1,5 +1,5 @@
 import mongoose from 'mongoose'
-import type { FlowGraph, FlowGraphMetadata } from '@schema-platform/flow-shared'
+import type { FlowGraph, FlowGraphMetadata } from '@/shared/flow'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 import { scheduleFlowRagIndex } from '../ai/services/ragIndexScheduler.js'
 

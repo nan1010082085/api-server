@@ -22,7 +22,7 @@ import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
 export interface ISchemaEmbedding {
   tenantId: string
-  entityKind: 'schema' | 'flow'
+  entityKind: 'schema' | 'flow' | 'document'
   schemaId: string
   editId: string
   name: string
@@ -52,7 +52,7 @@ const metadataSchema = new mongoose.Schema(
 const schemaEmbeddingDef = new mongoose.Schema(
   {
     tenantId: { type: String, default: '000000', index: true },
-    entityKind: { type: String, enum: ['schema', 'flow'], default: 'schema', index: true },
+    entityKind: { type: String, enum: ['schema', 'flow', 'document'], default: 'schema', index: true },
     schemaId: { type: String, required: true, index: true },
     editId: { type: String, required: true, unique: true },
     name: { type: String, required: true },

@@ -19,6 +19,7 @@ import { FormSchemaModel } from '../../models/FormSchema.js'
 import { SchemaEmbeddingModel } from '../../models/SchemaEmbedding.js'
 import { FlowDefinitionModel } from '../../flow-models/FlowDefinition.js'
 import { FlowVersionModel } from '../../flow-models/FlowVersion.js'
+import { DocumentModel } from '../models/document.js'
 import { embedText, embedBatch, isEmbeddingConfigured } from './embeddingService.js'
 import { fuzzySearchSchemas } from './schemaService.js'
 import { logger } from '../../utils/logger.js'
@@ -302,6 +303,74 @@ export async function indexFlowDefinition(flowId: string): Promise<IndexResult> 
   })
 
   return { schemaId: normalizedFlowId, action: 'created' }
+}
+
+/**
+ * Index an uploaded document into RAG.
+ *
+ * Extracts text from the document, generates an embedding,
+ * and stores it in SchemaEmbeddingModel with entityKind 'document'.
+ */
+export async function indexDocument(documentId: string): Promise<IndexResult> {
+  if (!isEmbeddingConfigured()) {
+    return { schemaId: documentId, action: 'skipped' }
+  }
+
+  const doc = await DocumentModel.findById(documentId).lean() as Record<string, unknown> | null
+  if (!doc) {
+    throw new Error(`Document ${documentId} not found`)
+  }
+
+  const normalizedDocId = String(doc._id)
+  const filename = String(doc.filename ?? '')
+  const text = String(doc.text ?? '')
+
+  if (!text.trim()) {
+    throw new Error(`Document ${filename} has no extractable text`)
+  }
+
+  const editId = `doc:${normalizedDocId}`
+  const contentHash = createHash('sha256').update(text).digest('hex').slice(0, 32)
+
+  const existing = await SchemaEmbeddingModel.findOne({ editId }).lean() as Record<string, unknown> | null
+  if (existing && existing.entityKind && existing.entityKind !== 'document') {
+    throw new Error(`editId ${editId} conflicts with ${existing.entityKind} embedding`)
+  }
+  if (existing && existing.contentHash === contentHash) {
+    if (existing.entityKind !== 'document') {
+      await SchemaEmbeddingModel.updateOne({ editId }, { entityKind: 'document' })
+    }
+    return { schemaId: normalizedDocId, action: 'skipped' }
+  }
+
+  const { vector } = await embedText(text.slice(0, 8000))
+
+  const payload = {
+    entityKind: 'document' as const,
+    schemaId: normalizedDocId,
+    name: filename,
+    type: 'document',
+    contentHash,
+    embedding: vector,
+    metadata: {
+      widgetTypes: [],
+      fieldNames: [],
+      labels: [filename],
+      description: text.slice(0, 200),
+    },
+  }
+
+  if (existing) {
+    await SchemaEmbeddingModel.updateOne({ editId }, payload)
+    return { schemaId: normalizedDocId, action: 'updated' }
+  }
+
+  await SchemaEmbeddingModel.create({
+    editId,
+    ...payload,
+  })
+
+  return { schemaId: normalizedDocId, action: 'created' }
 }
 
 /**

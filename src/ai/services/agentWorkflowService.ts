@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid'
 import {
   createAgentWorkflowGraphByTemplate,
   type AgentWorkflowTemplateId,
-} from '@schema-platform/ai-shared'
+} from '@schema-platform/platform-shared/ai'
 import {
   AgentWorkflowModel,
   AgentWorkflowExecutionModel,

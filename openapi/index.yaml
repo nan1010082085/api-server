@@ -1,0 +1,74 @@
+openapi: "3.0.3"
+
+info:
+  title: Schema Platform API
+  description: |
+    可视化设计器后端 API 文档
+
+    ## 认证方式
+
+    支持两种认证方式（二选一）：
+
+    1. **JWT Token**: `Authorization: Bearer <token>`
+    2. **API Key**: `X-API-Key: sk-xxx`
+
+    ## 通用响应格式
+
+    ```json
+    {
+      "success": true,
+      "data": { ... },
+      "error": { "message": "错误信息" }
+    }
+    ```
+
+    ## ID 格式
+
+    所有资源 ID 为 MongoDB ObjectId（24 位十六进制字符串），如 `685faa86c32e0839b4f9de6f`
+
+  version: "1.0.0"
+  contact:
+    name: API Support
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3001
+    description: 开发环境
+  - url: http://localhost:30001
+    description: 本地部署环境
+
+tags:
+  - name: system
+    description: 系统管理（认证、用户、角色、部门、菜单、岗位、租户、配置、日志）
+  - name: form-designer
+    description: 表单设计器（Schema、模板、字典、表单提交）
+  - name: flow-engine
+    description: 流程引擎（流程定义、实例、任务、审批、通知、监控）
+  - name: ai-capabilities
+    description: AI 能力（对话、RAG、插件、工作流、提示词、模型）
+  - name: platform-extensions
+    description: 平台扩展（API Key、凭证、Webhook、统计、MCP）
+
+paths:
+  # 系统管理模块
+  /api/health:
+    $ref: "./system.yaml#/paths/~1api~1health"
+
+  /api/auth/login:
+    $ref: "./system.yaml#/paths/~1api~1auth~1login"
+
+  # ... 其他端点引用
+
+components:
+  securitySchemes:
+    $ref: "./components/security.yaml#/securitySchemes"
+
+  parameters:
+    $ref: "./components/parameters.yaml#/parameters"
+
+  schemas:
+    $ref: "./components/schemas.yaml#/schemas"
+
+security:
+  - bearerAuth: []
