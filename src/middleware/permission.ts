@@ -1,5 +1,6 @@
 import type { Middleware } from 'koa'
 import { RoleModel } from '../models/Role.js'
+import { PermissionModel } from '../models/Permission.js'
 import type { JwtPayload } from './auth.js'
 import { cacheGet, cacheSet, cacheDelPattern } from '../utils/cache.js'
 
@@ -12,11 +13,16 @@ function permCacheKey(roleIds: string[]): string {
   return `perm:${[...roleIds].sort().join(',')}`
 }
 
+interface CachedPermData {
+  permissions: string[]
+  isAdmin: boolean
+}
+
 /**
  * Get cached permissions for a set of role IDs.
  * Returns null on cache miss.
  */
-async function getCachedPermissions(roleIds: string[]): Promise<string[] | null> {
+async function getCachedPermissions(roleIds: string[]): Promise<CachedPermData | null> {
   const key = permCacheKey(roleIds)
   const cached = await cacheGet(key)
   if (cached) {
@@ -28,9 +34,9 @@ async function getCachedPermissions(roleIds: string[]): Promise<string[] | null>
 /**
  * Cache permissions for a set of role IDs.
  */
-async function setCachedPermissions(roleIds: string[], permissions: string[]): Promise<void> {
+async function setCachedPermissions(roleIds: string[], data: CachedPermData): Promise<void> {
   const key = permCacheKey(roleIds)
-  await cacheSet(key, JSON.stringify(permissions), PERMISSION_CACHE_TTL)
+  await cacheSet(key, JSON.stringify(data), PERMISSION_CACHE_TTL)
 }
 
 /**
@@ -67,12 +73,23 @@ export function requirePermission(...requiredPermissions: string[]): Middleware 
     if (roleIds.length > 0) {
       const cached = await getCachedPermissions(roleIds)
       if (cached) {
-        userPermissions = new Set(cached)
+        if (cached.isAdmin) {
+          await next()
+          return
+        }
+        userPermissions = new Set(cached.permissions)
       } else {
         const roles = await RoleModel.find({ _id: { $in: roleIds } })
-        const perms = roles.flatMap(r => r.permissions)
+        const isAdmin = roles.some(r => r.data_scope === 'all')
+        const perms = isAdmin
+          ? (await PermissionModel.find({}, { code: 1 }).lean() as unknown as { code: string }[]).map(p => p.code)
+          : roles.flatMap(r => r.permissions)
         userPermissions = new Set(perms)
-        await setCachedPermissions(roleIds, perms)
+        await setCachedPermissions(roleIds, { permissions: perms, isAdmin })
+        if (isAdmin) {
+          await next()
+          return
+        }
       }
     } else {
       userPermissions = new Set()
@@ -86,7 +103,7 @@ export function requirePermission(...requiredPermissions: string[]): Middleware 
       ctx.body = {
         success: false,
         error: {
-          message: 'Permission denied.',
+          message: '权限不足，无法执行此操作',
           required: requiredPermissions,
           current: Array.from(userPermissions),
         },

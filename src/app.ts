@@ -60,11 +60,6 @@ import onlineUsersRouter from './routes/onlineUsers.js'
 import userImportExportRouter from './routes/userImportExport.js'
 import { auditLogMiddleware } from './middleware/auditLog.js'
 import { connectRedis } from './config/redis.js'
-import { validateApiKey } from './ai/graph/agentBase.js'
-
-// ── Startup validation ──
-validateApiKey()
-
 // ── Redis (non-blocking, optional in dev) ──
 connectRedis()
 

@@ -27,7 +27,10 @@ export function resolvePluginConfigDir(): string {
   if (process.env.AI_PLUGIN_CONFIG_DIR) {
     return path.resolve(process.env.AI_PLUGIN_CONFIG_DIR)
   }
-  return path.resolve(process.cwd(), 'config')
+  // 从当前文件向上 3 级到达 server/ 目录，然后找 config/
+  // dist/ai/plugins/ → dist/ai/ → dist/ → server/config/
+  const currentDir = new URL('.', import.meta.url).pathname
+  return path.resolve(currentDir, '..', '..', '..', 'config')
 }
 
 function readJsonFile(filePath: string): unknown | null {

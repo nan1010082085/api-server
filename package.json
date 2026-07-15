@@ -7,7 +7,7 @@
   "description": "可视化设计器后端 — Koa.js + MongoDB，Schema 存储与 API 服务",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "pnpm --dir ../ai/shared build && tsc",
+    "build": "tsc && pnpm exec tsc-alias --outDir dist --resolve-full-paths",
     "start": "node dist/index.js",
     "test": "vitest run",
     "db:up": "docker compose -f docker-compose.yml up -d",
@@ -29,7 +29,7 @@
     "@langchain/langgraph-checkpoint": "^1.0.4",
     "@langchain/openai": "^1.4.7",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@schema-platform/ai-shared": "file:../ai/shared",
+    "@schema-platform/platform-shared": "file:../shared/platform-shared",
     "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.7",
     "exceljs": "^4.4.0",
@@ -62,6 +62,7 @@
     "@types/pdf-parse": "^1.1.5",
     "@types/uuid": "^10.0.0",
     "@vitest/runner": "^4.1.6",
+    "tsc-alias": "^1.9.1",
     "tsx": "^4.19.0",
     "typescript": "~5.7.3",
     "vitest": "^3.2.4"
