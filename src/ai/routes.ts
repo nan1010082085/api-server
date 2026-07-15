@@ -477,12 +477,19 @@ router.post('/publish', validate(publishRequestSchema), async (ctx) => {
 // ────────────────────────────────────────────
 
 router.get('/conversations', async (ctx) => {
+  const userId = ctx.state.user?.id ?? ctx.state.user?.userId
+  if (!userId) {
+    ctx.status = 401
+    ctx.body = { success: false, error: { message: 'Authentication required' } }
+    return
+  }
+
   const page = Math.max(1, parseInt(ctx.query.page as string) || 1)
   const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize as string) || 20))
 
   const [conversations, total] = await Promise.all([
-    AIConversationModel.find().sort({ updatedAt: -1 }).skip((page - 1) * pageSize).limit(pageSize),
-    AIConversationModel.countDocuments(),
+    AIConversationModel.find({ userId }).sort({ updatedAt: -1 }).skip((page - 1) * pageSize).limit(pageSize),
+    AIConversationModel.countDocuments({ userId }),
   ])
 
   ctx.body = {
@@ -523,6 +530,13 @@ router.get('/conversations', async (ctx) => {
  * - pageSize: Items per page (default 20, max 50)
  */
 router.get("/conversations/search", async (ctx) => {
+  const userId = ctx.state.user?.id ?? ctx.state.user?.userId
+  if (!userId) {
+    ctx.status = 401
+    ctx.body = { success: false, error: { message: 'Authentication required' } }
+    return
+  }
+
   const { keyword, startDate, endDate, source, page: pageStr, pageSize: pageSizeStr } = ctx.query as {
     keyword?: string
     startDate?: string
@@ -536,6 +550,7 @@ router.get("/conversations/search", async (ctx) => {
   const pageSize = Math.min(Math.max(parseInt(pageSizeStr ?? "20", 10) || 20, 1), 50)
 
   const result = await searchConversations({
+    userId,
     keyword,
     startDate,
     endDate,
@@ -635,31 +650,48 @@ router.get('/mention/search/:type', async (ctx) => {
   }
 
   // type === 'widget' — search schemas and extract widget labels
-  const schemas = await FormSchemaModel.find({})
-    .select('json name')
-    .lean() as Record<string, unknown>[]
+  // 使用 MongoDB 聚合管道在数据库层过滤，避免全量加载到内存
+  const matchStage: Record<string, unknown> = { 'json.0': { $exists: true } }
+  if (keyword) {
+    const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    matchStage.$or = [
+      { 'json.label': regex },
+      { 'json.field': regex },
+      { 'json.type': regex },
+    ]
+  }
+
+  const pipeline = [
+    { $match: matchStage },
+    { $project: { json: 1 } },
+    { $unwind: '$json' },
+    ...(keyword ? [{ $match: { $or: [
+      { 'json.label': new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+      { 'json.field': new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+      { 'json.type': new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+    ] } }] : []),
+    { $limit: limit * 2 }, // 多取一些用于去重
+  ]
+
+  const rawWidgets = await FormSchemaModel.aggregate(pipeline).exec()
 
   const widgets: Array<{ id: string; type: string; name: string; description?: string }> = []
   const seen = new Set<string>()
 
-  for (const schema of schemas) {
-    const json = schema.json as Record<string, unknown>[] | undefined
-    if (!Array.isArray(json)) continue
-    for (const widget of json) {
-      const wId = widget.id as string
-      const wLabel = (widget.label as string) ?? (widget.field as string) ?? (widget.type as string) ?? ''
-      const wType = (widget.type as string) ?? 'unknown'
-      if (seen.has(wId)) continue
-      if (keyword && !wLabel.toLowerCase().includes(keyword.toLowerCase()) && !wType.toLowerCase().includes(keyword.toLowerCase())) continue
-      seen.add(wId)
-      widgets.push({
-        id: wId,
-        type: 'widget',
-        name: wLabel || wType,
-        description: `类型: ${wType}`,
-      })
-      if (widgets.length >= limit) break
-    }
+  for (const doc of rawWidgets) {
+    const widget = doc.json as Record<string, unknown>
+    if (!widget || typeof widget !== 'object') continue
+    const wId = widget.id as string
+    if (!wId || seen.has(wId)) continue
+    const wLabel = (widget.label as string) ?? (widget.field as string) ?? (widget.type as string) ?? ''
+    const wType = (widget.type as string) ?? 'unknown'
+    seen.add(wId)
+    widgets.push({
+      id: wId,
+      type: 'widget',
+      name: wLabel || wType,
+      description: `类型: ${wType}`,
+    })
     if (widgets.length >= limit) break
   }
 
@@ -674,9 +706,16 @@ router.get('/mention/search/:type', async (ctx) => {
 // ────────────────────────────────────────────
 
 router.get('/conversations/:id', async (ctx) => {
+  const userId = ctx.state.user?.id ?? ctx.state.user?.userId
+  if (!userId) {
+    ctx.status = 401
+    ctx.body = { success: false, error: { message: 'Authentication required' } }
+    return
+  }
+
   const { id } = ctx.params
   const convo = await getConversation(id)
-  if (!convo) {
+  if (!convo || convo.userId !== userId) {
     ctx.status = 404
     ctx.body = { success: false, error: { message: 'Conversation not found.' } }
     return
@@ -714,7 +753,21 @@ router.get('/conversations/:id', async (ctx) => {
 // ────────────────────────────────────────────
 
 router.delete('/conversations/:id', async (ctx) => {
+  const userId = ctx.state.user?.id ?? ctx.state.user?.userId
+  if (!userId) {
+    ctx.status = 401
+    ctx.body = { success: false, error: { message: 'Authentication required' } }
+    return
+  }
+
   const { id } = ctx.params
+  const convo = await getConversation(id)
+  if (!convo || convo.userId !== userId) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Conversation not found.' } }
+    return
+  }
+
   const deleted = await deleteConversation(id)
   if (!deleted) {
     ctx.status = 404
@@ -886,6 +939,13 @@ router.get('/versions/:versionId', async (ctx) => {
  * as the current schema/flow and sends it back.
  */
 router.post('/conversations/:id/rollback', async (ctx) => {
+  const userId = ctx.state.user?.id ?? ctx.state.user?.userId
+  if (!userId) {
+    ctx.status = 401
+    ctx.body = { success: false, error: { message: 'Authentication required' } }
+    return
+  }
+
   const { id } = ctx.params
   const { versionId } = ctx.request.body as { versionId: string }
 
@@ -896,7 +956,7 @@ router.post('/conversations/:id/rollback', async (ctx) => {
   }
 
   const convo = await getConversation(id)
-  if (!convo) {
+  if (!convo || convo.userId !== userId) {
     ctx.status = 404
     ctx.body = { success: false, error: { message: 'Conversation not found.' } }
     return

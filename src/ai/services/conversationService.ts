@@ -63,6 +63,8 @@ interface AIConversationMessage {
 
 export interface IAIConversation {
   _id: string
+  /** 所属用户 ID（JWT 中的 user.id） */
+  userId: string
   source: AgentSource
   schemaId?: string
   flowId?: string
@@ -110,6 +112,7 @@ const messageSchema = new mongoose.Schema<AIConversationMessage>(
 
 const aiConversationSchema = new mongoose.Schema<IAIConversation>(
   {
+    userId: { type: String, required: true, index: true },
     source: { type: String, enum: ['editor', 'flow', 'page', 'standalone'], required: true },
     schemaId: { type: String },
     flowId: { type: String },
@@ -145,6 +148,7 @@ export const AIConversationModel =
  * Create a new conversation.
  */
 export async function createConversation(params: {
+  userId: string
   source: AgentSource
   schemaId?: string
   flowId?: string
@@ -152,6 +156,7 @@ export async function createConversation(params: {
   version?: string
 }): Promise<IAIConversation> {
   return AIConversationModel.create({
+    userId: params.userId,
     source: params.source,
     schemaId: params.schemaId,
     flowId: params.flowId,
@@ -209,10 +214,10 @@ export async function updateActiveAgent(
 }
 
 /**
- * List all conversations (most recently updated first).
+ * List conversations for a specific user (most recently updated first).
  */
-export async function listConversations(): Promise<IAIConversation[]> {
-  return AIConversationModel.find().sort({ updatedAt: -1 }).limit(50)
+export async function listConversations(userId: string): Promise<IAIConversation[]> {
+  return AIConversationModel.find({ userId }).sort({ updatedAt: -1 }).limit(50)
 }
 
 /**
@@ -266,6 +271,7 @@ export async function getMessages(conversationId: string): Promise<AIMessage[]> 
  * Search and filter conversations with pagination.
  */
 export async function searchConversations(params: {
+  userId: string
   keyword?: string
   startDate?: string
   endDate?: string
@@ -273,7 +279,7 @@ export async function searchConversations(params: {
   page: number
   pageSize: number
 }): Promise<{ conversations: IAIConversation[]; total: number; page: number; pageSize: number }> {
-  const filter: Record<string, unknown> = {}
+  const filter: Record<string, unknown> = { userId: params.userId }
 
   if (params.keyword) {
     filter['messages.content'] = { $regex: params.keyword, $options: 'i' }

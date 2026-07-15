@@ -8,6 +8,8 @@
  * PUT    /api/providers/:id                — Update provider
  * DELETE /api/providers/:id                — Delete provider (cascade delete associated models)
  * POST   /api/providers/:id/test           — Test provider connection
+ * GET    /api/providers/:id/remote-models  — List upstream models
+ * POST   /api/providers/:id/sync-models    — Sync upstream models into local Model table
  */
 
 import Router from '@koa/router'
@@ -15,7 +17,7 @@ import mongoose from 'mongoose'
 import { authMiddleware } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permission.js'
 import { validate } from '../middleware/validate.js'
-import { ProviderModel } from '../models/Provider.js'
+import { ProviderModel, resolveStoredProviderApiKey, getProviderProbeModel } from '../models/Provider.js'
 import { ModelModel } from '../models/Model.js'
 import { ConfigModel } from '../models/Config.js'
 import { maskApiKey } from '../routes/modelConfig.js'
@@ -36,7 +38,7 @@ const requireAuth = authMiddleware({ required: true })
 function maskProviderApiKey(provider: Record<string, unknown>): Record<string, unknown> {
   const plain = { ...provider }
   if (plain.apiKey) {
-    plain.apiKey = maskApiKey(plain.apiKey as string)
+    plain.apiKey = maskApiKey(resolveStoredProviderApiKey(plain.apiKey as string))
   }
   return plain
 }
@@ -82,7 +84,7 @@ router.post('/', requireAuth, requirePermission('model_config:create'), validate
   })
 
   const plain = provider.toJSON() as Record<string, unknown>
-  plain.apiKey = maskApiKey(plain.apiKey as string)
+  plain.apiKey = maskApiKey(resolveStoredProviderApiKey(plain.apiKey as string))
 
   ctx.status = 201
   ctx.body = { success: true, data: plain }
@@ -264,13 +266,19 @@ router.put('/:id', requireAuth, requirePermission('model_config:edit'), validate
   if (body.name !== undefined) existing.name = (body.name as string).trim()
   if (body.type !== undefined) existing.type = body.type as typeof existing.type
   if (body.baseUrl !== undefined) existing.baseUrl = (body.baseUrl as string).trim()
-  if (body.apiKey !== undefined) existing.apiKey = body.apiKey as string
+  if (typeof body.apiKey === 'string') {
+    const nextKey = body.apiKey.trim()
+    // 脱敏展示值 / 空串表示不更新
+    if (nextKey && !nextKey.includes('****')) {
+      existing.apiKey = nextKey
+    }
+  }
   if (body.isActive !== undefined) existing.isActive = body.isActive as boolean
 
   const provider = await existing.save()
 
   const plain = provider.toJSON() as Record<string, unknown>
-  plain.apiKey = maskApiKey(plain.apiKey as string)
+  plain.apiKey = maskApiKey(resolveStoredProviderApiKey(plain.apiKey as string))
 
   ctx.body = { success: true, data: plain }
 })
@@ -330,7 +338,8 @@ router.post('/:id/test', requireAuth, validate(testProviderSchema), async (ctx) 
   }
 
   // Resolve API key: prefer stored key, fallback to env
-  const apiKey = provider.apiKey || resolveProviderEnvApiKey(provider.type)
+  const apiKey = resolveStoredProviderApiKey(provider.apiKey)
+    || resolveProviderEnvApiKey(provider.type)
   if (!apiKey && provider.type !== 'ollama') {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'API key is required for this provider.' } }
@@ -338,8 +347,9 @@ router.post('/:id/test', requireAuth, validate(testProviderSchema), async (ctx) 
   }
 
   try {
-    const baseUrl = provider.baseUrl || getProviderDefaultBaseUrl(provider.type)
+    const baseUrl = (provider.baseUrl || getProviderDefaultBaseUrl(provider.type)).replace(/\/+$/, '')
     const testMessage = message ?? 'Hello, respond with OK'
+    const probeModel = getProviderProbeModel(provider.type)
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
@@ -348,7 +358,7 @@ router.post('/:id/test', requireAuth, validate(testProviderSchema), async (ctx) 
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: provider.type === 'deepseek' ? 'deepseek-chat' : 'gpt-3.5-turbo',
+        model: probeModel,
         messages: [{ role: 'user', content: testMessage }],
         max_tokens: 50,
         temperature: 0,
@@ -384,6 +394,7 @@ router.post('/:id/test', requireAuth, validate(testProviderSchema), async (ctx) 
         tokens,
         provider: provider.type,
         baseUrl: provider.baseUrl,
+        model: probeModel,
       },
     }
   } catch (err) {
@@ -396,6 +407,172 @@ router.post('/:id/test', requireAuth, validate(testProviderSchema), async (ctx) 
         details: errorMsg,
       },
     }
+  }
+})
+
+// ────────────────────────────────────────────
+// GET /api/providers/:id/remote-models
+// 拉取上游 OpenAI 兼容 /models 列表
+// ────────────────────────────────────────────
+router.get('/:id/remote-models', requireAuth, async (ctx) => {
+  const { id } = ctx.params
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'Invalid ID format.' } }
+    return
+  }
+
+  const provider = await ProviderModel.findById(id)
+  if (!provider) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Provider not found.' } }
+    return
+  }
+
+  if (provider.type === 'ollama') {
+    const root = (provider.baseUrl || 'http://localhost:11434').replace(/\/v1\/?$/, '').replace(/\/+$/, '')
+    const response = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(15_000) })
+    if (!response.ok) {
+      ctx.status = 502
+      ctx.body = { success: false, error: { message: `Ollama returned HTTP ${response.status}` } }
+      return
+    }
+    const data = await response.json() as { models?: Array<{ name: string }> }
+    ctx.body = {
+      success: true,
+      data: (data.models ?? []).map((m) => ({ id: m.name, name: m.name })),
+    }
+    return
+  }
+
+  const apiKey = resolveStoredProviderApiKey(provider.apiKey)
+    || resolveProviderEnvApiKey(provider.type)
+  if (!apiKey) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'API key is required to list remote models.' } }
+    return
+  }
+
+  const baseUrl = (provider.baseUrl || getProviderDefaultBaseUrl(provider.type)).replace(/\/+$/, '')
+  const response = await fetch(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(30_000),
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.text()
+    ctx.status = 502
+    ctx.body = {
+      success: false,
+      error: {
+        message: `Provider returned HTTP ${response.status}`,
+        details: errorBody.slice(0, 500),
+      },
+    }
+    return
+  }
+
+  const data = await response.json() as { data?: Array<{ id: string }> }
+  const items = (data.data ?? [])
+    .map((m) => ({ id: m.id, name: m.id }))
+    .filter((m) => m.id)
+    .sort((a, b) => a.id.localeCompare(b.id))
+
+  ctx.body = { success: true, data: items }
+})
+
+// ────────────────────────────────────────────
+// POST /api/providers/:id/sync-models
+// 拉取上游模型并自动添加本地缺失项
+// ────────────────────────────────────────────
+router.post('/:id/sync-models', requireAuth, requirePermission('model_config:create'), async (ctx) => {
+  const { id } = ctx.params
+  const body = (ctx.request.body ?? {}) as { modelIds?: string[] }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: 'Invalid ID format.' } }
+    return
+  }
+
+  const provider = await ProviderModel.findById(id)
+  if (!provider) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Provider not found.' } }
+    return
+  }
+
+  // Reuse remote-models logic via internal fetch paths
+  let remoteIds: string[] = []
+
+  if (provider.type === 'ollama') {
+    const root = (provider.baseUrl || 'http://localhost:11434').replace(/\/v1\/?$/, '').replace(/\/+$/, '')
+    const response = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(15_000) })
+    if (!response.ok) {
+      ctx.status = 502
+      ctx.body = { success: false, error: { message: `Ollama returned HTTP ${response.status}` } }
+      return
+    }
+    const data = await response.json() as { models?: Array<{ name: string }> }
+    remoteIds = (data.models ?? []).map((m) => m.name)
+  } else {
+    const apiKey = resolveStoredProviderApiKey(provider.apiKey)
+      || resolveProviderEnvApiKey(provider.type)
+    if (!apiKey) {
+      ctx.status = 400
+      ctx.body = { success: false, error: { message: 'API key is required to sync models.' } }
+      return
+    }
+    const baseUrl = (provider.baseUrl || getProviderDefaultBaseUrl(provider.type)).replace(/\/+$/, '')
+    const response = await fetch(`${baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!response.ok) {
+      const errorBody = await response.text()
+      ctx.status = 502
+      ctx.body = {
+        success: false,
+        error: {
+          message: `Provider returned HTTP ${response.status}`,
+          details: errorBody.slice(0, 500),
+        },
+      }
+      return
+    }
+    const data = await response.json() as { data?: Array<{ id: string }> }
+    remoteIds = (data.data ?? []).map((m) => m.id).filter(Boolean)
+  }
+
+  const selected = Array.isArray(body.modelIds) && body.modelIds.length > 0
+    ? body.modelIds.filter((id) => remoteIds.includes(id))
+    : remoteIds
+
+  const existing = await ModelModel.find({ providerId: id }).select('model').lean()
+  const existingSet = new Set(existing.map((m) => m.model as string))
+
+  let created = 0
+  for (const modelId of selected) {
+    if (existingSet.has(modelId)) continue
+    await ModelModel.create({
+      name: modelId,
+      providerId: id,
+      model: modelId,
+      parameters: { temperature: 0.7, maxTokens: 4096, topP: 1 },
+      isDefault: false,
+      isActive: true,
+    })
+    created++
+  }
+
+  ctx.body = {
+    success: true,
+    data: {
+      remote: remoteIds.length,
+      created,
+      skipped: selected.length - created,
+    },
   }
 })
 

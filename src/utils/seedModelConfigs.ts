@@ -38,12 +38,6 @@ const seedProviders: SeedProvider[] = [
     defaultBaseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
     apiKeyEnvVars: ['MIMO_API_KEY'],
   },
-  {
-    name: 'Ollama',
-    type: 'ollama',
-    defaultBaseUrl: 'http://localhost:11434',
-    apiKeyEnvVars: [],
-  },
 ]
 
 const seedModels: SeedModel[] = [
@@ -68,13 +62,6 @@ const seedModels: SeedModel[] = [
     parameters: { temperature: 0.7, maxTokens: 4096, topP: 1 },
     isDefault: false,
   },
-  {
-    name: 'Llama 3',
-    providerName: 'Ollama',
-    model: 'llama3',
-    parameters: { temperature: 0.7, maxTokens: 4096, topP: 1 },
-    isDefault: false,
-  },
 ]
 
 function resolveEnvApiKey(envVars: string[]): string {
@@ -83,10 +70,6 @@ function resolveEnvApiKey(envVars: string[]): string {
     if (value) return value
   }
   return ''
-}
-
-function resolveOllamaBaseUrl(): string {
-  return process.env.OLLAMA_BASE_URL?.trim() || 'http://localhost:11434'
 }
 
 function encryptApiKeyIfPossible(apiKey: string): string {
@@ -98,11 +81,28 @@ function encryptApiKeyIfPossible(apiKey: string): string {
   }
 }
 
+/** 清理历史上误种子化的 Ollama（平台默认仅 DeepSeek + Mimo） */
+async function removeAutoSeededOllama(): Promise<void> {
+  const ollama = await ProviderModel.findOne({ name: 'Ollama', type: 'ollama' })
+  if (!ollama) return
+
+  const baseUrl = (ollama.baseUrl || '').toLowerCase()
+  const isLocalDefault =
+    /localhost:11434/.test(baseUrl) || /127\.0\.0\.1:11434/.test(baseUrl)
+  if (!isLocalDefault) return
+
+  await ModelModel.deleteMany({ providerId: ollama._id })
+  await ProviderModel.findByIdAndDelete(ollama._id)
+  console.log('[seed] Removed auto-seeded Ollama provider (localhost:11434)')
+}
+
 /**
  * Seed Provider + Model normalized tables.
  * Providers are created/upserted first, then Models are linked via providerId.
  */
 export async function seedProvidersAndModels(): Promise<void> {
+  await removeAutoSeededOllama()
+
   const platformEnabled = process.env.PLATFORM_LLM_ENABLED !== 'false'
 
   // Phase 1: Seed providers
@@ -112,7 +112,7 @@ export async function seedProvidersAndModels(): Promise<void> {
 
   for (const sp of seedProviders) {
     const apiKey = platformEnabled ? resolveEnvApiKey(sp.apiKeyEnvVars) : ''
-    const baseUrl = sp.type === 'ollama' ? resolveOllamaBaseUrl() : sp.defaultBaseUrl
+    const baseUrl = sp.defaultBaseUrl
 
     const existing = await ProviderModel.findOne({ name: sp.name })
 
@@ -135,6 +135,13 @@ export async function seedProvidersAndModels(): Promise<void> {
     const updates: Record<string, unknown> = {}
     if (!existing.apiKey && apiKey) {
       updates.apiKey = encryptApiKeyIfPossible(apiKey)
+    }
+    // 纠正历史错误 baseUrl（如前端误用 api.xiaomimimo.com）
+    if (sp.type === 'mimo' && /api\.xiaomimimo\.com/i.test(existing.baseUrl || '')) {
+      updates.baseUrl = baseUrl
+    }
+    if (sp.type === 'deepseek' && /api\.deepseek\.com\/v1\/?$/i.test(existing.baseUrl || '')) {
+      updates.baseUrl = baseUrl
     }
     if (!existing.baseUrl && baseUrl) {
       updates.baseUrl = baseUrl

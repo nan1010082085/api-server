@@ -183,6 +183,7 @@ async function runChatStream(
     turnCount = convo.messages.filter((m) => m.role === 'user').length + 1
   } else {
     convo = await createConversation({
+      userId,
       source: context.source as 'editor' | 'flow' | 'page' | 'standalone',
       schemaId: context.schemaId,
       flowId: context.flowId,

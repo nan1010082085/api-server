@@ -15,6 +15,39 @@ export interface IProvider {
   updatedAt: Date
 }
 
+/**
+ * Resolve apiKey stored in DB (encrypted blob or legacy plaintext).
+ * Must be used for `.lean()` queries that skip mongoose decrypt hooks.
+ */
+export function resolveStoredProviderApiKey(raw: string | undefined | null): string {
+  if (!raw) return ''
+  try {
+    const data = decrypt(raw)
+    if (typeof data.apiKey === 'string') return data.apiKey
+  } catch {
+    // plaintext legacy / non-encrypted
+  }
+  return raw
+}
+
+/** Default chat model used for provider-level connection tests */
+export function getProviderProbeModel(type: string): string {
+  switch (type) {
+    case 'deepseek':
+      return 'deepseek-v4-flash'
+    case 'mimo':
+      return 'mimo-v2.5'
+    case 'openai':
+    case 'azure':
+    case 'custom':
+      return 'gpt-4o-mini'
+    case 'ollama':
+      return 'llama3'
+    default:
+      return 'deepseek-v4-flash'
+  }
+}
+
 const providerSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -50,14 +83,14 @@ providerSchema.pre('save', function (this: IProvider & mongoose.Document) {
   }
 })
 
-// Decrypt apiKey after finding
-function decryptApiKey(doc: IProvider | null) {
-  if (doc?.apiKey) {
-    try {
-      doc.apiKey = decrypt(doc.apiKey).apiKey ?? ''
-    } catch {
-      // If decryption fails (e.g., plaintext legacy data), leave as-is
-    }
+// Decrypt apiKey after finding（unmarkModified 避免后续 save 把明文再加密一遍）
+function decryptApiKey(doc: (IProvider & mongoose.Document) | null) {
+  if (!doc?.apiKey) return
+  const plain = resolveStoredProviderApiKey(doc.apiKey)
+  if (plain === doc.apiKey) return
+  doc.apiKey = plain
+  if (typeof doc.unmarkModified === 'function') {
+    doc.unmarkModified('apiKey')
   }
 }
 
@@ -65,7 +98,7 @@ providerSchema.post('findOne', decryptApiKey)
 providerSchema.post('findOneAndUpdate', decryptApiKey)
 providerSchema.post('findOneAndDelete', decryptApiKey)
 
-providerSchema.post('find', function (docs: IProvider[]) {
+providerSchema.post('find', function (docs: (IProvider & mongoose.Document)[]) {
   if (!Array.isArray(docs)) return
   for (const doc of docs) {
     decryptApiKey(doc)

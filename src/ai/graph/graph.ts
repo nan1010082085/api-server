@@ -736,31 +736,60 @@ async function afterToolsNode(
   }
 }
 
-export function afterToolsRoute(
+/**
+ * 协作路由节点 — 与前端设计器 collaboration-router 对齐。
+ *
+ * 三路输出：
+ * - continue: 协作循环，回到 pluginExpert 继续当前步骤
+ * - nextStep: 任务链推进，回到 taskChain 执行下一步
+ * - summarize: 任务完成，路由到 summarizer 生成摘要
+ */
+async function collaborationRouterNode(
+  state: typeof AgentStateAnnotation.State,
+): Promise<Partial<typeof AgentStateAnnotation.State>> {
+  // 节点本身不做状态修改，仅用于路由决策
+  return {}
+}
+
+/**
+ * collaborationRouter 之后的三路路由。
+ *
+ * 对应前端设计器 collaboration-router 的三个 sourceHandle：
+ * - continue → pluginExpert（协作循环）
+ * - nextStep → taskChain（下一任务）
+ * - summarize → summarizer（摘要输出）
+ */
+export function routeAfterCollaborationRouter(
   state: typeof AgentStateAnnotation.State,
 ): string {
-  console.log(`[afterToolsRoute] source=${state.context.source}, taskChain=${state.task.chain.length}, step=${state.task.currentStepIndex}, collaboration=${!!state.interaction.collaborationRequest}`)
+  console.log(`[collaborationRouter] source=${state.context.source}, taskChain=${state.task.chain.length}, step=${state.task.currentStepIndex}, collaboration=${!!state.interaction.collaborationRequest}`)
 
+  // 协作请求：回到 pluginExpert 继续协作（continue 路径）
   if (state.interaction.collaborationRequest) {
-    console.log(`[afterToolsRoute] -> taskChain (协作请求)`)
-    return 'taskChain'
+    console.log(`[collaborationRouter] -> pluginExpert (continue 协作)`)
+    return 'pluginExpert'
   }
 
+  // 任务链进行中：推进到下一步（nextStep 路径）
   if (state.context.source === 'standalone' && state.task.chain.length > 0) {
     const nextIndex = state.task.currentStepIndex + 1
 
     if (nextIndex < state.task.chain.length) {
-      console.log(`[afterToolsRoute] -> taskChain (继续任务链 step ${nextIndex}/${state.task.chain.length})`)
+      console.log(`[collaborationRouter] -> taskChain (nextStep ${nextIndex}/${state.task.chain.length})`)
       return 'taskChain'
     }
 
-    console.log(`[afterToolsRoute] -> summarizer (任务链完成)`)
+    console.log(`[collaborationRouter] -> summarizer (任务链完成)`)
     return 'summarizer'
   }
 
-  console.log(`[afterToolsRoute] -> pluginExpert (agent=${state.session.currentAgent})`)
+  // 单步完成：回到 pluginExpert 处理后续（continue 路径）
+  console.log(`[collaborationRouter] -> pluginExpert (continue 单步后续)`)
   return 'pluginExpert'
 }
+
+/** @deprecated Use routeAfterCollaborationRouter — same logic, renamed for frontend alignment */
+export const afterToolsRoute = routeAfterCollaborationRouter
 
 // ────────────────────────────────────────────
 // Build and compile the graph
@@ -777,6 +806,7 @@ const builder = new StateGraph(AgentStateAnnotation)
   .addNode('pluginExpert', pluginExpertAgentNode)
   .addNode('allTools', allToolNodeWithErrorHandling)
   .addNode('afterTools', afterToolsNode)
+  .addNode('collaborationRouter', collaborationRouterNode)
   .addNode('summarizer', summarizerNode)
 
   // v2 新增节点
@@ -803,9 +833,10 @@ const builder = new StateGraph(AgentStateAnnotation)
   // agent 之后（统一 pluginExpert）
   .addConditionalEdges('pluginExpert', afterAgent)
 
-  // 工具调用链
+  // 工具调用链 → afterTools → collaborationRouter（三路路由）
   .addEdge('allTools', 'afterTools')
-  .addConditionalEdges('afterTools', afterToolsRoute)
+  .addEdge('afterTools', 'collaborationRouter')
+  .addConditionalEdges('collaborationRouter', routeAfterCollaborationRouter)
 
   // 总结
   .addEdge('summarizer', END)

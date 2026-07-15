@@ -38,10 +38,11 @@ function resolveEmbeddingConfig(): EmbeddingClientConfig {
   }
 
   // Fallback: SiliconFlow 托管 BGE-M3（免费、中文效果最佳）
+  // 通过环境变量配置，避免硬编码 API key
   return {
-    apiKey: 'siliconflow-free',
-    baseURL: 'https://api.siliconflow.cn/v1',
-    model: 'BAAI/bge-m3',
+    apiKey: process.env.SILICONFLOW_API_KEY || 'siliconflow-free',
+    baseURL: process.env.SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1',
+    model: process.env.SILICONFLOW_EMBEDDING_MODEL || 'BAAI/bge-m3',
   }
 }
 

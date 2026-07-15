@@ -6,6 +6,7 @@ import { validate } from '../middleware/validate.js'
 import { createModelConfigSchema, updateModelConfigSchema, testModelConfigSchema } from '../schemas/modelConfigSchemas.js'
 import { clearLLMCache } from '../ai/services/llmCache.js'
 import { getProviderDefaultBaseUrl, resolveProviderEnvApiKey } from '../utils/modelProviderEnv.js'
+import { resolveStoredProviderApiKey } from '../models/Provider.js'
 import mongoose from 'mongoose'
 
 const requireAuth = authMiddleware({ required: true })
@@ -231,7 +232,7 @@ router.post('/:id/test', requireAuth, validate(testModelConfigSchema), async (ct
     return
   }
 
-  if (!config.apiKey && config.provider !== 'ollama') {
+  if (!resolveStoredProviderApiKey(config.apiKey) && config.provider !== 'ollama') {
     const envApiKey = resolveProviderEnvApiKey(config.provider)
     if (!envApiKey) {
       ctx.status = 400
@@ -240,10 +241,10 @@ router.post('/:id/test', requireAuth, validate(testModelConfigSchema), async (ct
     }
   }
 
-  const apiKey = config.apiKey || resolveProviderEnvApiKey(config.provider)
+  const apiKey = resolveStoredProviderApiKey(config.apiKey) || resolveProviderEnvApiKey(config.provider)
 
   try {
-    const baseUrl = config.baseUrl || getProviderDefaultBaseUrl(config.provider)
+    const baseUrl = (config.baseUrl || getProviderDefaultBaseUrl(config.provider)).replace(/\/+$/, '')
     const testMessage = message ?? 'Hello, respond with OK'
 
     const response = await fetch(`${baseUrl}/chat/completions`, {

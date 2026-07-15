@@ -21,6 +21,8 @@ export async function seedRoles(): Promise<void> {
   const allCodes = allPerms.map(p => p.code)
 
   // ── 管理员角色 ──
+  // permissions 使用 $set（而非 $setOnInsert）：有意为之——管理员应始终与全部权限码保持同步，
+  // 新增权限码后 re-seed 即自动追加，无需手动维护
   await RoleModel.findOneAndUpdate(
     { name: '管理员', tenantId: DEFAULT_TENANT_ID },
     {

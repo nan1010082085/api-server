@@ -189,9 +189,15 @@ describe('resolveUserModel', () => {
     expect(resolveUserModel({ llmModel: 'deepseek-v4-pro' }, 'deepseek-v4-flash')).toBe('deepseek-v4-pro')
   })
 
-  it('falls back when model is missing or invalid', () => {
+  it('falls back when model is missing', () => {
     expect(resolveUserModel({}, 'deepseek-v4-flash')).toBe('deepseek-v4-flash')
-    expect(resolveUserModel({ llmModel: 'unknown-model' }, 'deepseek-v4-flash')).toBe('deepseek-v4-flash')
+    expect(resolveUserModel({ llmModel: '' }, 'deepseek-v4-flash')).toBe('deepseek-v4-flash')
+    expect(resolveUserModel({ llmModel: '  ' }, 'deepseek-v4-flash')).toBe('deepseek-v4-flash')
+  })
+
+  it('accepts any non-empty model string (validation at getLLM level)', () => {
+    expect(resolveUserModel({ llmModel: 'mimo-v2.5' }, 'deepseek-v4-flash')).toBe('mimo-v2.5')
+    expect(resolveUserModel({ llmModel: 'unknown-model' }, 'deepseek-v4-flash')).toBe('unknown-model')
   })
 })
 

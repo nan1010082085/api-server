@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages'
 import { END } from '@langchain/langgraph'
-import { graph, routeAfterTaskChain, afterAgent, afterToolsRoute } from '../graph/graph.js'
+import { graph, routeAfterTaskChain, afterAgent, routeAfterCollaborationRouter, afterToolsRoute } from '../graph/graph.js'
 import type { AgentStateAnnotation } from '../graph/state.js'
 
 type State = typeof AgentStateAnnotation.State
@@ -124,8 +124,8 @@ describe('afterAgent', () => {
   })
 })
 
-describe('afterToolsRoute + collaboration detection', () => {
-  it('afterToolsRoute detects collaboration and routes to taskChain', () => {
+describe('routeAfterCollaborationRouter (collaboration detection)', () => {
+  it('collaboration request routes to pluginExpert (continue path)', () => {
     const state = makeState({
       messages: [new HumanMessage('做一个请假审批')],
       session: { id: '', conversationId: '', currentAgent: 'editor' },
@@ -152,10 +152,10 @@ describe('afterToolsRoute + collaboration detection', () => {
       },
     })
 
-    expect(afterToolsRoute(state)).toBe('taskChain')
+    expect(routeAfterCollaborationRouter(state)).toBe('pluginExpert')
   })
 
-  it('afterToolsRoute returns taskChain when no collaboration and task chain has more steps', () => {
+  it('no collaboration, task chain has more steps → taskChain (nextStep path)', () => {
     const state = makeState({
       session: { id: '', conversationId: '', currentAgent: 'editor' },
       context: { source: 'standalone', turnCount: 1 },
@@ -170,12 +170,12 @@ describe('afterToolsRoute + collaboration detection', () => {
         currentVersion: 0,
       },
     })
-    expect(afterToolsRoute(state)).toBe('taskChain')
+    expect(routeAfterCollaborationRouter(state)).toBe('taskChain')
   })
 })
 
-describe('afterToolsRoute', () => {
-  it('returns taskChain when collaboration request is set', () => {
+describe('routeAfterCollaborationRouter', () => {
+  it('collaboration request → pluginExpert (continue path)', () => {
     const state = makeState({
       session: { id: '', conversationId: '', currentAgent: 'editor' },
       context: { source: 'standalone', turnCount: 1 },
@@ -190,10 +190,10 @@ describe('afterToolsRoute', () => {
         },
       },
     })
-    expect(afterToolsRoute(state)).toBe('taskChain')
+    expect(routeAfterCollaborationRouter(state)).toBe('pluginExpert')
   })
 
-  it('returns taskChain when task chain has more steps', () => {
+  it('no collaboration, chain has more steps → taskChain (nextStep path)', () => {
     const state = makeState({
       session: { id: '', conversationId: '', currentAgent: 'editor' },
       context: { source: 'standalone', turnCount: 1 },
@@ -208,10 +208,10 @@ describe('afterToolsRoute', () => {
         currentVersion: 0,
       },
     })
-    expect(afterToolsRoute(state)).toBe('taskChain')
+    expect(routeAfterCollaborationRouter(state)).toBe('taskChain')
   })
 
-  it('returns summarizer when all task chain steps complete', () => {
+  it('all chain steps done → summarizer (summarize path)', () => {
     const state = makeState({
       session: { id: '', conversationId: '', currentAgent: 'flow' },
       context: { source: 'standalone', turnCount: 1 },
@@ -226,18 +226,18 @@ describe('afterToolsRoute', () => {
         currentVersion: 0,
       },
     })
-    expect(afterToolsRoute(state)).toBe('summarizer')
+    expect(routeAfterCollaborationRouter(state)).toBe('summarizer')
   })
 
-  it('returns pluginExpert when idle after tools in explicit mode', () => {
+  it('explicit mode, no chain → pluginExpert (continue path)', () => {
     const state = makeState({
       session: { id: '', conversationId: '', currentAgent: 'editor', currentExpertId: 'platform.editor' },
       context: { source: 'editor', turnCount: 1 },
     })
-    expect(afterToolsRoute(state)).toBe('pluginExpert')
+    expect(routeAfterCollaborationRouter(state)).toBe('pluginExpert')
   })
 
-  it('prefers collaboration request over task chain routing', () => {
+  it('collaboration takes priority over chain step progression', () => {
     const state = makeState({
       session: { id: '', conversationId: '', currentAgent: 'editor' },
       context: { source: 'standalone', turnCount: 1 },
@@ -263,7 +263,7 @@ describe('afterToolsRoute', () => {
         currentVersion: 0,
       },
     })
-    expect(afterToolsRoute(state)).toBe('taskChain')
+    expect(routeAfterCollaborationRouter(state)).toBe('pluginExpert')
   })
 })
 

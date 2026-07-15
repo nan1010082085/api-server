@@ -10,6 +10,7 @@ const DEFAULT_MICRO_APPS = [
 /**
  * 种子微应用配置
  * 使用 upsert + $setOnInsert 保证幂等：仅在记录不存在时创建，不覆盖用户修改
+ * icon 用 $set 保持同步（图标变更应传播到已有记录）
  */
 export async function seedMicroApps(): Promise<void> {
   let created = 0
@@ -17,7 +18,17 @@ export async function seedMicroApps(): Promise<void> {
   for (const app of DEFAULT_MICRO_APPS) {
     const result = await MicroAppModel.updateOne(
       { tenantId: DEFAULT_TENANT_ID, name: app.name },
-      { $set: { ...app, tenantId: DEFAULT_TENANT_ID, status: 'active' } },
+      {
+        $setOnInsert: {
+          displayName: app.displayName,
+          activeRule: app.activeRule,
+          layout: app.layout,
+          url: app.url,
+          sort: app.sort,
+          status: 'active',
+        },
+        $set: { icon: app.icon },
+      },
       { upsert: true },
     )
     if (result.upsertedCount > 0) created++

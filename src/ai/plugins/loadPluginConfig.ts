@@ -10,6 +10,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type {
   ExpertDeclaration,
   McpServerDeclaration,
@@ -23,14 +24,46 @@ import { logger } from '../../utils/logger.js'
 const PLUGIN_LAYERS = ['mcp', 'tools', 'experts', 'skills'] as const
 type PluginLayer = (typeof PLUGIN_LAYERS)[number]
 
+/**
+ * 解析插件配置根目录（其下应有 `plugins/`）。
+ *
+ * 优先级：
+ * 1. `AI_PLUGIN_CONFIG_DIR`
+ * 2. 从本文件向上查找含 `config/plugins` 的目录（兼容 src / dist / 部署展平布局）
+ * 3. cwd 下 `config` 或 `server/config`
+ */
 export function resolvePluginConfigDir(): string {
   if (process.env.AI_PLUGIN_CONFIG_DIR) {
     return path.resolve(process.env.AI_PLUGIN_CONFIG_DIR)
   }
-  // 从当前文件向上 3 级到达 server/ 目录，然后找 config/
-  // dist/ai/plugins/ → dist/ai/ → dist/ → server/config/
-  const currentDir = new URL('.', import.meta.url).pathname
-  return path.resolve(currentDir, '..', '..', '..', 'config')
+
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  let dir = here
+  for (let i = 0; i < 8; i++) {
+    const candidate = path.join(dir, 'config')
+    if (existsSync(path.join(candidate, 'plugins'))) {
+      return candidate
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+
+  for (const rel of ['config', 'server/config']) {
+    const candidate = path.resolve(process.cwd(), rel)
+    if (existsSync(path.join(candidate, 'plugins'))) {
+      return candidate
+    }
+  }
+
+  const fallback = path.resolve(here, '..', '..', '..', 'config')
+  logger.warn({
+    msg: '[pluginRegistry] config/plugins not found by walk; using fallback',
+    here,
+    fallback,
+    cwd: process.cwd(),
+  })
+  return fallback
 }
 
 function readJsonFile(filePath: string): unknown | null {
@@ -159,6 +192,12 @@ function applyConfigPath(merged: PluginManifest, configPath: string): PluginMani
 export function loadPluginRegistry(runtimeTenantId?: string): PluginRegistry {
   const configDir = resolvePluginConfigDir()
   const pluginsRoot = path.join(configDir, 'plugins')
+  logger.info({
+    msg: '[pluginRegistry] loading',
+    configDir,
+    pluginsRoot,
+    exists: existsSync(pluginsRoot),
+  })
   const localRoot = path.join(pluginsRoot, 'local')
 
   let merged: PluginManifest = { version: 1 }

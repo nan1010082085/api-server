@@ -100,6 +100,12 @@ export function getModelForTask(taskType: TaskType): string {
         generate_complex: 'deepseek-v4-flash',
         analyze: 'deepseek-v4-flash',
       },
+      mimo: {
+        router: 'mimo-v2.5',
+        generate_simple: 'mimo-v2.5',
+        generate_complex: 'mimo-v2.5',
+        analyze: 'mimo-v2.5',
+      },
       openai: {
         router: 'gpt-4o-mini',
         generate_simple: 'gpt-4o',
@@ -129,8 +135,9 @@ export function getModelForTask(taskType: TaskType): string {
   }
 }
 
-export const USER_SELECTABLE_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'] as const
-export type UserSelectableModel = typeof USER_SELECTABLE_MODELS[number]
+/** 所有已注册 Provider 的默认模型（启动时从 DB/LLMManager 收集） */
+export const PROVIDER_DEFAULT_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro', 'mimo-v2.5'] as const
+export type UserSelectableModel = typeof PROVIDER_DEFAULT_MODELS[number]
 
 /**
  * 从 LLM 响应中提取 JSON 对象。
@@ -183,15 +190,18 @@ export function extractJsonFromResponse(raw: string): Record<string, unknown> | 
 
 /**
  * Resolve the LLM model from user chat preferences.
- * Falls back to task-based default when preference is missing or invalid.
+ *
+ * Accepts any non-empty model string from the user's preference.
+ * Validation against DB models happens at getLLM() level — if the model
+ * doesn't exist, getLLM() falls back to the tenant default.
  */
 export function resolveUserModel(
   preferences: Record<string, unknown> | undefined,
   fallback: string,
 ): string {
   const model = preferences?.llmModel
-  if (typeof model === 'string' && (USER_SELECTABLE_MODELS as readonly string[]).includes(model)) {
-    return model
+  if (typeof model === 'string' && model.trim()) {
+    return model.trim()
   }
   return fallback
 }

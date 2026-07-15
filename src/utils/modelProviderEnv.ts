@@ -22,7 +22,7 @@ const ENV_BASE_URL: Partial<Record<PlatformModelProvider, string>> = {
 
 const DEFAULT_BASE_URL: Record<PlatformModelProvider, string> = {
   deepseek: 'https://api.deepseek.com',
-  mimo: 'https://token-plan-cn.xiaomimimo.com/v1',
+  mimo: 'https://api.xiaomimimo.com/v1',
   openai: 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
   ollama: 'http://localhost:11434/v1',

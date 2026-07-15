@@ -89,7 +89,7 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
 
   // ── Tier 2: Tenant default from DB (Provider + Model two-level) ──
   // tenantPlugin auto-scopes queries to the current tenant via AsyncLocalStorage.
-  const { ProviderModel } = await import('../../models/Provider.js')
+  const { ProviderModel, resolveStoredProviderApiKey } = await import('../../models/Provider.js')
   const { ModelModel } = await import('../../models/Model.js')
 
   type JoinedConfig = {
@@ -115,7 +115,7 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
     if (provider.isActive === false) return null
     return {
       providerName: provider.type as string,
-      apiKey: (provider.apiKey as string) || '',
+      apiKey: resolveStoredProviderApiKey(provider.apiKey as string),
       baseURL: (provider.baseUrl as string) || '',
       model: modelDoc.model as string,
       parameters: modelDoc.parameters as { temperature?: number; maxTokens?: number } | undefined,
@@ -190,7 +190,9 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
   if (dbConfig) {
     return {
       providerName: dbConfig.provider,
-      apiKey: dbConfig.apiKey || (platformEnabled ? resolveProviderEnvApiKey(dbConfig.provider) : '') || '',
+      apiKey: resolveStoredProviderApiKey(dbConfig.apiKey)
+        || (platformEnabled ? resolveProviderEnvApiKey(dbConfig.provider) : '')
+        || '',
       baseURL: dbConfig.baseUrl || getProviderDefaultBaseUrl(dbConfig.provider),
       model: opts.model ?? dbConfig.model,
       temperature: opts.temperature ?? dbConfig.parameters?.temperature ?? 0.7,

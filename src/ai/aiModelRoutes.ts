@@ -242,7 +242,8 @@ router.post('/:id/test', requireAuth, validate(testModelSchema), async (ctx) => 
 
   // Resolve API key: prefer provider's stored key, fallback to env
   const { resolveProviderEnvApiKey, getProviderDefaultBaseUrl } = await import('../utils/modelProviderEnv.js')
-  const apiKey = provider.apiKey || resolveProviderEnvApiKey(provider.type)
+  const { resolveStoredProviderApiKey } = await import('../models/Provider.js')
+  const apiKey = resolveStoredProviderApiKey(provider.apiKey) || resolveProviderEnvApiKey(provider.type)
   if (!apiKey && provider.type !== 'ollama') {
     ctx.status = 400
     ctx.body = { success: false, error: { message: 'API key is required for this provider.' } }
@@ -250,7 +251,7 @@ router.post('/:id/test', requireAuth, validate(testModelSchema), async (ctx) => 
   }
 
   try {
-    const baseUrl = provider.baseUrl || getProviderDefaultBaseUrl(provider.type)
+    const baseUrl = (provider.baseUrl || getProviderDefaultBaseUrl(provider.type)).replace(/\/+$/, '')
     const testMessage = message ?? 'Hello, respond with OK'
 
     const response = await fetch(`${baseUrl}/chat/completions`, {

@@ -7,3 +7,4 @@ uploads/
 .env.*
 !.env.example
 .npmrc
+.claude/worktrees/
