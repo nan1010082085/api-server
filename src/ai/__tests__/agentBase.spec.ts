@@ -3,18 +3,10 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    chat: { completions: { create: vi.fn() } },
-  })),
-}))
-
 import {
-  getClient,
   buildMessages,
   parseStructuredOutput,
   escapeRegex,
-  validateApiKey,
   truncateMessages,
   estimateTokens,
   resolveUserModel,
@@ -25,24 +17,6 @@ import type { AIConversationState } from '../graph/state.js'
 beforeEach(() => {
   vi.resetModules()
   process.env.DEEPSEEK_API_KEY = 'test-key'
-})
-
-describe('getClient', () => {
-  it('creates OpenAI client with DeepSeek config', () => {
-    const client = getClient()
-    expect(client).toBeDefined()
-  })
-
-  it('throws when DEEPSEEK_API_KEY is missing', () => {
-    delete process.env.DEEPSEEK_API_KEY
-    // Reset the singleton
-    vi.resetModules()
-    // Need to re-import after reset
-    expect(() => {
-      // The singleton is already set, so we test the error path differently
-      // by checking the error message pattern
-    }).toBeDefined()
-  })
 })
 
 describe('buildMessages', () => {
@@ -164,23 +138,6 @@ describe('escapeRegex', () => {
 
   it('escapes all special chars in a complex string', () => {
     expect(escapeRegex('user@example.com (test)')).toBe('user@example\\.com \\(test\\)')
-  })
-})
-
-describe('validateApiKey', () => {
-  it('returns the key when it is valid', () => {
-    process.env.DEEPSEEK_API_KEY = 'sk-valid-key-1234567890'
-    expect(validateApiKey()).toBe('sk-valid-key-1234567890')
-  })
-
-  it('throws when key is missing', () => {
-    delete process.env.DEEPSEEK_API_KEY
-    expect(() => validateApiKey()).toThrow('DEEPSEEK_API_KEY')
-  })
-
-  it('throws when key is too short', () => {
-    process.env.DEEPSEEK_API_KEY = 'short'
-    expect(() => validateApiKey()).toThrow('too short')
   })
 })
 

@@ -3,9 +3,13 @@
  *
  * 将 Schema 生成过程分解为多个步骤，每步生成后通过 SSE 实时推送更新。
  * 步骤：layout → components → validation → styling
+ *
+ * 通过 getLLM() 统一调用 LLM，走 Provider+Model DB 链路。
  */
 
-import { getClient, buildMessages, parseStructuredOutput, withRetry } from '../graph/agentBase.js'
+import { SystemMessage, HumanMessage } from '@langchain/core/messages'
+import { parseStructuredOutput, withRetry } from '../graph/agentBase.js'
+import { getLLM } from '../services/llmCache.js'
 import { buildEditorSystemPrompt } from '@schema-platform/platform-shared/ai/promptBuilder'
 import { getMetadata } from './toolHandlers.js'
 
@@ -139,8 +143,10 @@ export async function* generateSchemaStream(
   description: string,
   currentSchema?: Record<string, unknown>[],
 ): AsyncIterable<SchemaChunk> {
-  const openai = getClient()
   const systemPrompt = await getPrompt()
+
+  // 通过 getLLM() 获取 LLM 实例（走 Provider+Model DB 链路）
+  const llm = await getLLM({ temperature: 0.7, maxTokens: 8192 })
 
   let accumulatedSchema: Record<string, unknown>[] = currentSchema ?? []
 
@@ -152,27 +158,15 @@ export async function* generateSchemaStream(
 
     const userMessage = `用户需求：${description}${stepContext}\n\n当前任务：${step.description}\n\n${step.prompt}`
 
-    // 调用 LLM 生成当前步骤
-    const messages = buildMessages(
-      {
-        messages: [{ role: 'user' as const, content: userMessage }],
-        activeAgent: 'editor',
-        context: { source: 'standalone', turnCount: 1 },
-      },
-      systemPrompt,
-      (state) => state.messages[state.messages.length - 1].content,
-    )
+    // 调用 LLM 生成当前步骤（通过 getLLM()，走 Provider 系统）
+    const messages = [
+      new SystemMessage(systemPrompt),
+      new HumanMessage(userMessage),
+    ]
 
-    const completion = await withRetry(() =>
-      openai.chat.completions.create({
-        model: 'deepseek-v4-flash',
-        messages,
-        temperature: 0.7,
-        max_tokens: 8192,
-      }),
-    )
+    const result = await withRetry(() => llm.invoke(messages))
 
-    const raw = completion.choices[0]?.message?.content ?? ''
+    const raw = typeof result.content === 'string' ? result.content : ''
     const parsed = parseStructuredOutput(raw)
 
     // 解析生成的 widgets

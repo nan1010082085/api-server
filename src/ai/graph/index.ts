@@ -20,8 +20,8 @@ export { pluginExpertAgentNode } from './pluginExpertAgent.js'
 
 // Shared utilities (used by tools and schemaGenerator)
 export {
-  getClient,
   getModelForTask,
+  getActiveModelIdentifiers,
   escapeRegex,
 } from './agentBase.js'
 export type { TaskType } from './agentBase.js'

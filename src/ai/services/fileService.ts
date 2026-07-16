@@ -29,55 +29,44 @@ export interface ProcessedFile {
   dataUrl?: string
 }
 
-export const VISION_OCR_MODEL = process.env.AI_VISION_OCR_MODEL || 'deepseek-v4-flash'
-export const DOCUMENT_TEXT_MODEL = process.env.AI_DOCUMENT_TEXT_MODEL || 'deepseek-v4-flash'
+export const VISION_OCR_MODEL = process.env.AI_VISION_OCR_MODEL || ''
+export const DOCUMENT_TEXT_MODEL = process.env.AI_DOCUMENT_TEXT_MODEL || ''
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
+/**
+ * 调用视觉模型进行图片理解。
+ * 通过 getLLM() 统一调用，走 Provider+Model DB 链路。
+ * 支持 OpenAI 兼容的多模态消息格式。
+ */
 async function callVisionModel(
   base64Image: string,
   mimeType: string,
   textPrompt: string,
   maxTokens = 4096,
 ): Promise<string> {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) {
-    throw new Error('DEEPSEEK_API_KEY environment variable is required.')
+  const { HumanMessage } = await import('@langchain/core/messages')
+  const { getLLM } = await import('./llmCache.js')
+
+  // 如果指定了视觉模型，使用指定的模型；否则使用默认模型
+  const modelOpts: Record<string, unknown> = { maxTokens }
+  if (VISION_OCR_MODEL) {
+    modelOpts.model = VISION_OCR_MODEL
   }
+
+  const llm = await getLLM(modelOpts)
 
   const dataUrl = `data:${mimeType};base64,${base64Image}`
 
-  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: VISION_OCR_MODEL,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: textPrompt },
-            { type: 'image_url', image_url: { url: dataUrl } },
-          ],
-        },
-      ],
-      max_tokens: maxTokens,
-    }),
+  const message = new HumanMessage({
+    content: [
+      { type: 'text', text: textPrompt },
+      { type: 'image_url', image_url: { url: dataUrl } },
+    ],
   })
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`DeepSeek API error (${response.status}): ${errorText}`)
-  }
-
-  const data = (await response.json()) as {
-    choices: Array<{ message: { content: string } }>
-  }
-
-  return data.choices[0]?.message?.content ?? ''
+  const response = await llm.invoke([message])
+  return typeof response.content === 'string' ? response.content : ''
 }
 
 async function performOCR(base64Image: string, mimeType: string): Promise<string> {

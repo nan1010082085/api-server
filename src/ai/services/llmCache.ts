@@ -80,7 +80,7 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
       providerName: provider,
       apiKey: opts.userConfig.apiKey,
       baseURL: opts.userConfig.baseURL || getProviderDefaultBaseUrl(provider),
-      model: opts.userConfig.model ?? opts.model ?? 'deepseek-v4-flash',
+      model: opts.userConfig.model ?? opts.model ?? 'deepseek-v4-flash', // DB default resolved in Tier 2
       temperature: opts.temperature ?? 0.7,
       maxTokens: opts.maxTokens ?? 8192,
       source: 'models',
@@ -226,7 +226,7 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
       return {
         providerName: 'deepseek',
         apiKey,
-        baseURL: 'https://api.deepseek.com',
+        baseURL: getProviderDefaultBaseUrl('deepseek'),
         model: opts.model ?? 'deepseek-v4-flash',
         temperature: opts.temperature ?? 0.7,
         maxTokens: opts.maxTokens ?? 8192,

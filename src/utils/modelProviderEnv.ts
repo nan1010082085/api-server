@@ -48,5 +48,5 @@ export function resolveProviderBaseUrl(provider: string, fallback?: string): str
 }
 
 export function getProviderDefaultBaseUrl(provider: string): string {
-  return DEFAULT_BASE_URL[provider as PlatformModelProvider] ?? 'https://api.deepseek.com'
+  return DEFAULT_BASE_URL[provider as PlatformModelProvider] ?? ''
 }

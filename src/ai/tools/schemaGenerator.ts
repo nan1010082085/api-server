@@ -3,10 +3,14 @@
  *
  * 封装 LLM 生成逻辑，供 Flow 工具的 generate_schema 调用。
  * 不走 SSE 流式，直接返回最终结果。
+ *
+ * 通过 getLLM() 统一调用 LLM，走 Provider+Model DB 链路。
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import { getClient, buildMessages, parseStructuredOutput, withRetry } from '../graph/agentBase.js'
+import { SystemMessage, HumanMessage } from '@langchain/core/messages'
+import { parseStructuredOutput, withRetry } from '../graph/agentBase.js'
+import { getLLM } from '../services/llmCache.js'
 import { buildEditorSystemPrompt } from '@schema-platform/platform-shared/ai/promptBuilder'
 import { getMetadata } from './toolHandlers.js'
 
@@ -33,30 +37,19 @@ async function getPrompt(): Promise<string> {
  * @returns 生成的 Schema widgets 和临时 ID
  */
 export async function generateSchemaFromPrompt(description: string): Promise<GenerateResult> {
-  const openai = getClient()
   const systemPrompt = await getPrompt()
 
-  const messages = buildMessages(
-    {
-      messages: [{ role: 'user' as const, content: description }],
-      activeAgent: 'editor',
-      context: { source: 'flow', turnCount: 1 },
-    },
-    systemPrompt,
-    (state) => state.messages[state.messages.length - 1].content,
-  )
+  // 通过 getLLM() 获取 LLM 实例（走 Provider+Model DB 链路）
+  const llm = await getLLM({ temperature: 0.7, maxTokens: 8192 })
+
+  const messages = [
+    new SystemMessage(systemPrompt),
+    new HumanMessage(description),
+  ]
 
   // 调用 LLM 生成（非流式，单轮）
-  const completion = await withRetry(() =>
-    openai.chat.completions.create({
-      model: 'deepseek-v4-flash',
-      messages,
-      temperature: 0.7,
-      max_tokens: 8192,
-    }),
-  )
-
-  const raw = completion.choices[0]?.message?.content ?? ''
+  const result = await withRetry(() => llm.invoke(messages))
+  const raw = typeof result.content === 'string' ? result.content : ''
   const parsed = parseStructuredOutput(raw)
 
   // 从 <schema> 标签中提取 widgets

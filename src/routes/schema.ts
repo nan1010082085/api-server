@@ -38,13 +38,50 @@ function generateVersion(): string {
  * Valid widget types for import validation.
  */
 const VALID_WIDGET_TYPES = new Set([
-  'form', 'card', 'row-col', 'tabs', 'dialog',
+  // Layout
+  'form', 'card', 'tabs', 'dialog', 'divider', 'spacer', 'tree-layout',
+  'single-col', 'double-col', 'triple-col', 'quad-col',
+
+  // Container
+  'micro-app-container', 'iframe', 'micro-app',
+
+  // Form controls
   'input', 'number', 'select', 'radio', 'checkbox',
-  'date', 'date-range', 'textarea', 'richtext',
-  'button', 'button-list', 'upload', 'table',
-  'search-list', 'editable-table', 'title', 'divider',
-  'spacer', 'toolbar-buttons', 'file-list', 'transfer',
-  'banner', 'tree-layout', 'date-time-slot',
+  'date', 'textarea', 'richtext', 'upload',
+  'date-time-slot', 'time-picker',
+  'switch', 'slider', 'rate',
+  'cascader', 'color-picker', 'tag-input', 'autocomplete',
+  'file-list', 'transfer', 'descriptions',
+  'dynamic-detail-table', 'qr-scanner',
+  'icon-picker', 'tree-select', 'permission-tree',
+
+  // Static
+  'title', 'banner', 'statistic',
+
+  // Action
+  'button', 'toolbar-buttons',
+
+  // Table
+  'table', 'advanced-table', 'crud-list-page', 'tree-table',
+
+  // Chart
+  'bar-chart', 'stacked-bar-chart', 'horizontal-bar-chart',
+  'line-chart', 'area-chart',
+  'pie-chart', 'donut-chart',
+  'scatter-chart', 'bubble-chart',
+  'radar', 'filled-radar',
+  'gauge', 'multi-gauge',
+  'heatmap', 'funnel', 'compare-funnel', 'candlestick',
+
+  // Business
+  'approval-user-picker', 'approval-role-picker', 'approval-comment',
+  'role-management', 'user-management', 'user-selector',
+  'flow-timeline', 'flow-task-actions',
+  'calendar', 'kanban', 'adhoc-query',
+  'notification', 'auto-refresh', 'compliance-checklist',
+
+  // Legacy (backward compatibility — older schemas in DB)
+  'row-col', 'date-range', 'button-list', 'search-list', 'editable-table',
   'grid-row', 'grid-col', 'page', 'toolbar', 'pagination', 'steps',
 ])
 

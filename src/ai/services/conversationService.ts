@@ -6,9 +6,9 @@
  */
 
 import mongoose from 'mongoose'
-import { ChatOpenAI } from '@langchain/openai'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import type { AIMessage, ActiveAgent, AgentSource } from '../graph/state.js'
+import { getLLM } from './llmCache.js'
 
 // ────────────────────────────────────────────
 // Summary generation config
@@ -398,19 +398,11 @@ function extractFieldNames(widgets: Record<string, unknown>[]): string[] {
 async function generateSummaryFromMessages(
   messages: AIConversationMessage[],
 ): Promise<string | null> {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) return null
-
   const transcript = formatMessagesForSummary(messages)
 
   try {
-    const model = new ChatOpenAI({
-      model: 'deepseek-v4-flash',
-      apiKey,
-      configuration: { baseURL: 'https://api.deepseek.com' },
-      temperature: 0.3,
-      maxTokens: 1024,
-    })
+    // 通过 getLLM() 获取 LLM 实例（走 Provider+Model DB 链路）
+    const model = await getLLM({ temperature: 0.3, maxTokens: 1024 })
 
     const response = await model.invoke([
       new SystemMessage(SUMMARY_SYSTEM_PROMPT),

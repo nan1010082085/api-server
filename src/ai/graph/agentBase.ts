@@ -2,7 +2,6 @@
  * Shared agent infrastructure.
  *
  * Utility functions used across the AI agent system:
- * - OpenAI client singleton
  * - Model configuration per task type
  * - Message building for direct LLM calls (schemaGenerator)
  * - Structured output parsing (think/answer/tip/schema tags)
@@ -12,57 +11,12 @@
  * Note: LangGraph handles the main agent loop, tool execution,
  * and streaming. These utilities are retained for schemaGenerator.ts
  * and tool implementations.
+ *
+ * All LLM calls MUST go through getLLM() from services/llmCache.ts.
+ * Do NOT create OpenAI clients directly — use the provider abstraction layer.
  */
 
 import OpenAI from 'openai'
-
-// ────────────────────────────────────────────
-// OpenAI client (shared singleton)
-// ────────────────────────────────────────────
-
-let client: OpenAI | null = null
-
-export function getClient(): OpenAI {
-  if (!client) {
-    const apiKey = process.env.DEEPSEEK_API_KEY
-    if (!apiKey) {
-      throw new Error('DEEPSEEK_API_KEY environment variable is required.')
-    }
-    client = new OpenAI({
-      baseURL: 'https://api.deepseek.com',
-      apiKey,
-    })
-  }
-  return client
-}
-
-// ────────────────────────────────────────────
-// API Key validation (startup check)
-// ────────────────────────────────────────────
-
-/**
- * Validate that the DEEPSEEK_API_KEY environment variable is set and
- * has a reasonable format. Call this at module initialization or server
- * startup to fail fast rather than discovering the missing key at request time.
- *
- * Returns the key if valid. Throws with a descriptive error otherwise.
- */
-export function validateApiKey(): string {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) {
-    throw new Error(
-      'DEEPSEEK_API_KEY environment variable is required. '
-      + 'Set it in your .env file or export it before starting the server.',
-    )
-  }
-  if (apiKey.length < 10) {
-    throw new Error(
-      'DEEPSEEK_API_KEY appears invalid (too short). '
-      + 'Check that the key is complete and correctly set.',
-    )
-  }
-  return apiKey
-}
 
 // ────────────────────────────────────────────
 // Model configuration per task type
@@ -73,71 +27,38 @@ export type TaskType = 'router' | 'generate_simple' | 'generate_complex' | 'anal
 /**
  * Select model by task type.
  *
- * Reads model names from environment variables with provider-aware defaults.
- * When LLMManager has a registered provider, uses that provider's model list.
+ * Resolution order:
+ * 1. Env var override: LLM_MODEL_ROUTER, LLM_MODEL_GENERATE_SIMPLE, etc.
+ * 2. DB Model table: the tenant's default model (isDefault=true)
+ * 3. LLMManager env-registered provider's defaultModel
+ * 4. Empty string (getLLM() will handle the final fallback)
  *
- * - router: intent classification, lightweight and fast
- * - generate_simple: simple generation (single form, single list)
- * - generate_complex: complex reasoning (multi-step, linkage, nested)
- * - analyze: analysis/diagnosis tasks
+ * Task-specific model selection (e.g., fast model for router, powerful for complex)
+ * should be configured via DB Model records with task annotations, not hardcoded.
  */
 export function getModelForTask(taskType: TaskType): string {
   // Allow env var overrides for each task type
   const envModel = process.env[`LLM_MODEL_${taskType.toUpperCase()}`]
   if (envModel) return envModel
 
-  // Try to get defaults from LLMManager's current provider
-  try {
-    // Lazy import to avoid circular dependency at module level
-    const { llmManager } = require('../services/llmManager.js') as typeof import('../services/llmManager.js')
-    const provider = llmManager.getProvider()
-
-    // Provider-specific model mapping
-    const providerDefaults: Record<string, Record<TaskType, string>> = {
-      deepseek: {
-        router: 'deepseek-v4-flash',
-        generate_simple: 'deepseek-v4-flash',
-        generate_complex: 'deepseek-v4-flash',
-        analyze: 'deepseek-v4-flash',
-      },
-      mimo: {
-        router: 'mimo-v2.5',
-        generate_simple: 'mimo-v2.5',
-        generate_complex: 'mimo-v2.5',
-        analyze: 'mimo-v2.5',
-      },
-      openai: {
-        router: 'gpt-4o-mini',
-        generate_simple: 'gpt-4o',
-        generate_complex: 'gpt-4o',
-        analyze: 'gpt-4o-mini',
-      },
-      claude: {
-        router: 'claude-3-5-haiku-20241022',
-        generate_simple: 'claude-sonnet-4-20250514',
-        generate_complex: 'claude-sonnet-4-20250514',
-        analyze: 'claude-3-5-haiku-20241022',
-      },
-    }
-
-    const defaults = providerDefaults[provider.name]
-    if (defaults) return defaults[taskType]
-    return provider.defaultModel
-  } catch {
-    // LLMManager not available — use hardcoded DeepSeek defaults
-    const fallbackMap: Record<TaskType, string> = {
-      router: 'deepseek-v4-flash',
-      generate_simple: 'deepseek-v4-flash',
-      generate_complex: 'deepseek-v4-flash',
-      analyze: 'deepseek-v4-flash',
-    }
-    return fallbackMap[taskType] ?? 'deepseek-v4-flash'
-  }
+  // No hardcoded provider→model mapping — getLLM() resolves from DB/env
+  return ''
 }
 
-/** 所有已注册 Provider 的默认模型（启动时从 DB/LLMManager 收集） */
-export const PROVIDER_DEFAULT_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro', 'mimo-v2.5'] as const
-export type UserSelectableModel = typeof PROVIDER_DEFAULT_MODELS[number]
+/**
+ * Get all active model identifiers from DB.
+ * Used for type inference in frontend compatibility.
+ * Returns empty array if DB is not available.
+ */
+export async function getActiveModelIdentifiers(): Promise<string[]> {
+  try {
+    const { ModelModel } = await import('../../models/Model.js')
+    const models = await ModelModel.find({ isActive: true }).select('model').lean() as Record<string, unknown>[]
+    return models.map((m) => m.model as string).filter(Boolean)
+  } catch {
+    return []
+  }
+}
 
 /**
  * 从 LLM 响应中提取 JSON 对象。
