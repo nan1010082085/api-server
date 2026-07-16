@@ -61,6 +61,8 @@ export interface McpServerDeclaration {
 export interface SkillDeclaration {
   id: string
   label: string
+  /** 语言标签（如 zh / en），缺省为默认语言 */
+  locale?: string
   /** 内联 Markdown */
   content?: string
   /** 相对 AI_PLUGIN_CONFIG_DIR 或配置文件所在目录 */
@@ -118,4 +120,9 @@ export interface PluginPackManifest {
   name: string
   version: string
   description?: string
+  author?: string
+  /** HMAC-SHA256 签名（base64），由 plugin:pack 自动生成 */
+  signature?: string
+  /** 签名时间（ISO 8601），由 plugin:pack 自动生成 */
+  signedAt?: string
 }
