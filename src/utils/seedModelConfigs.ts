@@ -35,7 +35,7 @@ const seedProviders: SeedProvider[] = [
   {
     name: 'Mimo',
     type: 'mimo',
-    defaultBaseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
+    defaultBaseUrl: 'https://api.xiaomimimo.com/v1',
     apiKeyEnvVars: ['MIMO_API_KEY'],
   },
 ]
@@ -97,8 +97,28 @@ async function removeAutoSeededOllama(): Promise<void> {
 }
 
 /**
+ * Detect whether a stored apiKey looks like an encrypted blob (base64, > 50 chars, not a plain sk-/tp- key).
+ */
+function isEncryptedKey(raw: string): boolean {
+  if (!raw || raw.length < 50) return false
+  if (raw.startsWith('sk-') || raw.startsWith('tp-')) return false
+  // Encrypted blobs are base64 — try decode
+  try {
+    Buffer.from(raw, 'base64')
+    return raw === Buffer.from(raw, 'base64').toString('base64')
+  } catch {
+    return false
+  }
+}
+
+/**
  * Seed Provider + Model normalized tables.
  * Providers are created/upserted first, then Models are linked via providerId.
+ *
+ * Rules:
+ * - apiKey is ALWAYS read from environment variables and encrypted
+ * - Existing plaintext keys are re-encrypted on every startup
+ * - baseUrl is corrected if it doesn't match the expected default
  */
 export async function seedProvidersAndModels(): Promise<void> {
   await removeAutoSeededOllama()
@@ -111,7 +131,7 @@ export async function seedProvidersAndModels(): Promise<void> {
   let providersSynced = 0
 
   for (const sp of seedProviders) {
-    const apiKey = platformEnabled ? resolveEnvApiKey(sp.apiKeyEnvVars) : ''
+    const envApiKey = platformEnabled ? resolveEnvApiKey(sp.apiKeyEnvVars) : ''
     const baseUrl = sp.defaultBaseUrl
 
     const existing = await ProviderModel.findOne({ name: sp.name })
@@ -121,7 +141,7 @@ export async function seedProvidersAndModels(): Promise<void> {
         name: sp.name,
         type: sp.type,
         baseUrl,
-        apiKey: apiKey || '',
+        apiKey: envApiKey ? encryptApiKeyIfPossible(envApiKey) : '',
         isActive: true,
       })
       providerIdMap.set(sp.name, String(doc._id))
@@ -133,24 +153,26 @@ export async function seedProvidersAndModels(): Promise<void> {
     providerIdMap.set(sp.name, String(existing._id))
 
     const updates: Record<string, unknown> = {}
-    if (!existing.apiKey && apiKey) {
-      updates.apiKey = encryptApiKeyIfPossible(apiKey)
-    }
-    // 纠正历史错误 baseUrl（如前端误用 api.xiaomimimo.com）
-    if (sp.type === 'mimo' && /api\.xiaomimimo\.com/i.test(existing.baseUrl || '')) {
-      updates.baseUrl = baseUrl
-    }
-    if (sp.type === 'deepseek' && /api\.deepseek\.com\/v1\/?$/i.test(existing.baseUrl || '')) {
-      updates.baseUrl = baseUrl
-    }
-    if (!existing.baseUrl && baseUrl) {
-      updates.baseUrl = baseUrl
+    let needsUpdate = false
+
+    // Always sync apiKey from env — encrypt if plaintext
+    if (envApiKey) {
+      if (!isEncryptedKey(existing.apiKey)) {
+        updates.apiKey = encryptApiKeyIfPossible(envApiKey)
+        needsUpdate = true
+      }
     }
 
-    if (Object.keys(updates).length > 0) {
+    // Correct wrong baseUrl (e.g. old token-plan-cn.xiaomimimo.com or api.deepseek.com/v1)
+    if (existing.baseUrl !== baseUrl) {
+      updates.baseUrl = baseUrl
+      needsUpdate = true
+    }
+
+    if (needsUpdate) {
       await ProviderModel.findByIdAndUpdate(existing._id, updates)
       providersSynced++
-      console.log(`[seed] Provider synced from env: ${sp.name}`)
+      console.log(`[seed] Provider synced: ${sp.name} (baseUrl=${baseUrl}, apiKey=${envApiKey ? 'encrypted' : 'empty'})`)
     }
   }
 
@@ -243,7 +265,7 @@ const legacySeedConfigs: SeedModelConfig[] = [
     name: 'Mimo v2.5',
     provider: 'mimo',
     model: 'mimo-v2.5',
-    baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
+    baseUrl: 'https://api.xiaomimimo.com/v1',
     parameters: { temperature: 0.7, maxTokens: 4096, topP: 1 },
     isDefault: false,
   },
@@ -279,7 +301,7 @@ export async function ensureModelConfigs(): Promise<void> {
         name: config.name,
         provider: config.provider,
         model: config.model,
-        apiKey: encryptApiKeyIfPossible(envApiKey),
+        apiKey: envApiKey ? encryptApiKeyIfPossible(envApiKey) : '',
         baseUrl,
         parameters: config.parameters,
         isDefault: config.isDefault,
@@ -290,17 +312,22 @@ export async function ensureModelConfigs(): Promise<void> {
     }
 
     const updates: Record<string, unknown> = {}
-    if (!existing.apiKey && envApiKey) {
+    let needsUpdate = false
+
+    // Always sync apiKey from env
+    if (envApiKey && !isEncryptedKey(existing.apiKey)) {
       updates.apiKey = encryptApiKeyIfPossible(envApiKey)
+      needsUpdate = true
     }
     if (!existing.baseUrl && baseUrl) {
       updates.baseUrl = baseUrl
+      needsUpdate = true
     }
 
-    if (Object.keys(updates).length > 0) {
+    if (needsUpdate) {
       await ModelConfigModel.findByIdAndUpdate(existing._id, updates)
       synced++
-      console.log(`[seed] Model config synced from env: ${config.name}`)
+      console.log(`[seed] Model config synced: ${config.name}`)
     }
   }
 
