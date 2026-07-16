@@ -15,6 +15,7 @@ import {
   isImageMimetype,
   isAudioMimetype,
   isVideoMimetype,
+  is3DMimetype,
   normalizeUploadMimetype,
   resolveExtractionKind,
   type DocumentExtractionKind,
@@ -302,6 +303,20 @@ export async function processFile(
       size: buffer.length,
       text,
       extractionMethod: text.trim() ? 'video-analyze' : 'empty',
+    }
+  }
+
+  if (is3DMimetype(normalizedMimetype, filename)) {
+    // 3D files are rendered client-side; server just stores and returns metadata
+    const base64 = buffer.toString('base64')
+    const dataUrl = `data:${normalizedMimetype};base64,${base64}`
+    return {
+      filename,
+      mimetype: normalizedMimetype,
+      size: buffer.length,
+      text: `[3D 模型: ${filename}]`,
+      extractionMethod: '3d-preview',
+      dataUrl,
     }
   }
 

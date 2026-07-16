@@ -15,6 +15,7 @@ export type DocumentExtractionKind =
   | 'txt'
   | 'audio-transcribe'
   | 'video-analyze'
+  | '3d-preview'
   | 'empty'
 
 const IMAGE_MIME_TYPES = new Set([
@@ -42,6 +43,12 @@ const VIDEO_MIME_TYPES = new Set([
   'video/quicktime',
   'video/x-msvideo',
   'video/x-matroska',
+])
+
+const THREE_D_MIME_TYPES = new Set([
+  'model/gltf-binary',
+  'model/gltf+json',
+  'application/octet-stream',
 ])
 
 const DOC_MIME_TYPES = new Set([
@@ -77,13 +84,18 @@ const EXTENSION_MIME_MAP: Record<string, string> = {
   '.mov': 'video/quicktime',
   '.avi': 'video/x-msvideo',
   '.mkv': 'video/x-matroska',
+  '.glb': 'model/gltf-binary',
+  '.gltf': 'model/gltf+json',
+  '.obj': 'application/octet-stream',
+  '.stl': 'application/octet-stream',
+  '.fbx': 'application/octet-stream',
 }
 
 export const DOCUMENT_FORMAT_LABEL =
-  'PNG、JPG、GIF、WebP、PDF、DOC、DOCX、TXT、CSV、XLS、XLSX、OFD、MP3、WAV、M4A、MP4、MOV'
+  'PNG、JPG、GIF、WebP、PDF、DOC、DOCX、TXT、CSV、XLS、XLSX、OFD、MP3、WAV、M4A、MP4、MOV、GLB、GLTF'
 
 export const DOCUMENT_UPLOAD_ACCEPT =
-  'image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,.ofd,audio/*,video/mp4,video/webm,video/quicktime'
+  'image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,.ofd,audio/*,video/mp4,video/webm,video/quicktime,.glb,.gltf'
 
 export function extensionFromFilename(filename: string): string {
   return path.extname(filename).toLowerCase()
@@ -125,11 +137,20 @@ export function isVideoMimetype(mimetype: string): boolean {
   return VIDEO_MIME_TYPES.has(mimetype)
 }
 
+export function is3DMimetype(mimetype: string, filename?: string): boolean {
+  if (THREE_D_MIME_TYPES.has(mimetype)) {
+    const ext = filename ? extensionFromFilename(filename) : ''
+    return ['.glb', '.gltf', '.obj', '.stl', '.fbx'].includes(ext)
+  }
+  return false
+}
+
 export function isAllowedUploadFile(filename: string, mimetype: string): boolean {
   const normalized = normalizeUploadMimetype(filename, mimetype)
   if (IMAGE_MIME_TYPES.has(normalized)) return true
   if (AUDIO_MIME_TYPES.has(normalized)) return true
   if (VIDEO_MIME_TYPES.has(normalized)) return true
+  if (is3DMimetype(normalized, filename)) return true
   if (DOC_MIME_TYPES.has(normalized)) {
     const ext = extensionFromFilename(filename)
     if (normalized === 'application/octet-stream') {
@@ -148,6 +169,7 @@ export function resolveExtractionKind(filename: string, mimetype: string): Docum
   if (IMAGE_MIME_TYPES.has(normalized)) return 'ocr'
   if (AUDIO_MIME_TYPES.has(normalized)) return 'audio-transcribe'
   if (VIDEO_MIME_TYPES.has(normalized)) return 'video-analyze'
+  if (is3DMimetype(normalized, filename)) return '3d-preview'
   if (normalized === 'application/pdf' || ext === '.pdf') return 'pdf'
   if (normalized === 'application/msword' || ext === '.doc') return 'doc'
   if (
