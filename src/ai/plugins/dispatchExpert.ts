@@ -38,7 +38,7 @@ export function resolveExpertRef(ref: ExpertRef): ExpertDeclaration | undefined 
 
 export async function buildExpertSystemPrompt(
   expert: ExpertDeclaration,
-  opts: { generalPromptBuilder?: () => string } = {},
+  opts: { generalPromptBuilder?: () => string; locale?: string } = {},
 ): Promise<string> {
   return resolveExpertSystemPrompt(expert, getPluginRegistry(), opts)
 }

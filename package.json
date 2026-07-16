@@ -18,6 +18,7 @@
     "plugin:validate": "tsx scripts/plugin-validate.ts",
     "plugin:pack": "tsx scripts/plugin-pack.ts",
     "plugin:install": "tsx scripts/plugin-install.ts",
+    "validate:tools": "tsx scripts/validate-tools.ts",
     "openapi:extract": "tsx scripts/extract-routes.ts"
   },
   "dependencies": {

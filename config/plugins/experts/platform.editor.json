@@ -17,7 +17,7 @@
     "generate_schema",
     "request_collaboration"
   ],
-  "skills": ["platform.schema-quality", "platform.reply-zh"],
+  "skills": ["platform.schema-quality", "platform.reply"],
   "routing": {
     "keywords": ["表单", "schema", "form", "字段", "组件", "widget", "输入框"],
     "contextSources": ["editor", "standalone"],

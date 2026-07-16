@@ -10,6 +10,7 @@
 import Router from '@koa/router'
 import { AgentMetricModel } from './models/monitor.js'
 import { WorkflowNodeMetricModel } from './models/workflowNodeMetric.js'
+import { PluginMetricModel } from './models/pluginMetric.js'
 import { authMiddleware } from '../middleware/auth.js'
 
 const router = new Router({ prefix: '/api/ai/monitor' })
@@ -592,6 +593,245 @@ router.get('/node-stats/timeline', async (ctx) => {
       timeline,
       periodHours: hoursNum,
       bucketMinutes: bucketMs / 60000,
+    },
+  }
+})
+
+// ────────────────────────────────────────────
+// GET /api/ai/monitor/plugin-stats — Plugin performance statistics
+// ────────────────────────────────────────────
+
+/**
+ * Returns per-plugin performance statistics.
+ *
+ * Query params:
+ * - pluginType: Filter by plugin type (expert, tool, mcp, skill)
+ * - startDate: Start date for time range filter (ISO 8601)
+ * - endDate: End date for time range filter (ISO 8601)
+ * - sortBy: Sort field — 'avgDuration' | 'failureRate' | 'totalCalls' (default: 'totalCalls')
+ * - sortOrder: 'asc' | 'desc' (default: 'desc')
+ */
+router.get('/plugin-stats', async (ctx) => {
+  const { pluginType, startDate, endDate, sortBy, sortOrder } = ctx.query as {
+    pluginType?: string
+    startDate?: string
+    endDate?: string
+    sortBy?: string
+    sortOrder?: string
+  }
+
+  const matchStage: Record<string, unknown> = {}
+  if (pluginType) matchStage.pluginType = pluginType
+  if (startDate || endDate) {
+    matchStage.createdAt = {}
+    if (startDate) (matchStage.createdAt as Record<string, Date>).$gte = new Date(startDate)
+    if (endDate) (matchStage.createdAt as Record<string, Date>).$lte = new Date(endDate)
+  }
+
+  const MAX_DOCS_FOR_STATS = 50_000
+
+  const stats = await PluginMetricModel.aggregate([
+    { $match: matchStage },
+    { $limit: MAX_DOCS_FOR_STATS },
+    {
+      $group: {
+        _id: {
+          pluginId: '$pluginId',
+          pluginName: '$pluginName',
+          pluginType: '$pluginType',
+        },
+        avgDuration: { $avg: '$duration' },
+        minDuration: { $min: '$duration' },
+        maxDuration: { $max: '$duration' },
+        durations: { $push: '$duration' },
+        totalCalls: { $sum: 1 },
+        successCount: { $sum: { $cond: ['$success', 1, 0] } },
+        failureCount: { $sum: { $cond: ['$success', 0, 1] } },
+        failureRate: { $avg: { $cond: ['$success', 0, 1] } },
+        recentErrors: {
+          $push: {
+            $cond: [
+              { $not: ['$success'] },
+              { error: '$error', at: '$createdAt' },
+              '$$REMOVE',
+            ],
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        pluginId: '$_id.pluginId',
+        pluginName: '$_id.pluginName',
+        pluginType: '$_id.pluginType',
+        avgDuration: { $round: ['$avgDuration', 2] },
+        minDuration: 1,
+        maxDuration: 1,
+        p95Duration: {
+          $let: {
+            vars: {
+              sorted: { $sortArray: { input: '$durations', sortBy: 1 } },
+              count: { $size: '$durations' },
+            },
+            in: {
+              $arrayElemAt: [
+                '$$sorted',
+                { $subtract: [{ $ceil: { $multiply: ['$$count', 0.95] } }, 1] },
+              ],
+            },
+          },
+        },
+        totalCalls: 1,
+        successCount: 1,
+        failureCount: 1,
+        failureRate: { $round: [{ $multiply: ['$failureRate', 100] }, 2] },
+        recentErrors: { $slice: ['$recentErrors', -5] },
+      },
+    },
+    {
+      $sort: (() => {
+        const field = sortBy === 'failureRate' ? 'failureRate'
+          : sortBy === 'avgDuration' ? 'avgDuration'
+            : 'totalCalls'
+        const dir = sortOrder === 'asc' ? 1 : -1
+        return { [field]: dir } as Record<string, 1 | -1>
+      })(),
+    },
+  ])
+
+  ctx.body = {
+    success: true,
+    data: stats,
+  }
+})
+
+// ────────────────────────────────────────────
+// GET /api/ai/monitor/plugin-recent — Recent plugin metric records
+// ────────────────────────────────────────────
+
+/**
+ * Returns raw plugin metric records (non-aggregated).
+ *
+ * Query params:
+ * - pluginId: Filter by plugin ID
+ * - pluginType: Filter by plugin type (expert, tool, mcp, skill)
+ * - success: Filter by success status (true/false)
+ * - page: Page number (default 1)
+ * - pageSize: Items per page (default 20, max 100)
+ */
+router.get('/plugin-recent', async (ctx) => {
+  const { pluginId, pluginType, success: successStr, page: pageStr, pageSize: pageSizeStr } = ctx.query as {
+    pluginId?: string
+    pluginType?: string
+    success?: string
+    page?: string
+    pageSize?: string
+  }
+
+  const page = Math.max(1, parseInt(pageStr as string) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(pageSizeStr as string) || 20))
+
+  const filter: Record<string, unknown> = {}
+  if (pluginId) filter.pluginId = pluginId
+  if (pluginType) filter.pluginType = pluginType
+  if (successStr !== undefined) filter.success = successStr === 'true'
+
+  const [records, total] = await Promise.all([
+    PluginMetricModel.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean(),
+    PluginMetricModel.countDocuments(filter),
+  ])
+
+  ctx.body = {
+    success: true,
+    data: {
+      items: records.map((r) => ({
+        id: r._id,
+        pluginId: r.pluginId,
+        pluginName: r.pluginName,
+        pluginType: r.pluginType,
+        duration: r.duration,
+        success: r.success,
+        error: r.error,
+        metadata: r.metadata,
+        createdAt: r.createdAt,
+      })),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  }
+})
+
+// ────────────────────────────────────────────
+// GET /api/ai/monitor/plugin-summary — Quick summary of plugin performance
+// ────────────────────────────────────────────
+
+/**
+ * Returns high-level plugin metrics for dashboard display.
+ *
+ * Query params:
+ * - hours: Time window in hours (default 24)
+ */
+router.get('/plugin-summary', async (ctx) => {
+  const { hours } = ctx.query as { hours?: string }
+  const hoursNum = parseInt(hours ?? '24', 10) || 24
+  const since = new Date(Date.now() - hoursNum * 60 * 60 * 1000)
+
+  const [summary] = await PluginMetricModel.aggregate([
+    { $match: { createdAt: { $gte: since } } },
+    {
+      $group: {
+        _id: null,
+        totalCalls: { $sum: 1 },
+        successCount: { $sum: { $cond: ['$success', 1, 0] } },
+        failureCount: { $sum: { $cond: ['$success', 0, 1] } },
+        avgDuration: { $avg: '$duration' },
+        maxDuration: { $max: '$duration' },
+        slowCalls: {
+          $sum: { $cond: [{ $gte: ['$duration', 10000] }, 1, 0] },
+        },
+        uniquePlugins: { $addToSet: '$pluginId' },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        totalCalls: 1,
+        successCount: 1,
+        failureCount: 1,
+        successRate: {
+          $round: [
+            { $multiply: [{ $divide: ['$successCount', { $max: ['$totalCalls', 1] }] }, 100] },
+            2,
+          ],
+        },
+        avgDuration: { $round: ['$avgDuration', 2] },
+        maxDuration: 1,
+        slowCalls: 1,
+        activePlugins: { $size: '$uniquePlugins' },
+        periodHours: hoursNum,
+      },
+    },
+  ])
+
+  ctx.body = {
+    success: true,
+    data: summary ?? {
+      totalCalls: 0,
+      successCount: 0,
+      failureCount: 0,
+      successRate: 0,
+      avgDuration: 0,
+      maxDuration: 0,
+      slowCalls: 0,
+      activePlugins: 0,
+      periodHours: hoursNum,
     },
   }
 })

@@ -1,0 +1,7 @@
+{
+  "id": "custom.example",
+  "transport": "inmemory",
+  "factoryModule": "./factory.ts",
+  "namespace": "example__",
+  "description": "自定义 MCP Server 示例"
+}

@@ -238,4 +238,42 @@ describe('resolveExpertSystemPrompt', () => {
       expect(result).toBe('Low priority\n\nHigh priority')
     })
   })
+
+  describe('Skill locale resolution', () => {
+    it('returns locale-matched skill when locale is specified', async () => {
+      const sZh = makeSkill('reply', '中文回复', { locale: 'zh' })
+      const sEn = makeSkill('reply', 'English reply', { locale: 'en' })
+      const expert = makeExpert('e1', { skills: ['reply'] })
+      const registry = makeRegistry([sZh, sEn], [expert])
+      const result = await resolveExpertSystemPrompt(expert, registry, { locale: 'en' })
+      expect(result).toBe('English reply')
+    })
+
+    it('falls back to default (no locale) when specified locale not found', async () => {
+      const sDefault = makeSkill('reply', 'Default reply')
+      const sEn = makeSkill('reply', 'English reply', { locale: 'en' })
+      const expert = makeExpert('e1', { skills: ['reply'] })
+      const registry = makeRegistry([sDefault, sEn], [expert])
+      const result = await resolveExpertSystemPrompt(expert, registry, { locale: 'fr' })
+      expect(result).toBe('Default reply')
+    })
+
+    it('falls back to first skill when no locale match and no default', async () => {
+      const sZh = makeSkill('reply', '中文回复', { locale: 'zh' })
+      const sEn = makeSkill('reply', 'English reply', { locale: 'en' })
+      const expert = makeExpert('e1', { skills: ['reply'] })
+      const registry = makeRegistry([sZh, sEn], [expert])
+      const result = await resolveExpertSystemPrompt(expert, registry, { locale: 'fr' })
+      expect(result).toBe('中文回复')
+    })
+
+    it('uses default skill when no locale specified', async () => {
+      const sDefault = makeSkill('reply', 'Default reply')
+      const sEn = makeSkill('reply', 'English reply', { locale: 'en' })
+      const expert = makeExpert('e1', { skills: ['reply'] })
+      const registry = makeRegistry([sDefault, sEn], [expert])
+      const result = await resolveExpertSystemPrompt(expert, registry)
+      expect(result).toBe('Default reply')
+    })
+  })
 })

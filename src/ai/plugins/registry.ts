@@ -19,7 +19,7 @@ function isEnabled(item: { enabled?: boolean }): boolean {
 export class PluginRegistry {
   private experts = new Map<string, ExpertDeclaration>()
   private expertsByLegacy = new Map<LegacyAgentKey, ExpertDeclaration>()
-  private skills = new Map<string, SkillDeclaration>()
+  private skills = new Map<string, SkillDeclaration[]>()
   private tools = new Map<string, PluginToolDeclaration>()
   private mcpServers = new Map<string, McpServerDeclaration>()
 
@@ -33,7 +33,9 @@ export class PluginRegistry {
     }
     for (const item of manifest.skills ?? []) {
       if (!isEnabled(item)) continue
-      this.skills.set(item.id, item)
+      const existing = this.skills.get(item.id) ?? []
+      existing.push(item)
+      this.skills.set(item.id, existing)
     }
     for (const item of manifest.experts ?? []) {
       if (!isEnabled(item)) continue
@@ -60,11 +62,26 @@ export class PluginRegistry {
   }
 
   getSkill(id: string): SkillDeclaration | undefined {
-    return this.skills.get(id)
+    const skills = this.skills.get(id)
+    return skills?.[0]
+  }
+
+  /**
+   * 按 locale 匹配 Skill：优先指定 locale → 无 locale 默认 → 第一个。
+   */
+  getSkillByLocale(id: string, locale?: string): SkillDeclaration | undefined {
+    const skills = this.skills.get(id)
+    if (!skills?.length) return undefined
+    if (locale) {
+      const matched = skills.find((s) => s.locale === locale)
+      if (matched) return matched
+    }
+    const defaultSkill = skills.find((s) => !s.locale)
+    return defaultSkill ?? skills[0]
   }
 
   listSkills(): SkillDeclaration[] {
-    return [...this.skills.values()]
+    return [...this.skills.values()].flat()
   }
 
   getToolDeclaration(name: string): PluginToolDeclaration | undefined {
@@ -106,8 +123,10 @@ export class PluginRegistry {
     }
     for (const name of toolNames) add(name)
     for (const skillId of skillIds ?? []) {
-      const skill = this.skills.get(skillId)
-      for (const name of skill?.tools ?? []) add(name)
+      const skills = this.skills.get(skillId)
+      for (const skill of skills ?? []) {
+        for (const name of skill.tools ?? []) add(name)
+      }
     }
     return result
   }

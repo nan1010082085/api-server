@@ -80,6 +80,11 @@ const VALID_WIDGET_TYPES = new Set([
   'calendar', 'kanban', 'adhoc-query',
   'notification', 'auto-refresh', 'compliance-checklist',
 
+  // New widgets (Phase 3)
+  'filter-bar', 'sub-form', 'progress-bar', 'rank-list',
+  'comparison-card', 'realtime-clock', 'marquee-text',
+  'tab-container', 'form-steps', 'condition-builder', 'treemap',
+
   // Legacy (backward compatibility — older schemas in DB)
   'row-col', 'date-range', 'button-list', 'search-list', 'editable-table',
   'grid-row', 'grid-col', 'page', 'toolbar', 'pagination', 'steps',

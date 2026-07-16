@@ -5,7 +5,7 @@
   "legacyAgentKey": "general",
   "dynamicPrompt": "general",
   "tools": [],
-  "skills": ["platform.reply-zh"],
+  "skills": ["platform.reply"],
   "routing": {
     "contextSources": ["standalone"],
     "priority": 0

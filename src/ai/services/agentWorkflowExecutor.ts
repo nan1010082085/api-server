@@ -872,6 +872,7 @@ async function runNode(
 
     case 'document-parse': {
       const source = data.documentSource ?? 'stream'
+      const parseModel = data.model && data.model !== 'default' ? data.model : undefined
       if (source === 'api') {
         try {
           const streamFile = await resolveWorkflowApiFile(data, (text) => resolveTemplate(text, ctx))
@@ -879,6 +880,7 @@ async function runNode(
             streamFile.content,
             streamFile.filename,
             streamFile.mimetype,
+            parseModel,
           )
           const chunks = chunkText(processed.text)
           return {
@@ -915,6 +917,7 @@ async function runNode(
           streamFile.content,
           streamFile.filename,
           streamFile.mimetype,
+          parseModel,
         )
         const chunks = chunkText(processed.text)
         return {
@@ -982,6 +985,7 @@ async function runNode(
       const visionPrompt = data.visionPrompt?.trim()
         ? resolveTemplate(data.visionPrompt, ctx)
         : undefined
+      const visionModel = data.model && data.model !== 'default' ? data.model : undefined
       const compressOpts = {
         maxWidth: data.visionImageWidth,
         quality: data.visionImageQuality,
@@ -1003,7 +1007,7 @@ async function runNode(
             mimetype = compressed.mimeType
             size = Math.round(compressed.base64.length * 0.75)
           }
-          const description = await performVisionAnalysis(base64, mimetype, visionPrompt)
+          const description = await performVisionAnalysis(base64, mimetype, visionPrompt, visionModel)
           return {
             output: {
               filename: streamFile.filename,
@@ -1045,7 +1049,7 @@ async function runNode(
           mimetype = compressed.mimeType
           size = Math.round(compressed.base64.length * 0.75)
         }
-        const description = await performVisionAnalysis(base64, mimetype, visionPrompt)
+        const description = await performVisionAnalysis(base64, mimetype, visionPrompt, visionModel)
         return {
           output: {
             filename: streamFile.filename,

@@ -4,7 +4,7 @@
   "description": "BPMN 流程生成、校验与更新",
   "legacyAgentKey": "flow",
   "dynamicPrompt": "flow",
-  "skills": ["platform.flow-design", "platform.reply-zh"],
+  "skills": ["platform.flow-design", "platform.reply"],
   "tools": [
     "flow__search",
     "flow__get_detail",

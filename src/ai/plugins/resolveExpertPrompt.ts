@@ -14,10 +14,10 @@ import type { PluginRegistry } from './registry.js'
 export async function resolveExpertSystemPrompt(
   expert: ExpertDeclaration,
   registry: PluginRegistry,
-  opts: { generalPromptBuilder?: () => string } = {},
+  opts: { generalPromptBuilder?: () => string; locale?: string } = {},
 ): Promise<string> {
   const skillBlocks = (expert.skills ?? [])
-    .map((id) => registry.getSkill(id)?.content?.trim())
+    .map((id) => registry.getSkillByLocale(id, opts.locale)?.content?.trim())
     .filter((block): block is string => Boolean(block))
 
   let base = ''

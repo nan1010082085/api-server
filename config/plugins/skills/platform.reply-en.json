@@ -1,0 +1,7 @@
+{
+  "id": "platform.reply",
+  "label": "English Reply",
+  "locale": "en",
+  "file": "reply-en.md",
+  "enabled": true
+}

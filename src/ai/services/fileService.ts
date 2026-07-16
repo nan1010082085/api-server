@@ -38,19 +38,23 @@ import { MAX_FILE_SIZE } from '../config.js'
  * 调用视觉模型进行图片理解。
  * 通过 getLLM() 统一调用，走 Provider+Model DB 链路。
  * 支持 OpenAI 兼容的多模态消息格式。
+ * @param nodeModel 节点级指定的模型（可选），优先级高于环境变量
  */
 async function callVisionModel(
   base64Image: string,
   mimeType: string,
   textPrompt: string,
   maxTokens = 4096,
+  nodeModel?: string,
 ): Promise<string> {
   const { HumanMessage } = await import('@langchain/core/messages')
   const { getLLM } = await import('./llmCache.js')
 
-  // 如果指定了视觉模型，使用指定的模型；否则使用默认模型
+  // 优先级：节点指定模型 > 环境变量视觉模型 > 默认模型
   const modelOpts: Record<string, unknown> = { maxTokens }
-  if (VISION_OCR_MODEL) {
+  if (nodeModel && nodeModel !== 'default') {
+    modelOpts.model = nodeModel
+  } else if (VISION_OCR_MODEL) {
     modelOpts.model = VISION_OCR_MODEL
   }
 
@@ -69,11 +73,13 @@ async function callVisionModel(
   return typeof response.content === 'string' ? response.content : ''
 }
 
-async function performOCR(base64Image: string, mimeType: string): Promise<string> {
+async function performOCR(base64Image: string, mimeType: string, nodeModel?: string): Promise<string> {
   return callVisionModel(
     base64Image,
     mimeType,
     '请仔细识别图片中的所有文字内容，包括表格、表单字段、标签等。直接输出识别到的文字，不要添加额外说明。',
+    4096,
+    nodeModel,
   )
 }
 
@@ -84,9 +90,10 @@ export async function performVisionAnalysis(
   base64Image: string,
   mimeType: string,
   customPrompt?: string,
+  nodeModel?: string,
 ): Promise<string> {
   const prompt = customPrompt?.trim() || DEFAULT_VISION_PROMPT
-  return callVisionModel(base64Image, mimeType, prompt)
+  return callVisionModel(base64Image, mimeType, prompt, 4096, nodeModel)
 }
 
 export function parseImagePayload(image: string): { base64: string; mimeType: string } {
@@ -247,6 +254,7 @@ export async function processFile(
   buffer: Buffer,
   filename: string,
   mimetype: string,
+  nodeModel?: string,
 ): Promise<ProcessedFile> {
   const normalizedMimetype = normalizeUploadMimetype(filename, mimetype)
 
@@ -261,7 +269,7 @@ export async function processFile(
   if (isImageMimetype(normalizedMimetype)) {
     const base64 = buffer.toString('base64')
     const dataUrl = `data:${normalizedMimetype};base64,${base64}`
-    const text = await performOCR(base64, normalizedMimetype)
+    const text = await performOCR(base64, normalizedMimetype, nodeModel)
 
     return {
       filename,

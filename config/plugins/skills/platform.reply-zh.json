@@ -1,6 +1,7 @@
 {
-  "id": "platform.reply-zh",
+  "id": "platform.reply",
   "label": "中文回复",
+  "locale": "zh",
   "content": "默认使用简体中文回复；技术术语可保留英文。",
   "enabled": true
 }
