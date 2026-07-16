@@ -9,6 +9,8 @@ import { authMiddleware } from '../middleware/auth.js'
 import { QuotaModel, setQuota, removeQuota } from '../models/Quota.js'
 import { logger } from '../utils/logger.js'
 
+type QuotaDoc = Record<string, unknown>
+
 const router = new Router({ prefix: '/api/quotas' })
 
 // All quota routes require authentication
@@ -30,7 +32,7 @@ router.get('/', async (ctx) => {
     .sort({ createdAt: -1 })
     .lean()
 
-  ctx.body = quotas.map((q) => ({
+  ctx.body = (quotas as QuotaDoc[]).map((q) => ({
     id: String(q._id),
     key: q.key,
     keyType: q.keyType,
@@ -49,7 +51,7 @@ router.get('/', async (ctx) => {
  * Get a specific quota.
  */
 router.get('/:id', async (ctx) => {
-  const quota = await QuotaModel.findById(ctx.params.id).lean()
+  const quota = await QuotaModel.findById(ctx.params.id).lean() as QuotaDoc | null
 
   if (!quota) {
     ctx.status = 404
@@ -150,7 +152,7 @@ router.put('/:id', async (ctx) => {
     ctx.params.id,
     update,
     { new: true },
-  ).lean() as Record<string, unknown> | null
+  ).lean() as QuotaDoc | null
 
   if (!quota) {
     ctx.status = 404
@@ -175,7 +177,7 @@ router.put('/:id', async (ctx) => {
  * Delete a quota by ID.
  */
 router.delete('/:id', async (ctx) => {
-  const quota = await QuotaModel.findByIdAndDelete(ctx.params.id).lean() as Record<string, unknown> | null
+  const quota = await QuotaModel.findByIdAndDelete(ctx.params.id).lean() as QuotaDoc | null
 
   if (!quota) {
     ctx.status = 404
@@ -202,7 +204,7 @@ router.post('/check', async (ctx) => {
     return
   }
 
-  const quota = await QuotaModel.findOne({ key, keyType, isActive: true }).lean() as Record<string, unknown> | null
+  const quota = await QuotaModel.findOne({ key, keyType, isActive: true }).lean() as QuotaDoc | null
 
   if (!quota) {
     ctx.body = { allowed: true, remaining: Infinity, resetAt: null }
