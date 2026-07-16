@@ -150,7 +150,7 @@ router.put('/:id', async (ctx) => {
     ctx.params.id,
     update,
     { new: true },
-  ).lean()
+  ).lean() as Record<string, unknown> | null
 
   if (!quota) {
     ctx.status = 404
@@ -175,7 +175,7 @@ router.put('/:id', async (ctx) => {
  * Delete a quota by ID.
  */
 router.delete('/:id', async (ctx) => {
-  const quota = await QuotaModel.findByIdAndDelete(ctx.params.id).lean()
+  const quota = await QuotaModel.findByIdAndDelete(ctx.params.id).lean() as Record<string, unknown> | null
 
   if (!quota) {
     ctx.status = 404
@@ -202,7 +202,7 @@ router.post('/check', async (ctx) => {
     return
   }
 
-  const quota = await QuotaModel.findOne({ key, keyType, isActive: true }).lean()
+  const quota = await QuotaModel.findOne({ key, keyType, isActive: true }).lean() as Record<string, unknown> | null
 
   if (!quota) {
     ctx.body = { allowed: true, remaining: Infinity, resetAt: null }
@@ -210,18 +210,18 @@ router.post('/check', async (ctx) => {
   }
 
   const now = new Date()
-  let currentUsage = quota.currentUsage
-  let windowResetAt = quota.windowResetAt
+  let currentUsage = quota.currentUsage as number
+  let windowResetAt = quota.windowResetAt as Date
 
   if (windowResetAt <= now) {
     currentUsage = 0
-    windowResetAt = new Date(now.getTime() + quota.windowSeconds * 1000)
+    windowResetAt = new Date(now.getTime() + (quota.windowSeconds as number) * 1000)
   }
 
-  const remaining = Math.max(0, quota.maxRequests - currentUsage)
+  const remaining = Math.max(0, (quota.maxRequests as number) - currentUsage)
 
   ctx.body = {
-    allowed: currentUsage < quota.maxRequests,
+    allowed: currentUsage < (quota.maxRequests as number),
     remaining,
     resetAt: windowResetAt,
     maxRequests: quota.maxRequests,
