@@ -19,3 +19,5 @@ export { default as agentWorkflowInvokeRouter } from './agentWorkflowInvokeRoute
 export { default as advancedFeatureRouter } from './advancedFeatureRoutes.js'
 export { default as providerRouter } from './providerRoutes.js'
 export { default as aiModelRouter } from './aiModelRoutes.js'
+export { default as debugRouter } from './routes/debugRoutes.js'
+export { default as chatConfigRouter } from './routes/chatConfig.js'

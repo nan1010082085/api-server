@@ -42,7 +42,7 @@ import flowBatchRouter from './flow-routes/flowBatch.js'
 import flowNotificationRouter from './flow-routes/flowNotification.js'
 import flowTemplateRouter from './flow-routes/flowTemplate.js'
 import flowMonitorRouter from './flow-routes/flowMonitor.js'
-import { aiRouter, monitorRouter, aiHealthRouter, ragRouter, llmProviderRouter, collaborationRouter, promptsRouter, agentWorkflowRouter, documentRouter, agentWorkflowWebhookRouter, agentWorkflowInvokeRouter, advancedFeatureRouter, providerRouter, aiModelRouter } from './ai/index.js'
+import { aiRouter, monitorRouter, aiHealthRouter, ragRouter, llmProviderRouter, collaborationRouter, promptsRouter, agentWorkflowRouter, documentRouter, agentWorkflowWebhookRouter, agentWorkflowInvokeRouter, advancedFeatureRouter, providerRouter, aiModelRouter, debugRouter, chatConfigRouter } from './ai/index.js'
 import aiPluginRouter from './ai/pluginRoutes.js'
 import mcpRouter from './routes/mcp.js'
 import configRouter from './routes/config.js'
@@ -219,6 +219,10 @@ app.use(providerRouter.routes())
 app.use(providerRouter.allowedMethods())
 app.use(aiModelRouter.routes())
 app.use(aiModelRouter.allowedMethods())
+app.use(debugRouter.routes())
+app.use(debugRouter.allowedMethods())
+app.use(chatConfigRouter.routes())
+app.use(chatConfigRouter.allowedMethods())
 app.use(documentRouter.routes())
 app.use(documentRouter.allowedMethods())
 app.use(mcpRouter.routes())
