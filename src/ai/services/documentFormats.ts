@@ -13,6 +13,8 @@ export type DocumentExtractionKind =
   | 'xlsx'
   | 'ofd'
   | 'txt'
+  | 'audio-transcribe'
+  | 'video-analyze'
   | 'empty'
 
 const IMAGE_MIME_TYPES = new Set([
@@ -20,6 +22,26 @@ const IMAGE_MIME_TYPES = new Set([
   'image/png',
   'image/gif',
   'image/webp',
+])
+
+const AUDIO_MIME_TYPES = new Set([
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/webm',
+  'audio/mp4',
+  'audio/m4a',
+  'audio/ogg',
+  'audio/flac',
+])
+
+const VIDEO_MIME_TYPES = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/x-matroska',
 ])
 
 const DOC_MIME_TYPES = new Set([
@@ -45,13 +67,23 @@ const EXTENSION_MIME_MAP: Record<string, string> = {
   '.xls': 'application/vnd.ms-excel',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   '.ofd': 'application/ofd',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.webm': 'audio/webm',
+  '.m4a': 'audio/m4a',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.avi': 'video/x-msvideo',
+  '.mkv': 'video/x-matroska',
 }
 
 export const DOCUMENT_FORMAT_LABEL =
-  'PNG、JPG、GIF、WebP、PDF、DOC、DOCX、TXT、CSV、XLS、XLSX、OFD'
+  'PNG、JPG、GIF、WebP、PDF、DOC、DOCX、TXT、CSV、XLS、XLSX、OFD、MP3、WAV、M4A、MP4、MOV'
 
 export const DOCUMENT_UPLOAD_ACCEPT =
-  'image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,.ofd'
+  'image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,.ofd,audio/*,video/mp4,video/webm,video/quicktime'
 
 export function extensionFromFilename(filename: string): string {
   return path.extname(filename).toLowerCase()
@@ -85,9 +117,19 @@ export function isImageMimetype(mimetype: string): boolean {
   return IMAGE_MIME_TYPES.has(mimetype)
 }
 
+export function isAudioMimetype(mimetype: string): boolean {
+  return AUDIO_MIME_TYPES.has(mimetype)
+}
+
+export function isVideoMimetype(mimetype: string): boolean {
+  return VIDEO_MIME_TYPES.has(mimetype)
+}
+
 export function isAllowedUploadFile(filename: string, mimetype: string): boolean {
   const normalized = normalizeUploadMimetype(filename, mimetype)
   if (IMAGE_MIME_TYPES.has(normalized)) return true
+  if (AUDIO_MIME_TYPES.has(normalized)) return true
+  if (VIDEO_MIME_TYPES.has(normalized)) return true
   if (DOC_MIME_TYPES.has(normalized)) {
     const ext = extensionFromFilename(filename)
     if (normalized === 'application/octet-stream') {
@@ -104,6 +146,8 @@ export function resolveExtractionKind(filename: string, mimetype: string): Docum
   const ext = extensionFromFilename(filename)
 
   if (IMAGE_MIME_TYPES.has(normalized)) return 'ocr'
+  if (AUDIO_MIME_TYPES.has(normalized)) return 'audio-transcribe'
+  if (VIDEO_MIME_TYPES.has(normalized)) return 'video-analyze'
   if (normalized === 'application/pdf' || ext === '.pdf') return 'pdf'
   if (normalized === 'application/msword' || ext === '.doc') return 'doc'
   if (

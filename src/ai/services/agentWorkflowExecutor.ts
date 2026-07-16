@@ -1082,6 +1082,103 @@ async function runNode(
       return { output: result }
     }
 
+    case 'audio-transcribe': {
+      const source = data.documentSource ?? 'stream'
+      const audioModel = data.model && data.model !== 'default' ? data.model : undefined
+
+      if (source === 'api') {
+        try {
+          const streamFile = await resolveWorkflowApiFile(data, (text) => resolveTemplate(text, ctx))
+          const processed = await processFile(streamFile.content, streamFile.filename, streamFile.mimetype, audioModel)
+          return {
+            output: {
+              filename: processed.filename,
+              mimetype: processed.mimetype,
+              size: processed.size,
+              text: processed.text,
+              textLength: processed.text.length,
+              extractionMethod: processed.extractionMethod,
+              source: 'api',
+            },
+          }
+        } catch (err) {
+          return nodeFailure(err instanceof Error ? err.message : String(err))
+        }
+      }
+
+      if (source === 'stream') {
+        const streamFile = await resolveWorkflowUploadFile(data, ctx.input, ctx.lastOutput, { userId: ctx.triggeredBy })
+        if (!streamFile) {
+          const field = data.streamField?.trim() || 'file'
+          return nodeFailure(`未指定音频文件流（$input.${field}）。请上传音频文件后触发。`)
+        }
+        const processed = await processFile(streamFile.content, streamFile.filename, streamFile.mimetype, audioModel)
+        return {
+          output: {
+            filename: processed.filename,
+            mimetype: processed.mimetype,
+            size: processed.size,
+            text: processed.text,
+            textLength: processed.text.length,
+            extractionMethod: processed.extractionMethod,
+            source: 'stream',
+          },
+        }
+      }
+
+      return nodeFailure('音频转录仅支持 stream 和 api 来源')
+    }
+
+    case 'video-analyze': {
+      const source = data.documentSource ?? 'stream'
+      const visionPrompt = data.visionPrompt?.trim()
+        ? resolveTemplate(data.visionPrompt, ctx)
+        : undefined
+      const videoModel = data.model && data.model !== 'default' ? data.model : undefined
+
+      if (source === 'api') {
+        try {
+          const streamFile = await resolveWorkflowApiFile(data, (text) => resolveTemplate(text, ctx))
+          const processed = await processFile(streamFile.content, streamFile.filename, streamFile.mimetype, videoModel)
+          return {
+            output: {
+              filename: processed.filename,
+              mimetype: processed.mimetype,
+              size: processed.size,
+              text: processed.text,
+              textLength: processed.text.length,
+              extractionMethod: processed.extractionMethod,
+              source: 'api',
+            },
+          }
+        } catch (err) {
+          return nodeFailure(err instanceof Error ? err.message : String(err))
+        }
+      }
+
+      if (source === 'stream') {
+        const streamFile = await resolveWorkflowUploadFile(data, ctx.input, ctx.lastOutput, { userId: ctx.triggeredBy })
+        if (!streamFile) {
+          const field = data.streamField?.trim() || 'file'
+          return nodeFailure(`未指定视频文件流（$input.${field}）。请上传视频文件后触发。`)
+        }
+        const processed = await processFile(streamFile.content, streamFile.filename, streamFile.mimetype, videoModel)
+        return {
+          output: {
+            filename: processed.filename,
+            mimetype: processed.mimetype,
+            size: processed.size,
+            text: processed.text,
+            textLength: processed.text.length,
+            extractionMethod: processed.extractionMethod,
+            source: 'stream',
+          },
+        }
+      }
+
+      return nodeFailure('视频分析仅支持 stream 和 api 来源')
+    }
+
     case 'conversation-memory': {
       const mode = data.memoryMode ?? 'read'
       const maxTurns = data.maxHistoryTurns ?? 20

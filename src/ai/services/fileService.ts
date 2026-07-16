@@ -13,6 +13,8 @@ import {
   DOCUMENT_FORMAT_LABEL,
   isAllowedUploadFile,
   isImageMimetype,
+  isAudioMimetype,
+  isVideoMimetype,
   normalizeUploadMimetype,
   resolveExtractionKind,
   type DocumentExtractionKind,
@@ -281,6 +283,28 @@ export async function processFile(
     }
   }
 
+  if (isAudioMimetype(normalizedMimetype)) {
+    const text = await transcribeAudio(buffer, filename, nodeModel)
+    return {
+      filename,
+      mimetype: normalizedMimetype,
+      size: buffer.length,
+      text,
+      extractionMethod: text.trim() ? 'audio-transcribe' : 'empty',
+    }
+  }
+
+  if (isVideoMimetype(normalizedMimetype)) {
+    const text = await analyzeVideo(buffer, filename, undefined, nodeModel)
+    return {
+      filename,
+      mimetype: normalizedMimetype,
+      size: buffer.length,
+      text,
+      extractionMethod: text.trim() ? 'video-analyze' : 'empty',
+    }
+  }
+
   const text = await extractDocumentText(buffer, filename, normalizedMimetype)
   const kind = resolveExtractionKind(filename, normalizedMimetype)
   const extractionMethod: DocumentExtractionKind = text.trim() ? kind : 'empty'
@@ -301,3 +325,110 @@ export function isAllowedFileType(filename: string, mimetype: string): boolean {
 export function isImageType(mimetype: string): boolean {
   return isImageMimetype(normalizeUploadMimetype('image.bin', mimetype))
 }
+
+/**
+ * Transcribe audio using OpenAI Whisper-compatible API.
+ */
+async function transcribeAudio(buffer: Buffer, filename: string, nodeModel?: string): Promise<string> {
+  const { default: OpenAI } = await import('openai')
+
+  // Use environment variables for Whisper API
+  const apiKey = process.env.OPENAI_API_KEY || process.env.AI_OPENAI_API_KEY || ''
+  const baseUrl = process.env.OPENAI_BASE_URL || process.env.AI_OPENAI_BASE_URL || 'https://api.openai.com/v1'
+
+  if (!apiKey) {
+    throw new Error('未配置 OPENAI_API_KEY，无法进行音频转录。请设置环境变量或在模型管理中添加 OpenAI 供应商。')
+  }
+
+  const client = new OpenAI({ apiKey, baseURL: baseUrl })
+
+  // Create a File-like object from buffer
+  const ext = filename.split('.').pop() || 'mp3'
+  const mimeTypeMap: Record<string, string> = {
+    mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/m4a',
+    webm: 'audio/webm', ogg: 'audio/ogg', flac: 'audio/flac',
+  }
+  const file = new File([buffer], filename, { type: mimeTypeMap[ext] || 'audio/mpeg' })
+
+  try {
+    const model = nodeModel && nodeModel !== 'default' ? nodeModel : 'whisper-1'
+    const response = await client.audio.transcriptions.create({
+      file,
+      model,
+      language: 'zh',
+    })
+    return response.text || ''
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`音频转录失败: ${msg}`)
+  }
+}
+
+/**
+ * Analyze video by extracting keyframes and using vision model.
+ * Uses ffmpeg if available, otherwise falls back to treating video as binary.
+ */
+async function analyzeVideo(
+  buffer: Buffer,
+  filename: string,
+  customPrompt?: string,
+  nodeModel?: string,
+): Promise<string> {
+  const { execFile } = await import('node:child_process')
+  const { writeFile, unlink, mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const path = await import('node:path')
+
+  const tmpDir = await mkdtemp(path.join(tmpdir(), 'video-'))
+
+  try {
+    const inputPath = path.join(tmpDir, filename)
+    await writeFile(inputPath, buffer)
+
+    // Extract keyframes (1 frame per 10 seconds, max 10 frames)
+    const framePattern = path.join(tmpDir, 'frame-%03d.jpg')
+    await new Promise<void>((resolve, reject) => {
+      execFile('ffmpeg', [
+        '-i', inputPath,
+        '-vf', 'fps=1/10,scale=1280:-1',
+        '-frames:v', '10',
+        '-q:v', '2',
+        framePattern,
+      ], { timeout: 30_000 }, (err) => {
+        if (err) reject(new Error(`ffmpeg 帧提取失败: ${err.message}`))
+        else resolve()
+      })
+    })
+
+    // Read extracted frames
+    const fs = await import('node:fs/promises')
+    const files = await fs.readdir(tmpDir)
+    const frameFiles = files.filter(f => f.startsWith('frame-') && f.endsWith('.jpg')).sort()
+
+    if (frameFiles.length === 0) {
+      throw new Error('未能从视频中提取帧，请确认文件为有效视频格式')
+    }
+
+    // Analyze each frame with vision model
+    const descriptions: string[] = []
+    const prompt = customPrompt?.trim() || '请描述这个视频帧中的场景、人物、动作、文字等信息。'
+
+    for (let i = 0; i < frameFiles.length; i++) {
+      const framePath = path.join(tmpDir, frameFiles[i])
+      const frameBuffer = await fs.readFile(framePath)
+      const base64 = frameBuffer.toString('base64')
+      const description = await callVisionModel(base64, 'image/jpeg', prompt, 2048, nodeModel)
+      descriptions.push(`[帧 ${i + 1}/${frameFiles.length}] ${description}`)
+    }
+
+    return descriptions.join('\n\n')
+  } finally {
+    // Cleanup
+    const fs = await import('node:fs/promises').catch(() => null)
+    if (fs) {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+    }
+  }
+}
+
+export { transcribeAudio, analyzeVideo }
