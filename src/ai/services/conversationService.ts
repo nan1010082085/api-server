@@ -9,16 +9,11 @@ import mongoose from 'mongoose'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import type { AIMessage, ActiveAgent, AgentSource } from '../graph/state.js'
 import { getLLM } from './llmCache.js'
+import { SUMMARY_THRESHOLD, SUMMARY_KEEP_RECENT } from '../config.js'
 
 // ────────────────────────────────────────────
-// Summary generation config
+// Summary generation config (thresholds from ../config.js)
 // ────────────────────────────────────────────
-
-/** Generate summary when conversation exceeds this many messages. */
-const SUMMARY_THRESHOLD = 20
-
-/** Keep this many recent messages in full when generating summary. */
-const KEEP_RECENT_COUNT = 6
 
 const SUMMARY_SYSTEM_PROMPT = `你是一个对话摘要助手。请将以下多轮对话压缩为一段简洁的摘要。
 
@@ -426,7 +421,7 @@ async function generateSummaryFromMessages(
  *
  * Called after each assistant message is persisted. When the message count
  * exceeds `SUMMARY_THRESHOLD`, the older messages (everything except the
- * last `KEEP_RECENT_COUNT`) are summarized via LLM and stored on the
+ * last `SUMMARY_KEEP_RECENT`) are summarized via LLM and stored on the
  * conversation document.
  *
  * This is non-destructive: the full messages array remains in MongoDB
@@ -448,8 +443,8 @@ export async function maybeGenerateSummary(
     return convo.historySummary
   }
 
-  // Summarize all messages except the most recent KEEP_RECENT_COUNT
-  const messagesToSummarize = messages.slice(0, messages.length - KEEP_RECENT_COUNT)
+  // Summarize all messages except the most recent SUMMARY_KEEP_RECENT
+  const messagesToSummarize = messages.slice(0, messages.length - SUMMARY_KEEP_RECENT)
   const summary = await generateSummaryFromMessages(messagesToSummarize)
 
   if (summary) {

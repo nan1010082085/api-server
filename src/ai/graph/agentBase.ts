@@ -17,6 +17,15 @@
  */
 
 import OpenAI from 'openai'
+import {
+  HISTORY_TOKEN_BUDGET,
+  LANGGRAPH_HISTORY_TOKEN_BUDGET,
+  MIN_KEEP_MESSAGES,
+  MAX_ASSISTANT_CONTENT_CHARS,
+  LLM_MAX_RETRIES,
+  LLM_RETRY_BASE_DELAY_MS,
+  LLM_STREAM_MAX_RETRIES,
+} from '../config.js'
 
 // ────────────────────────────────────────────
 // Model configuration per task type
@@ -225,22 +234,7 @@ export function estimateMessageTokens(message: { content?: unknown; tool_calls?:
   return tokens
 }
 
-/** Default token budget for conversation history (non-graph path). */
-const DEFAULT_HISTORY_TOKEN_BUDGET = 4000
-
-/**
- * Token budget for LangGraph agent nodes.
- *
- * DeepSeek v4-flash has 128K context window. We allocate:
- * - ~8K for system prompt
- * - ~2K for the new user message
- * - ~60K for conversation history
- * - Reserve the rest for LLM response and safety margin
- */
-const LANGGRAPH_HISTORY_TOKEN_BUDGET = 60_000
-
-/** Minimum number of recent messages to always keep. */
-const MIN_KEEP_MESSAGES = 4
+// Token budgets imported from ../config.js
 
 /**
  * Truncate conversation history based on token budget.
@@ -256,7 +250,7 @@ const MIN_KEEP_MESSAGES = 4
  */
 export function truncateMessages<T extends { constructor: { name: string }; content?: unknown }>(
   messages: readonly T[],
-  tokenBudget: number = DEFAULT_HISTORY_TOKEN_BUDGET,
+  tokenBudget: number = HISTORY_TOKEN_BUDGET,
 ): T[] {
   const historyMessages = messages.slice(0, -1)
 
@@ -468,7 +462,7 @@ export function buildMessages(
   const historyMessages = state.messages.slice(0, -1)
 
   // Token-budget-based truncation
-  const TOKEN_BUDGET = 4000
+  const TOKEN_BUDGET = HISTORY_TOKEN_BUDGET
   let totalTokens = 0
 
   // Always include the last 4 messages (2 turns)
@@ -498,8 +492,8 @@ export function buildMessages(
     if (msg.role === 'user') {
       messages.push({ role: 'user', content: msg.content })
     } else if (msg.role === 'assistant') {
-      const content = msg.content.length > 2000
-        ? msg.content.slice(0, 2000) + '...(已截断)'
+      const content = msg.content.length > MAX_ASSISTANT_CONTENT_CHARS
+        ? msg.content.slice(0, MAX_ASSISTANT_CONTENT_CHARS) + '...(已截断)'
         : msg.content
       messages.push({ role: 'assistant', content })
     }
@@ -644,8 +638,7 @@ function extractTokenUsage(result: any): { prompt?: number; completion?: number;
 // Retry with exponential backoff
 // ────────────────────────────────────────────
 
-const MAX_RETRIES = 3
-const BASE_DELAY_MS = 1000
+// Retry constants imported from ../config.js
 
 /**
  * Retry a function with exponential backoff for transient errors.
@@ -653,7 +646,7 @@ const BASE_DELAY_MS = 1000
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  maxRetries = MAX_RETRIES,
+  maxRetries = LLM_MAX_RETRIES,
 ): Promise<T> {
   let lastError: Error | undefined
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -667,7 +660,7 @@ export async function withRetry<T>(
       const isTransient = !status || [429, 500, 502, 503, 504].includes(status)
       if (!isTransient) break
 
-      const delay = BASE_DELAY_MS * Math.pow(2, attempt)
+      const delay = LLM_RETRY_BASE_DELAY_MS * Math.pow(2, attempt)
       console.warn(`[withRetry] 重试 ${attempt + 1}/${maxRetries}，等待 ${delay}ms`)
       await new Promise((r) => setTimeout(r, delay))
     }
@@ -684,7 +677,7 @@ export async function withRetry<T>(
 export async function streamWithRetry<T>(
   agentName: string,
   fn: () => Promise<T>,
-  maxRetries = 2,
+  maxRetries = LLM_STREAM_MAX_RETRIES,
 ): Promise<T> {
   let lastError: Error | undefined
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -698,7 +691,7 @@ export async function streamWithRetry<T>(
       // 400 不重试（参数错误），429/5xx 重试
       if (status && status < 500 && status !== 429) break
 
-      const delay = BASE_DELAY_MS * Math.pow(2, attempt)
+      const delay = LLM_RETRY_BASE_DELAY_MS * Math.pow(2, attempt)
       console.warn(`[${agentName}] LLM 流式调用重试 ${attempt + 1}/${maxRetries}，等待 ${delay}ms`)
       await new Promise((r) => setTimeout(r, delay))
     }

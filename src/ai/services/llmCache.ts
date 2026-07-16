@@ -24,6 +24,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import { llmManager } from './llmManager.js'
 import type { LangChainModelOptions } from './llmProvider.js'
 import { getProviderDefaultBaseUrl, resolveProviderEnvApiKey } from '../../utils/modelProviderEnv.js'
+import { LLM_TIMEOUT_MS, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_FALLBACK_MODEL } from '../config.js'
 
 interface LLMOptions {
   model?: string
@@ -80,9 +81,9 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
       providerName: provider,
       apiKey: opts.userConfig.apiKey,
       baseURL: opts.userConfig.baseURL || getProviderDefaultBaseUrl(provider),
-      model: opts.userConfig.model ?? opts.model ?? 'deepseek-v4-flash', // DB default resolved in Tier 2
-      temperature: opts.temperature ?? 0.7,
-      maxTokens: opts.maxTokens ?? 8192,
+      model: opts.userConfig.model ?? opts.model ?? DEFAULT_FALLBACK_MODEL,
+      temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
+      maxTokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
       source: 'models',
     }
   }
@@ -153,8 +154,8 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
       apiKey: joined.apiKey || (platformEnabled ? resolveProviderEnvApiKey(joined.providerName) : '') || '',
       baseURL: joined.baseURL || getProviderDefaultBaseUrl(joined.providerName),
       model: opts.model ?? joined.model,
-      temperature: opts.temperature ?? joined.parameters?.temperature ?? 0.7,
-      maxTokens: opts.maxTokens ?? joined.parameters?.maxTokens ?? 8192,
+      temperature: opts.temperature ?? joined.parameters?.temperature ?? DEFAULT_TEMPERATURE,
+      maxTokens: opts.maxTokens ?? joined.parameters?.maxTokens ?? DEFAULT_MAX_TOKENS,
       source: 'models',
     }
   }
@@ -195,8 +196,8 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
         || '',
       baseURL: dbConfig.baseUrl || getProviderDefaultBaseUrl(dbConfig.provider),
       model: opts.model ?? dbConfig.model,
-      temperature: opts.temperature ?? dbConfig.parameters?.temperature ?? 0.7,
-      maxTokens: opts.maxTokens ?? dbConfig.parameters?.maxTokens ?? 8192,
+      temperature: opts.temperature ?? dbConfig.parameters?.temperature ?? DEFAULT_TEMPERATURE,
+      maxTokens: opts.maxTokens ?? dbConfig.parameters?.maxTokens ?? DEFAULT_MAX_TOKENS,
       source: 'db',
     }
   }
@@ -210,8 +211,8 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
         apiKey: '', // provider handles its own API key internally
         baseURL: '',
         model: opts.model ?? provider.defaultModel,
-        temperature: opts.temperature ?? 0.7,
-        maxTokens: opts.maxTokens ?? 8192,
+        temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
+        maxTokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
         source: 'env',
       }
     } catch {
@@ -227,9 +228,9 @@ async function resolveConfig(opts: LLMOptions): Promise<ResolvedConfig> {
         providerName: 'deepseek',
         apiKey,
         baseURL: getProviderDefaultBaseUrl('deepseek'),
-        model: opts.model ?? 'deepseek-v4-flash',
-        temperature: opts.temperature ?? 0.7,
-        maxTokens: opts.maxTokens ?? 8192,
+        model: opts.model ?? DEFAULT_FALLBACK_MODEL,
+        temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
+        maxTokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
         source: 'env',
       }
     }
@@ -300,7 +301,7 @@ export async function getLLM(opts: LLMOptions = {}): Promise<ChatOpenAI> {
       temperature: resolved.temperature,
       maxTokens: resolved.maxTokens,
       streaming: true,
-      timeout: 120_000,
+      timeout: LLM_TIMEOUT_MS,
       ...(effectiveJsonMode ? { modelKwargs: { response_format: { type: 'json_object' } } } : {}),
     })
 

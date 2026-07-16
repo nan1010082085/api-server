@@ -32,7 +32,7 @@ export interface ProcessedFile {
 export const VISION_OCR_MODEL = process.env.AI_VISION_OCR_MODEL || ''
 export const DOCUMENT_TEXT_MODEL = process.env.AI_DOCUMENT_TEXT_MODEL || ''
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+import { MAX_FILE_SIZE } from '../config.js'
 
 /**
  * 调用视觉模型进行图片理解。
