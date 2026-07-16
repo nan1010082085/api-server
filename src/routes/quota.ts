@@ -14,7 +14,7 @@ type QuotaDoc = Record<string, unknown>
 const router = new Router({ prefix: '/api/quotas' })
 
 // All quota routes require authentication
-router.use(authMiddleware)
+router.use(authMiddleware())
 
 /**
  * GET /api/quotas
@@ -120,7 +120,7 @@ router.post('/', async (ctx) => {
       isActive: quota.isActive,
     }
   } catch (err) {
-    logger.error('Failed to create/update quota:', err)
+    logger.error({ msg: 'Failed to create/update quota', error: String(err) })
     ctx.status = 500
     ctx.body = { error: 'Failed to create/update quota' }
   }

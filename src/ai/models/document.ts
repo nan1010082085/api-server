@@ -29,6 +29,9 @@ export type DocumentExtractionMethod =
   | 'xlsx'
   | 'ofd'
   | 'txt'
+  | 'audio-transcribe'
+  | 'video-analyze'
+  | '3d-preview'
   | 'empty'
 
 export interface IDocument {

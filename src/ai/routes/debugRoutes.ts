@@ -63,7 +63,7 @@ router.post('/route', async (ctx) => {
       })),
     }
   } catch (err) {
-    logger.error('Route debug failed:', err)
+    logger.error({ msg: 'Route debug failed', error: String(err) })
     ctx.status = 500
     ctx.body = { error: 'Route debug failed' }
   }
@@ -89,7 +89,7 @@ router.get('/experts', async (ctx) => {
       skills: e.skills ?? [],
     }))
   } catch (err) {
-    logger.error('List experts failed:', err)
+    logger.error({ msg: 'List experts failed', error: String(err) })
     ctx.status = 500
     ctx.body = { error: 'List experts failed' }
   }
