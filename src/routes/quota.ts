@@ -107,17 +107,18 @@ router.post('/', async (ctx) => {
 
   try {
     const quota = await setQuota(key, keyType as 'apikey' | 'tenant' | 'user', maxRequests, windowSeconds)
+    const q = quota as unknown as QuotaDoc
 
     ctx.status = 201
     ctx.body = {
-      id: String(quota._id),
-      key: quota.key,
-      keyType: quota.keyType,
-      maxRequests: quota.maxRequests,
-      windowSeconds: quota.windowSeconds,
-      currentUsage: quota.currentUsage,
-      windowResetAt: quota.windowResetAt,
-      isActive: quota.isActive,
+      id: String(q._id),
+      key: q.key,
+      keyType: q.keyType,
+      maxRequests: q.maxRequests,
+      windowSeconds: q.windowSeconds,
+      currentUsage: q.currentUsage,
+      windowResetAt: q.windowResetAt,
+      isActive: q.isActive,
     }
   } catch (err) {
     logger.error({ msg: 'Failed to create/update quota', error: String(err) })

@@ -11,7 +11,7 @@ import { logger } from '../../utils/logger.js'
 const router = new Router({ prefix: '/api/ai/debug' })
 
 // 所有调试路由需要认证
-router.use(authMiddleware)
+router.use(authMiddleware())
 
 /**
  * POST /api/ai/debug/route
