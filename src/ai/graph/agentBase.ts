@@ -151,19 +151,14 @@ export function formatPreferencesForPrompt(
 
 /**
  * Classify task complexity from user message using heuristic rules.
+ * Keywords are configurable via DB (system_config_complex_indicators).
  */
-export function classifyTaskComplexity(message: string): TaskType {
-  const complexIndicators = [
-    '联动', '条件', '动态', '多步', '复杂',
-    '同时', '并且', '然后', '之后',
-    '审批', '流程', '表单',
-    '会签', '或签', '分支',
-  ]
+export async function classifyTaskComplexity(message: string): Promise<TaskType> {
+  const { getComplexIndicators } = await import('../services/systemConfig.js')
+  const indicators = await getComplexIndicators()
 
-  const matchCount = complexIndicators.filter((kw) => message.includes(kw)).length
-
+  const matchCount = indicators.filter((kw) => message.includes(kw)).length
   if (matchCount >= 2) return 'generate_complex'
-
   return 'generate_simple'
 }
 

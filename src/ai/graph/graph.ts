@@ -155,13 +155,10 @@ async function routerNode(
 
   console.log(`[router] ${intent.routeReason}`)
 
-  // 多意图链
+  // 多意图链（agent descriptions 可通过 DB 配置 system_config_agent_descriptions）
   if (intent.chainPreview && intent.chainPreview.length > 1) {
-    const AGENT_DESCRIPTIONS: Record<string, string> = {
-      page: '生成页面',
-      editor: '生成表单',
-      flow: '生成流程',
-    }
+    const { getAgentDescriptions } = await import('../services/systemConfig.js')
+    const AGENT_DESCRIPTIONS = await getAgentDescriptions()
     const chain = intent.chainPreview.map((agent) => ({
       agent: agent as 'editor' | 'flow' | 'page',
       description: AGENT_DESCRIPTIONS[agent] ?? `生成 ${agent}`,
@@ -399,8 +396,6 @@ function runtimeToStateAnalysis(rt: RuntimeRequirementAnalysis): StateRequiremen
   }
 }
 
-const RAG_TOOL_NAME = 'rag__search'
-
 async function requirementAnalyzerNode(
   state: typeof AgentStateAnnotation.State,
 ): Promise<Partial<typeof AgentStateAnnotation.State>> {
@@ -440,7 +435,9 @@ async function requirementAnalyzerNode(
         }
       },
       ragSearch: async (query: string, limit?: number) => {
-        const ragTool = getToolSync(RAG_TOOL_NAME) as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> } | undefined
+        const { getRagToolName } = await import('../services/systemConfig.js')
+        const ragToolName = await getRagToolName()
+        const ragTool = getToolSync(ragToolName) as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> } | undefined
         if (!ragTool) return ''
         const res = await ragTool.invoke({ query, limit: limit ?? 5 })
         return typeof res === 'string' ? res : ''
