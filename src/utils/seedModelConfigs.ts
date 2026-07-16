@@ -283,8 +283,12 @@ async function removeLegacyEmptySeeds(): Promise<void> {
   }
 }
 
-/** @deprecated Use seedProvidersAndModels() */
+/**
+ * @deprecated Use seedProvidersAndModels() — Provider + Model normalized tables.
+ * This function will be removed in a future version.
+ */
 export async function ensureModelConfigs(): Promise<void> {
+  console.warn('[seed] ⚠️ ensureModelConfigs() is deprecated. Use seedProvidersAndModels() instead.')
   const platformEnabled = process.env.PLATFORM_LLM_ENABLED !== 'false'
   let created = 0
   let synced = 0

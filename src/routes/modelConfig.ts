@@ -1,3 +1,9 @@
+/**
+ * @deprecated This route module serves the legacy ModelConfig table.
+ * Use /api/providers and /api/models instead.
+ * This module will be removed in a future version.
+ */
+
 import Router from '@koa/router'
 import { ModelConfigModel } from '../models/ModelConfig.js'
 import { authMiddleware } from '../middleware/auth.js'
@@ -12,6 +18,14 @@ import mongoose from 'mongoose'
 const requireAuth = authMiddleware({ required: true })
 
 const router = new Router({ prefix: '/api/model-configs' })
+
+/** Add deprecation header to all responses */
+router.use(async (ctx, next) => {
+  ctx.set('Deprecation', 'true')
+  ctx.set('Sunset', '2026-10-01')
+  ctx.set('Link', '</api/providers>; rel="successor", </api/models>; rel="successor"')
+  await next()
+})
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
