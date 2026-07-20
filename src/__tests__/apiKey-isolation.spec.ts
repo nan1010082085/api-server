@@ -5,6 +5,11 @@
  * - Non-admin users can only see/manage their own keys
  * - Admin users (role with data_scope='all') can see/manage all keys
  *
+ * Admin bypass (intentional): `buildOwnershipFilter` omits `createdBy` when
+ * any of the user's roles has `data_scope === 'all'`. Regular users always
+ * get `{ tenantId, createdBy: user.id }`. This is the only admin cross-user
+ * path for /api/keys; agent workflows do NOT mirror this bypass.
+ *
  * Tests the ownership filtering logic at model level and the
  * isAdmin / buildOwnershipFilter helper functions.
  *
@@ -375,5 +380,49 @@ describe('API Key isolation — cross-tenant', () => {
 
     expect(keys).toHaveLength(1)
     expect(keys[0].name).toBe('My Tenant Key')
+  })
+})
+
+/**
+ * Regression: non-admin list / get / update / delete must not touch peers' keys.
+ * Mirrors route handlers that compose buildOwnershipFilter + _id.
+ */
+describe('API Key isolation — non-admin regression matrix', () => {
+  it('list / get / patch / delete all exclude other users keys', async () => {
+    const tenantId = 'tenant-matrix-1'
+    const userA = 'user-a'
+    const userB = 'user-b'
+
+    const keyA = await createKey(userA, tenantId, 'A Key')
+    const keyB = await createKey(userB, tenantId, 'B Key')
+
+    const role = await RoleModel.create({ name: '普通用户', data_scope: 'self', tenantId })
+    const filterA = await buildOwnershipFilter({ id: userA, roles: [role._id.toString()], tenantId })
+
+    const listed = await withTenant(tenantId, () => ApiKeyModel.find(filterA).lean())
+    expect(listed.map((k) => String(k._id))).toEqual([String(keyA._id)])
+
+    const gotPeer = await withTenant(tenantId, () =>
+      ApiKeyModel.findOne({ ...filterA, _id: keyB._id }),
+    )
+    expect(gotPeer).toBeNull()
+
+    const patchedPeer = await withTenant(tenantId, () =>
+      ApiKeyModel.findOneAndUpdate(
+        { ...filterA, _id: keyB._id },
+        { $set: { status: 'disabled' } },
+        { new: true },
+      ),
+    )
+    expect(patchedPeer).toBeNull()
+
+    const deletedPeer = await withTenant(tenantId, () =>
+      ApiKeyModel.findOneAndDelete({ ...filterA, _id: keyB._id }),
+    )
+    expect(deletedPeer).toBeNull()
+
+    const stillThere = await ApiKeyModel.findById(keyB._id)
+    expect(stillThere).not.toBeNull()
+    expect(stillThere!.status).toBe('active')
   })
 })

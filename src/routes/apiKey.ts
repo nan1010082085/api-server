@@ -28,6 +28,7 @@ export async function isAdmin(userId: string, roles: string[]): Promise<boolean>
 
 /**
  * Build ownership filter: non-admin users can only see/manage their own keys.
+ * Admin bypass: roles with data_scope === 'all' see all keys in the tenant.
  */
 export async function buildOwnershipFilter(user: Pick<JwtPayload, 'id' | 'roles' | 'tenantId'>): Promise<Record<string, unknown>> {
   const base: Record<string, unknown> = { tenantId: user.tenantId }

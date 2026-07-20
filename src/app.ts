@@ -44,11 +44,13 @@ import flowTemplateRouter from './flow-routes/flowTemplate.js'
 import flowMonitorRouter from './flow-routes/flowMonitor.js'
 import { aiRouter, monitorRouter, aiHealthRouter, ragRouter, llmProviderRouter, collaborationRouter, promptsRouter, agentWorkflowRouter, documentRouter, agentWorkflowWebhookRouter, agentWorkflowInvokeRouter, advancedFeatureRouter, providerRouter, aiModelRouter, debugRouter, chatConfigRouter } from './ai/index.js'
 import aiPluginRouter from './ai/pluginRoutes.js'
+import pluginMarketRouter from './ai/pluginMarketRoutes.js'
 import mcpRouter from './routes/mcp.js'
 import configRouter from './routes/config.js'
 import auditLogRouter from './routes/auditLog.js'
 import microAppRouter from './routes/microApp.js'
 import apiKeyRouter from './routes/apiKey.js'
+import telemetryRouter from './routes/telemetry.js'
 import keyUsageRouter from './routes/keyUsage.js'
 import submissionRouter from './routes/submission.js'
 import webhookRouter from './routes/webhook.js'
@@ -199,6 +201,8 @@ app.use(monitorRouter.routes())
 app.use(monitorRouter.allowedMethods())
 app.use(aiPluginRouter.routes())
 app.use(aiPluginRouter.allowedMethods())
+app.use(pluginMarketRouter.routes())
+app.use(pluginMarketRouter.allowedMethods())
 app.use(ragRouter.routes())
 app.use(ragRouter.allowedMethods())
 app.use(llmProviderRouter.routes())
@@ -235,6 +239,8 @@ app.use(microAppRouter.routes())
 app.use(microAppRouter.allowedMethods())
 app.use(apiKeyRouter.routes())
 app.use(apiKeyRouter.allowedMethods())
+app.use(telemetryRouter.routes())
+app.use(telemetryRouter.allowedMethods())
 app.use(keyUsageRouter.routes())
 app.use(keyUsageRouter.allowedMethods())
 app.use(submissionRouter.routes())
