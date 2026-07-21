@@ -65,6 +65,13 @@ const { mockWidgets } = vi.hoisted(() => {
   return { mockWidgets }
 })
 
+vi.mock('../services/metadataService.js', () => ({
+  getMetadata: vi.fn().mockReturnValue({ widgets: mockWidgets, flowNodes: [] }),
+  extractTokens: vi.fn().mockReturnValue(new Set()),
+  extractTokensFromSchema: vi.fn().mockReturnValue(new Set()),
+  jaccardSimilarity: vi.fn().mockReturnValue(0),
+}))
+
 vi.mock('../tools/toolHandlers.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../tools/toolHandlers.js')>()
   return {

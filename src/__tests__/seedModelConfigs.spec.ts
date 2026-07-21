@@ -64,7 +64,7 @@ describe('ensureModelConfigs', () => {
         name: 'Mimo v2.5',
         provider: 'mimo',
         model: 'mimo-v2.5',
-        baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
+        baseUrl: 'https://api.xiaomimimo.com/v1',
       }),
     )
   })

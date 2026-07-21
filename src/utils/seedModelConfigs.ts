@@ -2,7 +2,7 @@ import { encrypt } from '../services/credentialService.js'
 import { ProviderModel } from '../models/Provider.js'
 import type { ProviderType } from '../models/Provider.js'
 import { ModelModel } from '../models/Model.js'
-import type { IModelParameters } from '../models/Model.js'
+import type { IModelParameters, ModelCapability } from '../models/Model.js'
 import { ModelConfigModel } from '../models/ModelConfig.js'
 import { resolveProviderBaseUrl, resolveProviderEnvApiKey } from './modelProviderEnv.js'
 
@@ -22,6 +22,7 @@ interface SeedModel {
   providerName: string
   model: string
   parameters: IModelParameters
+  capabilities: ModelCapability[]
   isDefault: boolean
 }
 
@@ -46,6 +47,7 @@ const seedModels: SeedModel[] = [
     providerName: 'DeepSeek',
     model: 'deepseek-v4-flash',
     parameters: { temperature: 0.7, maxTokens: 4096, topP: 1 },
+    capabilities: ['chat'],
     isDefault: true,
   },
   {
@@ -53,6 +55,7 @@ const seedModels: SeedModel[] = [
     providerName: 'DeepSeek',
     model: 'deepseek-v4-pro',
     parameters: { temperature: 0.7, maxTokens: 4096, topP: 1 },
+    capabilities: ['chat'],
     isDefault: false,
   },
   {
@@ -60,6 +63,7 @@ const seedModels: SeedModel[] = [
     providerName: 'Mimo',
     model: 'mimo-v2.5',
     parameters: { temperature: 0.7, maxTokens: 4096, topP: 1 },
+    capabilities: ['chat'],
     isDefault: false,
   },
 ]
@@ -195,6 +199,7 @@ export async function seedProvidersAndModels(): Promise<void> {
         providerId,
         model: sm.model,
         parameters: sm.parameters,
+        capabilities: sm.capabilities,
         isDefault: sm.isDefault,
         isActive: true,
       })
@@ -207,6 +212,16 @@ export async function seedProvidersAndModels(): Promise<void> {
       await ModelModel.findByIdAndUpdate(existing._id, { providerId })
       modelsSynced++
       console.log(`[seed] Model provider re-linked: ${sm.name}`)
+    }
+    // Backfill capabilities on existing docs (added 2026-07-20)
+    const existingCaps = (existing.capabilities ?? []) as ModelCapability[]
+    const sameCaps =
+      existingCaps.length === sm.capabilities.length &&
+      sm.capabilities.every((c) => existingCaps.includes(c))
+    if (!sameCaps) {
+      await ModelModel.findByIdAndUpdate(existing._id, { capabilities: sm.capabilities })
+      modelsSynced++
+      console.log(`[seed] Model capabilities synced: ${sm.name} -> [${sm.capabilities.join(', ')}]`)
     }
   }
 

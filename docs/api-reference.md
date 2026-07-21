@@ -236,14 +236,23 @@ Schema 列表（分页 + 搜索 + 类型筛选）。
 
 创建 Schema。
 
-**请求体**:
+**请求体** — `json` 可为 Widget 数组，或带画布配置的对象：
 ```json
 {
   "name": "请假表单",
   "type": "form",
-  "json": { "widgets": [...] }
+  "json": {
+    "widgets": [],
+    "board": {
+      "canvas": { "layoutMode": "flex" },
+      "variables": [],
+      "events": []
+    }
+  }
 }
 ```
+
+失败时错误信封：`{ "success": false, "error": { "code": "VALIDATION_ERROR" | "BAD_REQUEST", "message": "...", "details?": [...] } }`。
 
 ### `POST /api/schemas/import`
 

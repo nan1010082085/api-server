@@ -67,7 +67,7 @@ export async function validateWidgets(widgets: Record<string, unknown>[]): Promi
 
   // 容器嵌套违规检查（与 handleSchemaValidate 保持一致）
   const CONTAINER_TYPES = new Set([
-    'form', 'double-col', 'triple-col', 'quad-col', 'card', 'drawer', 'modal',
+    'form', 'double-col', 'triple-col', 'quad-col', 'row-container', 'card', 'drawer', 'modal',
     'tabs', 'collapse', 'fieldset', 'group',
   ])
   const nestingErrors: Array<{ path: string; message: string }> = []

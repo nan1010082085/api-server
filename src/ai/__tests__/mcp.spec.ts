@@ -4,9 +4,18 @@
  * @vitest-environment node
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import { buildMockMetadata } from './fixtures/mockMetadata.js'
+
+vi.mock('../services/metadataService.js', () => ({
+  getMetadata: vi.fn().mockReturnValue(buildMockMetadata()),
+  extractTokens: vi.fn().mockReturnValue(new Set()),
+  extractTokensFromSchema: vi.fn().mockReturnValue(new Set()),
+  jaccardSimilarity: vi.fn().mockReturnValue(0),
+}))
+
 import { createSchemaServer } from '../mcp/schemaServer.js'
 import { createFlowServer } from '../mcp/flowServer.js'
 import { createWidgetServer } from '../mcp/widgetServer.js'

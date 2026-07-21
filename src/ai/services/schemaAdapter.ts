@@ -10,9 +10,7 @@
  * 5. 校验并修复常见错误
  */
 
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { createRequire } from 'node:module'
+import { getMetadata } from './metadataService.js'
 
 // ────────────────────────────────────────────
 // 类型定义
@@ -86,6 +84,7 @@ const TYPE_NAME_RULES: Record<string, string> = {
   'double-col': 'FgDoubleCol',
   'triple-col': 'FgTripleCol',
   'quad-col': 'FgQuadCol',
+  'row-container': 'FgRowContainer',
   divider: 'FgDivider',
   spacer: 'FgSpacer',
   // form
@@ -137,10 +136,7 @@ const TYPE_NAME_RULES: Record<string, string> = {
 
 function loadMetadata(): AIMetadata {
   if (!metadata) {
-    const require = createRequire(import.meta.url)
-    const pkgPath = require.resolve('@schema-platform/platform-shared/ai/package.json')
-    const jsonPath = join(dirname(pkgPath), 'metadata.json')
-    metadata = JSON.parse(readFileSync(jsonPath, 'utf-8')) as AIMetadata
+    metadata = getMetadata() as unknown as AIMetadata
   }
   return metadata
 }
@@ -294,6 +290,18 @@ function resolveContainerBindings(widgets: AdaptedWidget[], parentFormId: string
         for (let i = 0; i < widget.children.length; i++) {
           const child = widget.children[i]
           child.colIndex = i
+          child.formId = parentFormId ?? undefined
+          if (child.children) {
+            resolveContainerBindings(child.children, parentFormId)
+          }
+        }
+      }
+    } else if (widget.type === 'row-container') {
+      // 24 栅格行容器：子节点用 span(1-24) 控宽，默认 24 满宽
+      if (widget.children) {
+        for (let i = 0; i < widget.children.length; i++) {
+          const child = widget.children[i]
+          if (child.span === undefined) child.span = 24
           child.formId = parentFormId ?? undefined
           if (child.children) {
             resolveContainerBindings(child.children, parentFormId)

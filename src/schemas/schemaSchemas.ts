@@ -27,6 +27,7 @@ export const updateSchemaSchema = z.object({
   message: 'At least one field (name, json, type, or status) is required.',
 })
 
+/** Import 仅接受 Widget 树数组（深度校验 + ID 重生成；不接受 board 对象） */
 export const importSchemaSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   type: z.enum(['form', 'search-list', 'search_list']).default('form'),

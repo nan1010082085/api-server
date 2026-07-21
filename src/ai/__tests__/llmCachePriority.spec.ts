@@ -52,6 +52,8 @@ vi.mock('../../models/Provider.js', () => ({
     findById: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }),
     find: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
   },
+  // Pass-through: return the stored key as-is (test asserts DB/env key flows)
+  resolveStoredProviderApiKey: vi.fn((key: string) => key),
 }))
 vi.mock('../../models/Model.js', () => ({
   ModelModel: {

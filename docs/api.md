@@ -7,9 +7,18 @@
 interface ApiResponse<T> {
   success: boolean
   data?: T
-  error?: { message: string; details?: unknown }
+  error?: {
+    code: string
+    message: string
+    details?: Array<{ path: string; message: string }> | unknown
+  }
 }
 ```
+
+错误体约定：
+- 契约字段在 `error` 内：`code` + `message`（可选 `details`）
+- **无**顶层 `message`；HTTP 状态在 status line，不在 `error.status`
+- 常见 `code`：`VALIDATION_ERROR`（Zod 校验）、`BAD_REQUEST`、`UNAUTHORIZED`、`FORBIDDEN`、`NOT_FOUND`、`INTERNAL_ERROR`
 
 > **ID 格式**: 所有资源 ID 为 MongoDB ObjectId（24 位十六进制字符串），如 `685faa86c32e0839b4f9de6f`。
 

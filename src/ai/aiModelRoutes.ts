@@ -26,10 +26,10 @@ const requireAuth = authMiddleware({ required: true })
 
 // ────────────────────────────────────────────
 // GET /api/models
-// List all models (optional ?providerId= filter)
+// List all models (optional ?providerId= / ?capability= filter)
 // ────────────────────────────────────────────
 router.get('/', requireAuth, async (ctx) => {
-  const { providerId } = ctx.query as { providerId?: string }
+  const { providerId, capability } = ctx.query as { providerId?: string; capability?: string }
 
   const filter: Record<string, unknown> = {}
   if (providerId) {
@@ -39,6 +39,9 @@ router.get('/', requireAuth, async (ctx) => {
       return
     }
     filter.providerId = providerId
+  }
+  if (capability) {
+    filter.capabilities = capability
   }
 
   const models = await ModelModel.find(filter)
@@ -63,11 +66,12 @@ router.get('/', requireAuth, async (ctx) => {
 // Create a new model
 // ────────────────────────────────────────────
 router.post('/', requireAuth, requirePermission('model_config:create'), validate(createModelSchema), async (ctx) => {
-  const { name, providerId, model, parameters, isDefault, isActive } = ctx.request.body as {
+  const { name, providerId, model, parameters, capabilities, isDefault, isActive } = ctx.request.body as {
     name: string
     providerId: string
     model: string
     parameters?: Record<string, number>
+    capabilities?: string[]
     isDefault?: boolean
     isActive?: boolean
   }
@@ -99,6 +103,7 @@ router.post('/', requireAuth, requirePermission('model_config:create'), validate
     providerId,
     model: model.trim(),
     parameters: parameters ?? {},
+    capabilities: capabilities ?? ['chat'],
     isDefault: isDefault ?? false,
     isActive: isActive ?? true,
   })
@@ -166,6 +171,7 @@ router.put('/:id', requireAuth, requirePermission('model_config:edit'), validate
   if (body.providerId !== undefined) update.providerId = body.providerId
   if (body.model !== undefined) update.model = (body.model as string).trim()
   if (body.parameters !== undefined) update.parameters = body.parameters
+  if (body.capabilities !== undefined) update.capabilities = body.capabilities
   if (body.isDefault !== undefined) update.isDefault = body.isDefault
   if (body.isActive !== undefined) update.isActive = body.isActive
 

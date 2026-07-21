@@ -61,7 +61,7 @@ router.post('/login', validate(loginSchema), async (ctx) => {
     if (!tenant) {
       recordLoginLog(DEFAULT_TENANT_ID, username, 'fail', '租户不存在', ctx)
       ctx.status = 401
-      ctx.body = { success: false, error: { message: 'Invalid tenant.' } }
+      ctx.body = { success: false, error: { code: 'invalid_tenant', message: '租户不存在或已禁用。' } }
       return
     }
     tenantId = tenant._id
@@ -74,7 +74,7 @@ router.post('/login', validate(loginSchema), async (ctx) => {
   if (!user) {
     recordLoginLog(tenantId, username, 'fail', '用户不存在', ctx)
     ctx.status = 401
-    ctx.body = { success: false, error: { message: 'Invalid username or password.' } }
+    ctx.body = { success: false, error: { code: 'invalid_credentials', message: '用户名或密码错误。' } }
     return
   }
 
@@ -82,7 +82,7 @@ router.post('/login', validate(loginSchema), async (ctx) => {
   if (user.status !== 'active') {
     recordLoginLog(tenantId, username, 'fail', '用户已禁用', ctx)
     ctx.status = 403
-    ctx.body = { success: false, error: { message: 'Account is disabled or inactive.' } }
+    ctx.body = { success: false, error: { code: 'account_disabled', message: '账户已被禁用，请联系管理员。' } }
     return
   }
 
@@ -90,7 +90,7 @@ router.post('/login', validate(loginSchema), async (ctx) => {
   if (!valid) {
     recordLoginLog(tenantId, username, 'fail', '密码错误', ctx)
     ctx.status = 401
-    ctx.body = { success: false, error: { message: 'Invalid username or password.' } }
+    ctx.body = { success: false, error: { code: 'invalid_credentials', message: '用户名或密码错误。' } }
     return
   }
 
@@ -165,20 +165,20 @@ router.post('/refresh', validate(refreshSchema), async (ctx) => {
     payload = jwt.verify(refreshToken, JWT_SECRET) as JwtPayload
   } catch {
     ctx.status = 401
-    ctx.body = { success: false, error: { message: 'Invalid or expired refresh token.' } }
+    ctx.body = { success: false, error: { code: 'invalid_refresh_token', message: '刷新令牌无效或已过期，请重新登录。' } }
     return
   }
 
   if (payload.tokenType !== 'refresh') {
     ctx.status = 400
-    ctx.body = { success: false, error: { message: 'Token is not a refresh token.' } }
+    ctx.body = { success: false, error: { code: 'invalid_token_type', message: '令牌类型错误。' } }
     return
   }
 
   // Check if refresh token is blacklisted
   if (payload.jti && await cacheExists(`token:blacklist:${payload.jti}`)) {
     ctx.status = 401
-    ctx.body = { success: false, error: { message: 'Refresh token has been revoked.' } }
+    ctx.body = { success: false, error: { code: 'token_revoked', message: '刷新令牌已被撤销，请重新登录。' } }
     return
   }
 
@@ -186,7 +186,7 @@ router.post('/refresh', validate(refreshSchema), async (ctx) => {
   const user = await UserModel.findById(payload.id)
   if (!user) {
     ctx.status = 401
-    ctx.body = { success: false, error: { message: 'User no longer exists.' } }
+    ctx.body = { success: false, error: { code: 'user_not_found', message: '用户不存在。' } }
     return
   }
 

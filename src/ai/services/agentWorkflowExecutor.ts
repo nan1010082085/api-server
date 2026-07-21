@@ -34,6 +34,8 @@ import { getDocumentWithText, reprocessDocumentFromStorage, analyzeDocumentVisio
 import { processFile, performVisionAnalysis, isImageType } from './fileService.js'
 import { extractNodeOutputError, nodeFailure } from './agentWorkflowNodeErrors.js'
 import { dispatchWorkflowCompleteCallback } from './agentWorkflowCompleteCallback.js'
+import { generateImage as generateImageService } from './imageGenerationService.js'
+import { generateVideo as generateVideoService } from './videoGenerationService.js'
 import { WorkflowNodeMetricModel } from '../models/workflowNodeMetric.js'
 import { pushWorkflowExecutionUpdate, clearWorkflowExecutionPush } from '../workflowExecutionPush.js'
 import { getIO } from '../../socket.js'
@@ -1565,6 +1567,109 @@ async function runNode(
       }
 
       return { output: routeResult }
+    }
+
+    case 'image-generate': {
+      const imgData = data as {
+        imagePrompt?: string
+        imageModel?: string
+        imageSize?: string
+        imageStyle?: string
+        imageQuality?: string
+        imageCount?: number
+      }
+      const resolvedPrompt = imgData.imagePrompt
+        ? resolveTemplate(imgData.imagePrompt, ctx)
+        : (typeof ctx.lastOutput === 'string' ? ctx.lastOutput : '')
+      if (!resolvedPrompt.trim()) {
+        return nodeFailure('图像生成提示词为空。请在节点中配置 prompt，或接一个提供文本输出的上游节点。')
+      }
+
+      // modelId: 优先从节点配置的 model 标识在模型中心查找（imageModel 是 model id 字符串）
+      // 如果 imageModel 不是 ObjectId 格式，则按 model 标识 + capabilities=image 查找
+      let modelId = imgData.imageModel
+      if (modelId && !modelId.match(/^[0-9a-f]{24}$/i)) {
+        // 不是 ObjectId，按 model 字段查找匹配的 Model 记录
+        try {
+          const { ModelModel } = await import('../../models/Model.js')
+          const matched = await ModelModel.findOne({ model: modelId, isActive: true })
+          if (matched) modelId = String(matched._id)
+        } catch { /* fallback: 不做模型中心查找，按原始 model id 调用 */ }
+      }
+
+      try {
+        const result = await generateImageService({
+          prompt: resolvedPrompt,
+          modelId,
+          model: imgData.imageModel,
+          size: imgData.imageSize,
+          style: imgData.imageStyle,
+          quality: imgData.imageQuality,
+          n: imgData.imageCount ?? 1,
+        })
+        return {
+          output: {
+            images: result.images,
+            imageUrls: result.images.map((img) => img.url),
+            prompt: resolvedPrompt,
+            model: result.model,
+            provider: result.provider,
+            count: result.images.length,
+          },
+        }
+      } catch (err) {
+        return nodeFailure(err instanceof Error ? err.message : String(err))
+      }
+    }
+
+    case 'video-generate': {
+      const vidData = data as {
+        videoPrompt?: string
+        videoModel?: string
+        duration?: number
+        resolution?: string
+        pollIntervalMs?: number
+        pollTimeoutMs?: number
+      }
+      const resolvedPrompt = vidData.videoPrompt
+        ? resolveTemplate(vidData.videoPrompt, ctx)
+        : (typeof ctx.lastOutput === 'string' ? ctx.lastOutput : '')
+      if (!resolvedPrompt.trim()) {
+        return nodeFailure('视频生成提示词为空。请在节点中配置 prompt，或接一个提供文本输出的上游节点。')
+      }
+
+      // modelId 解析：非 ObjectId 时按 model 字段在模型中心查找
+      let modelId = vidData.videoModel
+      if (modelId && !modelId.match(/^[0-9a-f]{24}$/i)) {
+        try {
+          const { ModelModel } = await import('../../models/Model.js')
+          const matched = await ModelModel.findOne({ model: modelId, isActive: true })
+          if (matched) modelId = String(matched._id)
+        } catch { /* fallback */ }
+      }
+
+      try {
+        const result = await generateVideoService({
+          prompt: resolvedPrompt,
+          modelId,
+          model: vidData.videoModel,
+          duration: vidData.duration,
+          resolution: vidData.resolution,
+          pollIntervalMs: vidData.pollIntervalMs,
+          pollTimeoutMs: vidData.pollTimeoutMs,
+        })
+        return {
+          output: {
+            videoUrl: result.videoUrl,
+            taskId: result.taskId,
+            prompt: resolvedPrompt,
+            model: result.model,
+            provider: result.provider,
+          },
+        }
+      } catch (err) {
+        return nodeFailure(err instanceof Error ? err.message : String(err))
+      }
     }
 
     default:

@@ -40,7 +40,7 @@ function generateVersion(): string {
 const VALID_WIDGET_TYPES = new Set([
   // Layout
   'form', 'card', 'tabs', 'dialog', 'divider', 'spacer', 'tree-layout',
-  'single-col', 'double-col', 'triple-col', 'quad-col',
+  'single-col', 'double-col', 'triple-col', 'quad-col', 'row-container',
 
   // Container
   'micro-app-container', 'iframe', 'micro-app',
@@ -196,13 +196,13 @@ router.post('/', requireAuth, requirePermission('schema:create'), validate(creat
 
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     ctx.status = 400
-    ctx.body = { success: false, error: { message: 'Field "name" is required and must be a non-empty string.' } }
+    ctx.body = { success: false, error: { code: 'BAD_REQUEST', message: 'Field "name" is required and must be a non-empty string.' } }
     return
   }
 
   if (json === undefined || json === null) {
     ctx.status = 400
-    ctx.body = { success: false, error: { message: 'Field "json" is required.' } }
+    ctx.body = { success: false, error: { code: 'BAD_REQUEST', message: 'Field "json" is required.' } }
     return
   }
 
@@ -237,13 +237,13 @@ router.post('/import', requireAuth, requirePermission('schema:create'), validate
 
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     ctx.status = 400
-    ctx.body = { success: false, error: { message: 'Field "name" is required and must be a non-empty string.' } }
+    ctx.body = { success: false, error: { code: 'BAD_REQUEST', message: 'Field "name" is required and must be a non-empty string.' } }
     return
   }
 
   if (!json || !Array.isArray(json)) {
     ctx.status = 400
-    ctx.body = { success: false, error: { message: 'Field "json" is required and must be an array.' } }
+    ctx.body = { success: false, error: { code: 'BAD_REQUEST', message: 'Field "json" is required and must be an array.' } }
     return
   }
 
@@ -256,6 +256,7 @@ router.post('/import', requireAuth, requirePermission('schema:create'), validate
     ctx.body = {
       success: false,
       error: {
+        code: 'VALIDATION_ERROR',
         message: 'Import validation failed.',
         details: validationErrors,
       },
@@ -566,14 +567,14 @@ router.put('/:id', requireAuth, requirePermission('schema:edit'), validate(updat
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     ctx.status = 400
-    ctx.body = { success: false, error: { message: 'Invalid UUID format.' } }
+    ctx.body = { success: false, error: { code: 'BAD_REQUEST', message: 'Invalid UUID format.' } }
     return
   }
 
   const existing = await FormSchemaModel.findById(id)
   if (!existing) {
     ctx.status = 404
-    ctx.body = { success: false, error: { message: 'Schema not found.' } }
+    ctx.body = { success: false, error: { code: 'NOT_FOUND', message: 'Schema not found.' } }
     return
   }
 
@@ -581,7 +582,7 @@ router.put('/:id', requireAuth, requirePermission('schema:edit'), validate(updat
   if (name !== undefined) {
     if (typeof name !== 'string' || name.trim().length === 0) {
       ctx.status = 400
-      ctx.body = { success: false, error: { message: 'Field "name" must be a non-empty string.' } }
+      ctx.body = { success: false, error: { code: 'BAD_REQUEST', message: 'Field "name" must be a non-empty string.' } }
       return
     }
     data.name = name.trim()
@@ -589,7 +590,7 @@ router.put('/:id', requireAuth, requirePermission('schema:edit'), validate(updat
   if (json !== undefined) {
     if (json === null) {
       ctx.status = 400
-      ctx.body = { success: false, error: { message: 'Field "json" cannot be null.' } }
+      ctx.body = { success: false, error: { code: 'BAD_REQUEST', message: 'Field "json" cannot be null.' } }
       return
     }
     data.json = json
@@ -597,7 +598,7 @@ router.put('/:id', requireAuth, requirePermission('schema:edit'), validate(updat
   if (status !== undefined) {
     if (status !== 'draft') {
       ctx.status = 400
-      ctx.body = { success: false, error: { message: 'Cannot change status to "published". Use POST /:id/publish to publish a schema.' } }
+      ctx.body = { success: false, error: { code: 'BAD_REQUEST', message: 'Cannot change status to "published". Use POST /:id/publish to publish a schema.' } }
       return
     }
     data.status = status
@@ -605,7 +606,7 @@ router.put('/:id', requireAuth, requirePermission('schema:edit'), validate(updat
   if (type !== undefined) {
     if (!['form', 'search_list', 'layout', 'table', 'chart', 'business', 'report', 'other'].includes(type as string)) {
       ctx.status = 400
-      ctx.body = { success: false, error: { message: 'Field "type" must be one of: form, search_list, layout, table, chart, business, report, other.' } }
+      ctx.body = { success: false, error: { code: 'BAD_REQUEST', message: 'Field "type" must be one of: form, search_list, layout, table, chart, business, report, other.' } }
       return
     }
     data.type = type
@@ -616,7 +617,7 @@ router.put('/:id', requireAuth, requirePermission('schema:edit'), validate(updat
 
   if (Object.keys(data).length === 0) {
     ctx.status = 400
-    ctx.body = { success: false, error: { message: 'No fields to update. Provide name, json, and/or type.' } }
+    ctx.body = { success: false, error: { code: 'BAD_REQUEST', message: 'No fields to update. Provide name, json, and/or type.' } }
     return
   }
 

@@ -15,6 +15,7 @@ import { StringOutputParser } from '@langchain/core/output_parsers'
 import { logger } from '../utils/logger.js'
 import { v4 as uuidv4 } from 'uuid'
 import { ActionProposalModel } from './models/actionProposal.js'
+import { generateImage as generateImageService } from './services/imageGenerationService.js'
 
 const router = new Router({ prefix: '/api/ai' })
 
@@ -285,10 +286,12 @@ router.put('/action-proposals/:id/approve', async (ctx) => {
 router.post('/generate-image', async (ctx) => {
   const body = (ctx.request.body ?? {}) as {
     prompt?: string
+    modelId?: string
     model?: string
     size?: string
     style?: string
     quality?: string
+    n?: number
   }
 
   const promptText = body.prompt?.trim()
@@ -304,80 +307,34 @@ router.post('/generate-image', async (ctx) => {
     return
   }
 
-  const imageApiKey = process.env.OPENAI_API_KEY || process.env.IMAGE_GENERATION_API_KEY
-  const imageBaseUrl = process.env.IMAGE_GENERATION_BASE_URL || 'https://api.openai.com/v1'
-
-  if (!imageApiKey) {
-    ctx.status = 501
-    ctx.body = {
-      success: false,
-      error: {
-        message: '图片生成 API 未配置。请在 .env 中设置 OPENAI_API_KEY 或 IMAGE_GENERATION_API_KEY。',
-        code: 'IMAGE_API_NOT_CONFIGURED',
-      },
-    }
-    return
-  }
-
   try {
-    const model = body.model ?? 'dall-e-3'
-    const size = body.size ?? '1024x1024'
-    const style = body.style ?? 'vivid'
-    const quality = body.quality ?? 'standard'
-
-    const response = await fetch(`${imageBaseUrl}/images/generations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${imageApiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        prompt: promptText,
-        n: 1,
-        size,
-        style,
-        quality,
-      }),
+    const result = await generateImageService({
+      prompt: promptText,
+      modelId: body.modelId,
+      model: body.model,
+      size: body.size,
+      style: body.style,
+      quality: body.quality,
+      n: body.n,
     })
-
-    if (!response.ok) {
-      const errBody = await response.text()
-      logger.error({ msg: '[generate-image] API error', status: response.status, body: errBody })
-      ctx.status = response.status
-      ctx.body = {
-        success: false,
-        error: { message: `Image generation API error: ${response.status}` },
-      }
-      return
-    }
-
-    const data = await response.json() as { data: Array<{ url: string }> }
-    const imageUrl = data.data?.[0]?.url
-
-    if (!imageUrl) {
-      ctx.status = 500
-      ctx.body = { success: false, error: { message: 'No image URL in response' } }
-      return
-    }
 
     ctx.body = {
       success: true,
       data: {
-        imageUrl,
+        images: result.images,
         prompt: promptText,
-        model,
-        size,
-        style,
-        quality,
+        model: result.model,
+        provider: result.provider,
       },
     }
   } catch (err) {
     logger.error({ msg: '[generate-image] Error', error: err instanceof Error ? err.message : String(err) })
-    ctx.status = 500
+    const message = err instanceof Error ? err.message : 'Image generation failed'
+    const isNotConfigured = message.includes('未配置')
+    ctx.status = isNotConfigured ? 501 : 500
     ctx.body = {
       success: false,
-      error: { message: err instanceof Error ? err.message : 'Image generation failed' },
+      error: { message, code: isNotConfigured ? 'IMAGE_API_NOT_CONFIGURED' : undefined },
     }
   }
 })

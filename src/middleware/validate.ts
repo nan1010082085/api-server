@@ -9,6 +9,7 @@ export function validate(schema: ZodSchema): Middleware {
       ctx.body = {
         success: false,
         error: {
+          code: 'VALIDATION_ERROR',
           message: 'Validation failed',
           details: result.error.issues.map((issue) => ({
             path: issue.path.join('.'),
@@ -31,6 +32,7 @@ export function validateQuery(schema: ZodSchema): Middleware {
       ctx.body = {
         success: false,
         error: {
+          code: 'VALIDATION_ERROR',
           message: 'Validation failed',
           details: result.error.issues.map((issue) => ({
             path: issue.path.join('.'),

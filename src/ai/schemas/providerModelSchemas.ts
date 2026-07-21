@@ -32,11 +32,14 @@ const modelParametersSchema = z.object({
   topP: z.number().min(0).max(1).optional(),
 }).strict()
 
+const modelCapabilitySchema = z.enum(['chat', 'image', 'video', 'audio'])
+
 export const createModelSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   providerId: z.string().min(1, 'Provider ID is required'),
   model: z.string().min(1, 'Model identifier is required').max(100),
   parameters: modelParametersSchema.optional(),
+  capabilities: z.array(modelCapabilitySchema).optional().default(['chat']),
   isDefault: z.boolean().optional().default(false),
   isActive: z.boolean().optional().default(true),
 }).strict()
@@ -46,6 +49,7 @@ export const updateModelSchema = z.object({
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional(),
   parameters: modelParametersSchema.optional(),
+  capabilities: z.array(modelCapabilitySchema).optional(),
   isDefault: z.boolean().optional(),
   isActive: z.boolean().optional(),
 }).strict().refine((data) => Object.keys(data).length > 0, {

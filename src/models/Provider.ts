@@ -18,6 +18,12 @@ export interface IProvider {
 /**
  * Resolve apiKey stored in DB (encrypted blob or legacy plaintext).
  * Must be used for `.lean()` queries that skip mongoose decrypt hooks.
+ *
+ * decrypt 失败时区分两种情况：
+ * - 明文 key（sk-/tp- 前缀或较短串）：直接返回（legacy 未加密数据）
+ * - 解不开的密文（base64 blob，如本地用错误的 CREDENTIAL_SECRET 连生产 DB）：
+ *   返回空字符串，让调用方 `|| resolveProviderEnvApiKey()` 的 env fallback 生效，
+ *   避免拿密文当 Bearer key 调上游导致 401。
  */
 export function resolveStoredProviderApiKey(raw: string | undefined | null): string {
   if (!raw) return ''
@@ -25,7 +31,9 @@ export function resolveStoredProviderApiKey(raw: string | undefined | null): str
     const data = decrypt(raw)
     if (typeof data.apiKey === 'string') return data.apiKey
   } catch {
-    // plaintext legacy / non-encrypted
+    if (raw.startsWith('sk-') || raw.startsWith('tp-')) return raw
+    if (raw.length < 50) return raw
+    return ''
   }
   return raw
 }
@@ -87,7 +95,8 @@ providerSchema.pre('save', function (this: IProvider & mongoose.Document) {
 function decryptApiKey(doc: (IProvider & mongoose.Document) | null) {
   if (!doc?.apiKey) return
   const plain = resolveStoredProviderApiKey(doc.apiKey)
-  if (plain === doc.apiKey) return
+  // 解不开（空）或已是明文（与原值相同）时不修改 doc，保留原值
+  if (!plain || plain === doc.apiKey) return
   doc.apiKey = plain
   if (typeof doc.unmarkModified === 'function') {
     doc.unmarkModified('apiKey')

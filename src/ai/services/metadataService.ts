@@ -5,7 +5,6 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { join, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import type { AIMetadata } from '@schema-platform/platform-shared/ai'
@@ -20,8 +19,7 @@ let _metadata: AIMetadata | null = null
 
 export function getMetadata(): AIMetadata {
   if (!_metadata) {
-    const pkgPath = require.resolve('@schema-platform/platform-shared/ai/package.json')
-    const jsonPath = join(dirname(pkgPath), 'metadata.json')
+    const jsonPath = require.resolve('@schema-platform/platform-shared/ai/metadata.json')
     _metadata = JSON.parse(readFileSync(jsonPath, 'utf-8')) as AIMetadata
   }
   return _metadata

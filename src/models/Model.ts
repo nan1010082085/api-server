@@ -1,6 +1,10 @@
 import mongoose from 'mongoose'
 import { tenantPlugin } from '../middleware/tenantPlugin.js'
 
+export type ModelCapability = 'chat' | 'image' | 'video' | 'audio'
+
+export const MODEL_CAPABILITIES: ModelCapability[] = ['chat', 'image', 'video', 'audio']
+
 export interface IModelParameters {
   temperature: number
   maxTokens: number
@@ -12,6 +16,7 @@ export interface IModel {
   providerId: mongoose.Types.ObjectId
   model: string
   parameters: IModelParameters
+  capabilities: ModelCapability[]
   isDefault: boolean
   isActive: boolean
   tenantId: string
@@ -39,6 +44,11 @@ const modelSchema = new mongoose.Schema(
     },
     model: { type: String, required: true, trim: true },
     parameters: { type: modelParametersSchema, default: () => ({}) },
+    capabilities: {
+      type: [String],
+      enum: MODEL_CAPABILITIES,
+      default: ['chat'],
+    },
     isDefault: { type: Boolean, default: false, index: true },
     isActive: { type: Boolean, default: true },
     tenantId: { type: String, default: '000000', index: true },

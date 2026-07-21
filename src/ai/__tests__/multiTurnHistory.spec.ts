@@ -7,19 +7,34 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('mongoose', () => {
   const mockSchema = {
     index: vi.fn(),
+    pre: vi.fn(),
+    post: vi.fn(),
+    plugin: vi.fn(),
+    add: vi.fn(),
+    method: vi.fn(),
+    static: vi.fn(),
+    virtual: vi.fn(() => ({ get: vi.fn(), set: vi.fn() })),
   }
   const MockSchema = vi.fn(() => mockSchema)
   ;(MockSchema as any).Types = {
     Mixed: 'Mixed',
+    ObjectId: 'ObjectId',
+    String: 'String',
+    Number: 'Number',
+    Boolean: 'Boolean',
+    Date: 'Date',
   }
 
   const mockModel = {
     create: vi.fn(),
     findById: vi.fn(),
-    find: vi.fn(),
+    findOne: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }),
+    find: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }),
     findByIdAndUpdate: vi.fn(),
     findByIdAndDelete: vi.fn(),
+    findOneAndUpdate: vi.fn(),
     countDocuments: vi.fn(),
+    exists: vi.fn(),
   }
 
   return {

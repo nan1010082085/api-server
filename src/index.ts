@@ -15,6 +15,21 @@ const PORT = parseInt(process.env.PORT ?? '3001', 10)
 async function start() {
   await connectDatabase()
 
+  // 基础角色 + 管理员账户（必须在业务 seed 之前）
+  try {
+    const { seedRoles } = await import('./utils/seedRoles.js')
+    await seedRoles()
+  } catch (err) {
+    console.error('[seed] Roles seed failed:', err instanceof Error ? err.message : String(err))
+  }
+
+  try {
+    const { seedAdmin } = await import('./utils/seedAdmin.js')
+    await seedAdmin()
+  } catch (err) {
+    console.error('[seed] Admin seed failed:', err instanceof Error ? err.message : String(err))
+  }
+
   try {
     await runBusinessSeeds()
   } catch (err) {

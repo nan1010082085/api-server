@@ -8,7 +8,7 @@
 import { FormSchemaModel } from '../../models/FormSchema.js'
 import { PublishedSchemaModel } from '../../models/PublishedSchema.js'
 import { escapeRegex } from '../graph/agentBase.js'
-import { extractTokens, extractTokensFromSchema, jaccardSimilarity } from './metadataService.js'
+import { getMetadata, extractTokens, extractTokensFromSchema, jaccardSimilarity } from './metadataService.js'
 
 // ────────────────────────────────────────────
 // 类型定义
@@ -208,13 +208,7 @@ let cachedContainerTypes: Set<string> | null = null
 
 async function getWidgetTypeSets(): Promise<{ VALID_TYPES: Set<string>; CONTAINER_TYPES: Set<string> }> {
   if (!cachedWidgetTypes) {
-    const { readFileSync } = await import('node:fs')
-    const { dirname, join } = await import('node:path')
-    const { createRequire } = await import('node:module')
-    const require = createRequire(import.meta.url)
-    const pkgPath = require.resolve('@schema-platform/platform-shared/ai/package.json')
-    const jsonPath = join(dirname(pkgPath), 'metadata.json')
-    const metadata = JSON.parse(readFileSync(jsonPath, 'utf-8')) as { widgets: WidgetAIMetadata[] }
+    const metadata = getMetadata()
     cachedWidgetTypes = new Set(metadata.widgets.map((w) => w.type))
     cachedContainerTypes = new Set(metadata.widgets.filter((w) => w.canHaveChildren).map((w) => w.type))
   }
