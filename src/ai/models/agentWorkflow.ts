@@ -29,6 +29,8 @@ export interface IAgentWorkflow {
   onCompleteWebhook?: { url: string; secret?: string } | null
   /** 统一调用密钥：POST /api/ai/workflows/invoke/:slug + X-Workflow-Key */
   invokeKey?: string | null
+  /** 可路由关键词：chat 意图匹配到这些词时建议使用此工作流 */
+  routingKeywords?: string[]
   /** 兼容旧数据：已发布版本 ObjectId */
   currentVersionId?: mongoose.Types.ObjectId | null
   createdBy: string
@@ -72,6 +74,8 @@ const agentWorkflowSchema = new mongoose.Schema(
       default: null,
     },
     invokeKey: { type: String, default: null, select: false },
+    /** 可路由关键词：chat 意图匹配到这些词时建议使用此工作流 */
+    routingKeywords: { type: [String], default: [] },
     currentVersionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'AgentWorkflowVersion',

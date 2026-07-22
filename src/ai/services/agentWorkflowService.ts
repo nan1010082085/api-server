@@ -74,6 +74,7 @@ function toSummary(doc: Record<string, unknown>, hasRunningExecution = false) {
     version: (doc.version as string) ?? '',
     publishId: (doc.publishId as string) ?? null,
     publishedVersion: (doc.publishedVersion as string) ?? null,
+    routingKeywords: (doc.routingKeywords as string[] | undefined) ?? [],
     hasRunningExecution,
     updatedAt: (doc.updatedAt as Date)?.toISOString?.() ?? String(doc.updatedAt),
     createdAt: (doc.createdAt as Date)?.toISOString?.() ?? String(doc.createdAt),
@@ -201,6 +202,7 @@ export async function updateAgentWorkflow(
     description?: string
     draftGraph?: Record<string, unknown>
     onCompleteWebhook?: { url: string; secret?: string } | null
+    routingKeywords?: string[]
   },
 ) {
   // 推入当前状态作为版本快照，再应用变更（与可视化编辑器一致）
@@ -213,6 +215,7 @@ export async function updateAgentWorkflow(
   if (patch.description !== undefined) $set.description = patch.description
   if (patch.draftGraph !== undefined) $set.draftGraph = patch.draftGraph
   if (patch.onCompleteWebhook !== undefined) $set.onCompleteWebhook = patch.onCompleteWebhook
+  if (patch.routingKeywords !== undefined) $set.routingKeywords = patch.routingKeywords
 
   if (patch.slug !== undefined) {
     const trimmed = patch.slug.trim().toLowerCase()
@@ -302,6 +305,33 @@ export async function publishAgentWorkflow(id: string, userId: string) {
     workflow.invokeKey = generateInvokeKey()
   }
   await workflow.save()
+
+  // 注册为 plugin registry 的 expert（让 chat 意图路由能自动匹配到此 workflow）
+  const keywords = (workflow.routingKeywords ?? []).filter(Boolean)
+  if (keywords.length > 0) {
+    try {
+      const { getPluginRegistry } = await import('../plugins/index.js')
+      const registry = getPluginRegistry()
+      const workflowExpertId = `workflow:${String(workflow._id)}`
+      registry.registerManifest({
+        version: 1,
+        experts: [{
+          id: workflowExpertId,
+          label: workflow.name,
+          description: workflow.description?.slice(0, 200) || undefined,
+          tools: [],
+          routing: {
+            keywords,
+            priority: 5,
+          },
+          enabled: true,
+        }],
+      }, 'workflow-publish')
+    } catch (err) {
+      // 注册失败不阻塞发布
+      console.warn('[publishAgentWorkflow] 注册 workflow expert 失败:', err instanceof Error ? err.message : String(err))
+    }
+  }
 
   return {
     publishId,
@@ -665,3 +695,49 @@ export async function getAgentWorkflowExecutionByInvokeKey(
 
 // 保持向后兼容（旧测试引用）
 export { mongoose as _mongoose }
+
+const TERMINAL_STATUSES = new Set(['success', 'error', 'cancelled'])
+
+/**
+ * 同步调用子 workflow 并等待执行完成。
+ *
+ * 用于 agent-loop 节点把已发布 workflow 作为"技能"调用：
+ * 启动执行 → 轮询 DB 直到 terminal → 返回 output。
+ *
+ * 超时返回 { error } 而非挂死。
+ */
+export async function invokeWorkflowSync(
+  workflowId: string,
+  userId: string,
+  input: Record<string, unknown>,
+  opts: { timeoutMs?: number; pollIntervalMs?: number } = {},
+): Promise<{ output: unknown; error?: string; executionId: string }> {
+  const { timeoutMs = 120_000, pollIntervalMs = 1_000 } = opts
+
+  const execution = await startAgentWorkflowExecution(workflowId, userId, input, { trigger: 'api' })
+  if (!execution) return { output: null, error: 'Workflow not found', executionId: '' }
+
+  const executionId = execution.id
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, pollIntervalMs))
+    const doc = await AgentWorkflowExecutionModel.findById(executionId).lean()
+    if (!doc) return { output: null, error: 'Execution not found', executionId }
+    const status = (doc as unknown as Record<string, string>).status
+    if (TERMINAL_STATUSES.has(status)) {
+      const exec = toExecution(doc as unknown as Record<string, unknown>)
+      if (status === 'error') {
+        return { output: null, error: exec.error ?? 'Workflow execution failed', executionId }
+      }
+      if (status === 'cancelled') {
+        return { output: null, error: 'Workflow execution cancelled', executionId }
+      }
+      // success: 提取 end 节点的 output
+      const endRecord = exec.nodeRecords.find((r) => r.nodeType === 'end')
+      return { output: endRecord?.output ?? exec.nodeRecords[exec.nodeRecords.length - 1]?.output ?? null, executionId }
+    }
+  }
+
+  return { output: null, error: `Workflow execution timeout (${timeoutMs}ms)`, executionId }
+}

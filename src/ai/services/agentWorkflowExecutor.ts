@@ -5,7 +5,9 @@
  */
 
 import { HumanMessage, SystemMessage, AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages'
-import { AgentWorkflowExecutionModel } from '../models/agentWorkflow.js'
+import { DynamicStructuredTool } from '@langchain/core/tools'
+import { z } from 'zod'
+import { AgentWorkflowExecutionModel, AgentWorkflowModel } from '../models/agentWorkflow.js'
 import type { IAgentWorkflowExecution } from '../models/agentWorkflow.js'
 import { getLLM } from './llmCache.js'
 import { logger } from '../../utils/logger.js'
@@ -130,6 +132,12 @@ interface WorkflowGraphNode {
       timestamp: Date
     }>
     maxCollaborationRounds?: number
+    agentLoopTools?: string[]
+    agentLoopMaxIterations?: number
+    agentLoopSystemPrompt?: string
+    agentLoopInputSource?: 'message' | 'lastOutput' | 'custom'
+    agentLoopInputTemplate?: string
+    agentLoopMaxToolInvocations?: number
   }
 }
 
@@ -1672,9 +1680,193 @@ async function runNode(
       }
     }
 
+    case 'agent-loop': {
+      const maxIterations = Math.min(Math.max(data.agentLoopMaxIterations ?? 8, 1), 20)
+      const system = data.agentLoopSystemPrompt?.trim()
+        ? resolveTemplate(data.agentLoopSystemPrompt, ctx)
+        : '你是一个自主智能体，根据用户请求调用可用工具完成任务。任务完成时直接给出最终回答，不要调用工具。'
+
+      const inputSource = data.agentLoopInputSource ?? 'message'
+      let userInput: string
+      if (inputSource === 'lastOutput') {
+        userInput = typeof ctx.lastOutput === 'string' ? ctx.lastOutput : JSON.stringify(ctx.lastOutput ?? '')
+      } else if (inputSource === 'custom' && data.agentLoopInputTemplate?.trim()) {
+        userInput = resolveTemplate(data.agentLoopInputTemplate, ctx)
+      } else {
+        userInput = typeof ctx.input.message === 'string'
+          ? ctx.input.message
+          : JSON.stringify(ctx.input ?? '')
+      }
+
+      const rawToolNames = (data.agentLoopTools ?? []).map((n: unknown) => String(n))
+      const normalToolNames = rawToolNames.filter((n) => !n.startsWith('workflow:')).map(normalizeToolName).filter(Boolean)
+      const workflowRefs = rawToolNames.filter((n) => n.startsWith('workflow:'))
+
+      await ensureToolsReady()
+      const tools = getToolsByNames(normalToolNames)
+
+      // 把 workflow: 前缀的项包装成 LangChain DynamicStructuredTool（子 workflow 调用）
+      if (workflowRefs.length > 0) {
+        const { invokeWorkflowSync } = await import('./agentWorkflowService.js')
+        const userId = ctx.triggeredBy
+        for (const ref of workflowRefs) {
+          const wfId = ref.slice('workflow:'.length)
+          const wfDoc = await AgentWorkflowModel.findOne({ _id: wfId, status: 'published' })
+            .select('name description')
+            .lean() as unknown as { name?: string; description?: string } | null
+          const wfName = wfDoc?.name ?? wfId
+          const wfDesc = wfDoc?.description ?? `调用工作流「${wfName}」完成子任务`
+          tools.push(new DynamicStructuredTool({
+            name: `workflow__${wfId.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}`,
+            description: `调用子工作流「${wfName}」：${wfDesc.slice(0, 200)}`,
+            schema: z.object({
+              message: z.string().describe('传递给子工作流的输入消息'),
+            }),
+            func: async ({ message }) => {
+              const result = await invokeWorkflowSync(wfId, userId, { message }, { timeoutMs: 120_000 })
+              if (result.error) return JSON.stringify({ error: result.error })
+              return typeof result.output === 'string' ? result.output : JSON.stringify(result.output ?? {})
+            },
+          }))
+        }
+      }
+
+      const modelId = data.model?.trim() && data.model !== 'default' ? data.model : undefined
+      const llm = await getLLM({ temperature: 0.2, model: modelId })
+      const boundLlm = tools.length > 0 ? llm.bindTools(tools) : llm
+
+      try {
+        const result = await runAgentLoop({
+          boundLlm: boundLlm as unknown as AgentLoopLLM,
+          system,
+          userInput,
+          maxIterations,
+          maxToolInvocations: data.agentLoopMaxToolInvocations,
+          ctx,
+          nodeId: node.id,
+          nodeType: node.type,
+        })
+        await clearStreamingOutput(ctx.executionId)
+        return {
+          output: {
+            text: result.text,
+            iterations: result.iterations,
+            toolInvocations: result.toolInvocations,
+            toolCount: tools.length,
+            steps: result.steps,
+          },
+        }
+      } catch (err) {
+        await clearStreamingOutput(ctx.executionId)
+        return nodeFailure(err instanceof Error ? err.message : String(err))
+      }
+    }
+
     default:
       return { output: ctx.lastOutput }
   }
+}
+
+/**
+ * agent-loop 的自主循环逻辑（提取为独立可测函数）。
+ *
+ * LLM 推理 -> tool_calls -> dispatchTool -> ToolMessage -> 回 LLM，
+ * 直到 LLM 不再调用工具（给出最终文本）或达迭代上限。
+ */
+export interface AgentLoopLLM {
+  invoke(messages: BaseMessage[]): Promise<{ tool_calls?: Array<{ id?: string; name?: string; args?: Record<string, unknown> }>; content?: unknown }>
+}
+
+export interface AgentLoopStep {
+  iteration: number
+  toolCalls: Array<{ name: string; success: boolean }>
+}
+
+/** agent-loop 配额默认值（可通过节点配置覆盖） */
+const AGENT_LOOP_DEFAULTS = {
+  maxIterations: 8,
+  maxToolInvocations: 50,
+}
+
+export async function runAgentLoop(params: {
+  boundLlm: AgentLoopLLM
+  system: string
+  userInput: string
+  maxIterations: number
+  /** 工具调用总次数硬上限（防 token 失控），默认 50 */
+  maxToolInvocations?: number
+  ctx: RuntimeContext
+  nodeId: string
+  nodeType: string
+}): Promise<{ text: string; iterations: number; toolInvocations: number; steps: AgentLoopStep[] }> {
+  const { boundLlm, system, userInput, ctx, nodeId, nodeType } = params
+  const maxIterations = params.maxIterations
+  const maxToolInvocations = params.maxToolInvocations ?? AGENT_LOOP_DEFAULTS.maxToolInvocations
+  const messages: BaseMessage[] = [new SystemMessage(system), new HumanMessage(userInput)]
+  let finalText = ''
+  let iterations = 0
+  let toolInvocations = 0
+  const steps: AgentLoopStep[] = []
+
+  while (iterations < maxIterations) {
+    iterations += 1
+    const aiMsg = await boundLlm.invoke(messages) as AIMessage
+    messages.push(aiMsg)
+
+    const toolCalls = aiMsg.tool_calls ?? []
+    if (toolCalls.length === 0) {
+      finalText = typeof aiMsg.content === 'string'
+        ? aiMsg.content
+        : Array.isArray(aiMsg.content)
+          ? aiMsg.content.map((c) => (typeof c === 'object' && c !== null && 'text' in c ? String((c as { text: string }).text) : '')).join('')
+          : ''
+      steps.push({ iteration: iterations, toolCalls: [] })
+      break
+    }
+
+    const stepCalls: Array<{ name: string; success: boolean }> = []
+    for (const call of toolCalls) {
+      if (toolInvocations >= maxToolInvocations) {
+        logger.warn({ msg: `[agent-loop] 工具调用次数已达上限 ${maxToolInvocations}，提前终止` })
+        finalText = `已达到工具调用上限 ${maxToolInvocations} 次，提前终止。已迭代 ${iterations} 轮。`
+        steps.push({ iteration: iterations, toolCalls: stepCalls })
+        break
+      }
+      const toolName = String(call.name ?? '')
+      const toolCallId = call.id ? String(call.id) : ''
+      if (!toolName || !toolCallId) {
+        logger.warn({ msg: '[agent-loop] 跳过无效 tool_call', toolName, hasId: Boolean(call.id) })
+        continue
+      }
+      const toolArgs = (call.args ?? {}) as Record<string, unknown>
+      const result = await dispatchTool(toolName, toolArgs, ctx)
+      toolInvocations++
+      stepCalls.push({ name: toolName, success: !result.error })
+      const toolContent = typeof result.output === 'string'
+        ? result.output
+        : JSON.stringify(result.output ?? {})
+      messages.push(new ToolMessage({
+        content: toolContent,
+        tool_call_id: toolCallId,
+        name: toolName,
+      }))
+      if (result.error) {
+        logger.warn({ msg: `[agent-loop] tool ${toolName} failed`, error: result.error })
+      }
+    }
+    if (finalText) break
+    steps.push({ iteration: iterations, toolCalls: stepCalls })
+
+    await setStreamingOutput(ctx.executionId, nodeId, nodeType, `已迭代 ${iterations} 次，${toolInvocations}/${maxToolInvocations} 工具调用`)
+  }
+
+  if (!finalText) {
+    finalText = iterations >= maxIterations
+      ? `已达到最大迭代次数 ${maxIterations}，未获得最终结论。已执行 ${toolInvocations} 次工具调用。`
+      : ''
+  }
+
+  return { text: finalText, iterations, toolInvocations, steps }
 }
 
 export async function executeAgentWorkflow(params: ExecuteParams): Promise<void> {

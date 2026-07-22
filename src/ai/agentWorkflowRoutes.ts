@@ -107,6 +107,7 @@ router.put('/workflows/:id', async (ctx) => {
     description?: string
     draftGraph?: Record<string, unknown>
     onCompleteWebhook?: { url: string; secret?: string } | null
+    routingKeywords?: string[]
   }
   try {
     const data = await updateAgentWorkflow(ctx.params.id, getUserId(ctx), body)

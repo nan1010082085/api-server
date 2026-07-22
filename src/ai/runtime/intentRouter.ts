@@ -27,6 +27,8 @@ export interface IntentRouterOutput {
   legacyAgentKey: string
   chainPreview?: string[]
   routeReason: string
+  /** 当路由匹配到 workflow-expert 时，此字段携带 workflowId */
+  workflowId?: string
 }
 
 /** 插件中心最小接口 — 避免对 PluginRegistry 硬依赖 */
@@ -155,10 +157,12 @@ export async function resolveIntent(
       legacyAgentKey: legacyKey,
     })
 
+    const isWorkflowExpert = expert.id.startsWith('workflow:')
     return {
       expertId: expert.id,
       legacyAgentKey: legacyKey,
       routeReason: `pluginRegistry match: ${expert.id} (key=${legacyKey})`,
+      workflowId: isWorkflowExpert ? expert.id.slice('workflow:'.length) : undefined,
     }
   }
 

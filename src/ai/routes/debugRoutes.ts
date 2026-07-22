@@ -6,6 +6,7 @@ import Router from '@koa/router'
 import { authMiddleware } from '../../middleware/auth.js'
 import { resolveIntent } from '../runtime/intentRouter.js'
 import { getPluginRegistry } from '../plugins/index.js'
+import { AgentWorkflowModel } from '../models/agentWorkflow.js'
 import { logger } from '../../utils/logger.js'
 
 const router = new Router({ prefix: '/api/ai/debug' })
@@ -92,6 +93,52 @@ router.get('/experts', async (ctx) => {
     logger.error({ msg: 'List experts failed', error: String(err) })
     ctx.status = 500
     ctx.body = { error: 'List experts failed' }
+  }
+})
+
+/**
+ * POST /api/ai/debug/route-workflow
+ * 按消息匹配已发布工作流的 routingKeywords，返回建议工作流列表
+ */
+router.post('/route-workflow', async (ctx) => {
+  const { message } = ctx.request.body as { message?: string }
+  if (!message?.trim()) {
+    ctx.status = 400
+    ctx.body = { error: 'message is required' }
+    return
+  }
+
+  try {
+    const lower = message.trim().toLowerCase()
+    const workflows = await AgentWorkflowModel.find({
+      status: 'published',
+      routingKeywords: { $exists: true, $ne: [] },
+    })
+      .select('name slug description routingKeywords')
+      .lean()
+
+    const matched = workflows
+      .map((w) => {
+        const keywords = (w.routingKeywords ?? []).map((k: string) => k.toLowerCase())
+        const matchedKw = keywords.filter((k: string) => lower.includes(k))
+        return {
+          id: String(w._id),
+          name: w.name,
+          slug: w.slug ?? null,
+          description: w.description ?? '',
+          score: matchedKw.length,
+          matchedKeywords: matchedKw,
+        }
+      })
+      .filter((m) => m.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+
+    ctx.body = { matched }
+  } catch (err) {
+    logger.error({ msg: 'Route workflow debug failed', error: String(err) })
+    ctx.status = 500
+    ctx.body = { error: 'Route workflow debug failed' }
   }
 })
 
