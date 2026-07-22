@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-14T01:59:31.924Z",
+  "generatedAt": "2026-07-21T09:39:44.008Z",
   "modules": [
     {
       "name": "system",
@@ -1242,7 +1242,7 @@
               "path": "/api/schemas/",
               "middleware": [],
               "file": "schema.ts",
-              "line": 107
+              "line": 149
             },
             {
               "method": "POST",
@@ -1252,7 +1252,7 @@
                 "validate(createSchemaSchema)"
               ],
               "file": "schema.ts",
-              "line": 150
+              "line": 192
             },
             {
               "method": "POST",
@@ -1262,49 +1262,49 @@
                 "validate(importSchemaSchema)"
               ],
               "file": "schema.ts",
-              "line": 191
+              "line": 233
             },
             {
               "method": "GET",
               "path": "/api/schemas/published",
               "middleware": [],
               "file": "schema.ts",
-              "line": 251
+              "line": 294
             },
             {
               "method": "GET",
               "path": "/api/schemas/published/by-code/:code",
               "middleware": [],
               "file": "schema.ts",
-              "line": 285
+              "line": 328
             },
             {
               "method": "GET",
               "path": "/api/schemas/published/:sourceId",
               "middleware": [],
               "file": "schema.ts",
-              "line": 312
+              "line": 355
             },
             {
               "method": "GET",
               "path": "/api/schemas/published/by-publish-id/:publishId",
               "middleware": [],
               "file": "schema.ts",
-              "line": 336
+              "line": 379
             },
             {
               "method": "GET",
               "path": "/api/schemas/:param/versions",
               "middleware": [],
               "file": "schema.ts",
-              "line": 355
+              "line": 398
             },
             {
               "method": "GET",
               "path": "/api/schemas/:param/versions/:version",
               "middleware": [],
               "file": "schema.ts",
-              "line": 407
+              "line": 450
             },
             {
               "method": "DELETE",
@@ -1313,14 +1313,14 @@
                 "requirePermission('schema:delete')"
               ],
               "file": "schema.ts",
-              "line": 455
+              "line": 498
             },
             {
               "method": "GET",
               "path": "/api/schemas/:id",
               "middleware": [],
               "file": "schema.ts",
-              "line": 493
+              "line": 536
             },
             {
               "method": "PUT",
@@ -1330,7 +1330,7 @@
                 "validate(updateSchemaSchema)"
               ],
               "file": "schema.ts",
-              "line": 519
+              "line": 562
             },
             {
               "method": "POST",
@@ -1339,7 +1339,7 @@
                 "requirePermission('schema:publish')"
               ],
               "file": "schema.ts",
-              "line": 610
+              "line": 653
             },
             {
               "method": "DELETE",
@@ -1348,7 +1348,7 @@
                 "requirePermission('schema:delete')"
               ],
               "file": "schema.ts",
-              "line": 676
+              "line": 719
             }
           ]
         },
@@ -2174,7 +2174,7 @@
     {
       "name": "ai-capabilities",
       "routerCount": 13,
-      "routeCount": 91,
+      "routeCount": 96,
       "routers": [
         {
           "prefix": "/api/ai/runtime",
@@ -2235,28 +2235,28 @@
               "path": "/api/ai/suggestions",
               "middleware": [],
               "file": "advancedFeatureRoutes.ts",
-              "line": 49
+              "line": 50
             },
             {
               "method": "POST",
               "path": "/api/ai/action-proposals",
               "middleware": [],
               "file": "advancedFeatureRoutes.ts",
-              "line": 143
+              "line": 144
             },
             {
               "method": "PUT",
               "path": "/api/ai/action-proposals/:id/approve",
               "middleware": [],
               "file": "advancedFeatureRoutes.ts",
-              "line": 247
+              "line": 248
             },
             {
               "method": "POST",
               "path": "/api/ai/generate-image",
               "middleware": [],
               "file": "advancedFeatureRoutes.ts",
-              "line": 285
+              "line": 286
             }
           ]
         },
@@ -2451,7 +2451,7 @@
                 "validate(createModelSchema)"
               ],
               "file": "aiModelRoutes.ts",
-              "line": 65
+              "line": 68
             },
             {
               "method": "PUT",
@@ -2461,7 +2461,7 @@
                 "validate(updateModelSchema)"
               ],
               "file": "aiModelRoutes.ts",
-              "line": 124
+              "line": 129
             },
             {
               "method": "DELETE",
@@ -2470,7 +2470,7 @@
                 "requirePermission('model_config:delete')"
               ],
               "file": "aiModelRoutes.ts",
-              "line": 188
+              "line": 194
             },
             {
               "method": "POST",
@@ -2479,7 +2479,7 @@
                 "validate(testModelSchema)"
               ],
               "file": "aiModelRoutes.ts",
-              "line": 213
+              "line": 219
             }
           ]
         },
@@ -2560,49 +2560,70 @@
               "path": "/api/ai/monitor/stats",
               "middleware": [],
               "file": "monitorRoutes.ts",
-              "line": 31
+              "line": 32
             },
             {
               "method": "GET",
               "path": "/api/ai/monitor/recent",
               "middleware": [],
               "file": "monitorRoutes.ts",
-              "line": 129
+              "line": 130
             },
             {
               "method": "GET",
               "path": "/api/ai/monitor/alerts",
               "middleware": [],
               "file": "monitorRoutes.ts",
-              "line": 193
+              "line": 194
             },
             {
               "method": "GET",
               "path": "/api/ai/monitor/summary",
               "middleware": [],
               "file": "monitorRoutes.ts",
-              "line": 281
+              "line": 282
             },
             {
               "method": "GET",
               "path": "/api/ai/monitor/node-stats",
               "middleware": [],
               "file": "monitorRoutes.ts",
-              "line": 355
+              "line": 356
             },
             {
               "method": "GET",
               "path": "/api/ai/monitor/node-stats/recent",
               "middleware": [],
               "file": "monitorRoutes.ts",
-              "line": 467
+              "line": 468
             },
             {
               "method": "GET",
               "path": "/api/ai/monitor/node-stats/timeline",
               "middleware": [],
               "file": "monitorRoutes.ts",
-              "line": 530
+              "line": 531
+            },
+            {
+              "method": "GET",
+              "path": "/api/ai/monitor/plugin-stats",
+              "middleware": [],
+              "file": "monitorRoutes.ts",
+              "line": 614
+            },
+            {
+              "method": "GET",
+              "path": "/api/ai/monitor/plugin-recent",
+              "middleware": [],
+              "file": "monitorRoutes.ts",
+              "line": 723
+            },
+            {
+              "method": "GET",
+              "path": "/api/ai/monitor/plugin-summary",
+              "middleware": [],
+              "file": "monitorRoutes.ts",
+              "line": 781
             }
           ]
         },
@@ -2637,7 +2658,7 @@
               "path": "/api/providers/",
               "middleware": [],
               "file": "providerRoutes.ts",
-              "line": 48
+              "line": 50
             },
             {
               "method": "POST",
@@ -2647,14 +2668,14 @@
                 "validate(createProviderSchema)"
               ],
               "file": "providerRoutes.ts",
-              "line": 67
+              "line": 69
             },
             {
               "method": "GET",
               "path": "/api/providers/embedding-config",
               "middleware": [],
               "file": "providerRoutes.ts",
-              "line": 197
+              "line": 199
             },
             {
               "method": "PUT",
@@ -2664,7 +2685,7 @@
                 "validate(updateEmbeddingConfigSchema)"
               ],
               "file": "providerRoutes.ts",
-              "line": 216
+              "line": 218
             },
             {
               "method": "PUT",
@@ -2674,7 +2695,7 @@
                 "validate(updateProviderSchema)"
               ],
               "file": "providerRoutes.ts",
-              "line": 246
+              "line": 248
             },
             {
               "method": "DELETE",
@@ -2683,7 +2704,7 @@
                 "requirePermission('model_config:delete')"
               ],
               "file": "providerRoutes.ts",
-              "line": 282
+              "line": 290
             },
             {
               "method": "POST",
@@ -2692,7 +2713,23 @@
                 "validate(testProviderSchema)"
               ],
               "file": "providerRoutes.ts",
-              "line": 315
+              "line": 323
+            },
+            {
+              "method": "GET",
+              "path": "/api/providers/:id/remote-models",
+              "middleware": [],
+              "file": "providerRoutes.ts",
+              "line": 417
+            },
+            {
+              "method": "POST",
+              "path": "/api/providers/:id/sync-models",
+              "middleware": [
+                "requirePermission('model_config:create')"
+              ],
+              "file": "providerRoutes.ts",
+              "line": 489
             }
           ]
         },
@@ -2783,84 +2820,84 @@
               "path": "/api/ai/conversations/search",
               "middleware": [],
               "file": "routes.ts",
-              "line": 525
+              "line": 532
             },
             {
               "method": "GET",
               "path": "/api/ai/mention/search/:type",
               "middleware": [],
               "file": "routes.ts",
-              "line": 581
+              "line": 596
             },
             {
               "method": "GET",
               "path": "/api/ai/conversations/:id",
               "middleware": [],
               "file": "routes.ts",
-              "line": 676
+              "line": 708
             },
             {
               "method": "DELETE",
               "path": "/api/ai/conversations/:id",
               "middleware": [],
               "file": "routes.ts",
-              "line": 716
+              "line": 755
             },
             {
               "method": "POST",
               "path": "/api/ai/messages/:id/feedback",
               "middleware": [],
               "file": "routes.ts",
-              "line": 736
+              "line": 789
             },
             {
               "method": "GET",
               "path": "/api/ai/conversations/:id/versions",
               "middleware": [],
               "file": "routes.ts",
-              "line": 773
+              "line": 826
             },
             {
               "method": "GET",
               "path": "/api/ai/versions/compare",
               "middleware": [],
               "file": "routes.ts",
-              "line": 800
+              "line": 853
             },
             {
               "method": "GET",
               "path": "/api/ai/versions/:versionId",
               "middleware": [],
               "file": "routes.ts",
-              "line": 858
+              "line": 911
             },
             {
               "method": "POST",
               "path": "/api/ai/conversations/:id/rollback",
               "middleware": [],
               "file": "routes.ts",
-              "line": 888
+              "line": 941
             },
             {
               "method": "GET",
               "path": "/api/ai/rag/search",
               "middleware": [],
               "file": "routes.ts",
-              "line": 947
+              "line": 1007
             },
             {
               "method": "GET",
               "path": "/api/ai/industries",
               "middleware": [],
               "file": "routes.ts",
-              "line": 992
+              "line": 1052
             },
             {
               "method": "GET",
               "path": "/api/ai/industries/:industry/templates",
               "middleware": [],
               "file": "routes.ts",
-              "line": 1004
+              "line": 1064
             },
             {
               "method": "POST",
@@ -2870,7 +2907,7 @@
                 "validate(behaviorRequestSchema)"
               ],
               "file": "routes.ts",
-              "line": 1045
+              "line": 1105
             },
             {
               "method": "POST",
@@ -2879,7 +2916,7 @@
                 "authMiddleware()"
               ],
               "file": "routes.ts",
-              "line": 1064
+              "line": 1124
             },
             {
               "method": "GET",
@@ -2888,7 +2925,7 @@
                 "authMiddleware()"
               ],
               "file": "routes.ts",
-              "line": 1104
+              "line": 1164
             },
             {
               "method": "GET",
@@ -2897,35 +2934,35 @@
                 "authMiddleware()"
               ],
               "file": "routes.ts",
-              "line": 1120
+              "line": 1180
             },
             {
               "method": "GET",
               "path": "/api/ai/sync/schema/:schemaId/flows",
               "middleware": [],
               "file": "routes.ts",
-              "line": 1140
+              "line": 1200
             },
             {
               "method": "GET",
               "path": "/api/ai/sync/flow/:flowId/node/:nodeId/schema",
               "middleware": [],
               "file": "routes.ts",
-              "line": 1209
+              "line": 1269
             },
             {
               "method": "POST",
               "path": "/api/ai/sync/schema/:schemaId/update-flows",
               "middleware": [],
               "file": "routes.ts",
-              "line": 1269
+              "line": 1329
             },
             {
               "method": "POST",
               "path": "/api/ai/sync/bind",
               "middleware": [],
               "file": "routes.ts",
-              "line": 1374
+              "line": 1434
             }
           ]
         }
@@ -2933,8 +2970,8 @@
     },
     {
       "name": "platform-extensions",
-      "routerCount": 8,
-      "routeCount": 30,
+      "routerCount": 9,
+      "routeCount": 35,
       "routers": [
         {
           "prefix": "/api/keys",
@@ -2948,7 +2985,7 @@
                 "validate(createApiKeySchema)"
               ],
               "file": "apiKey.ts",
-              "line": 43
+              "line": 44
             },
             {
               "method": "GET",
@@ -2957,7 +2994,7 @@
                 "requirePermission('apikey:view')"
               ],
               "file": "apiKey.ts",
-              "line": 75
+              "line": 76
             },
             {
               "method": "GET",
@@ -2966,7 +3003,7 @@
                 "requirePermission('apikey:view')"
               ],
               "file": "apiKey.ts",
-              "line": 114
+              "line": 115
             },
             {
               "method": "DELETE",
@@ -2975,7 +3012,7 @@
                 "requirePermission('apikey:delete')"
               ],
               "file": "apiKey.ts",
-              "line": 135
+              "line": 136
             },
             {
               "method": "PATCH",
@@ -2985,7 +3022,7 @@
                 "validate(updateApiKeyStatusSchema)"
               ],
               "file": "apiKey.ts",
-              "line": 153
+              "line": 154
             }
           ]
         },
@@ -3094,7 +3131,7 @@
               "path": "/api/model-configs/",
               "middleware": [],
               "file": "modelConfig.ts",
-              "line": 47
+              "line": 62
             },
             {
               "method": "POST",
@@ -3104,14 +3141,14 @@
                 "validate(createModelConfigSchema)"
               ],
               "file": "modelConfig.ts",
-              "line": 80
+              "line": 95
             },
             {
               "method": "GET",
               "path": "/api/model-configs/:id",
               "middleware": [],
               "file": "modelConfig.ts",
-              "line": 119
+              "line": 134
             },
             {
               "method": "PUT",
@@ -3121,7 +3158,7 @@
                 "validate(updateModelConfigSchema)"
               ],
               "file": "modelConfig.ts",
-              "line": 143
+              "line": 158
             },
             {
               "method": "DELETE",
@@ -3130,7 +3167,7 @@
                 "requirePermission('model_config:delete')"
               ],
               "file": "modelConfig.ts",
-              "line": 189
+              "line": 204
             },
             {
               "method": "POST",
@@ -3139,7 +3176,7 @@
                 "validate(testModelConfigSchema)"
               ],
               "file": "modelConfig.ts",
-              "line": 217
+              "line": 232
             }
           ]
         },
@@ -3160,6 +3197,52 @@
               "middleware": [],
               "file": "stats.ts",
               "line": 98
+            }
+          ]
+        },
+        {
+          "prefix": "/api/telemetry",
+          "file": "telemetry.ts",
+          "routes": [
+            {
+              "method": "POST",
+              "path": "/api/telemetry/events",
+              "middleware": [
+                "authMiddleware({ required: true })",
+                "validate(telemetryEventsBodySchema)"
+              ],
+              "file": "telemetry.ts",
+              "line": 32
+            },
+            {
+              "method": "POST",
+              "path": "/api/telemetry/errors",
+              "middleware": [
+                "validate(telemetryErrorBodySchema)"
+              ],
+              "file": "telemetry.ts",
+              "line": 50
+            },
+            {
+              "method": "GET",
+              "path": "/api/telemetry/funnel",
+              "middleware": [],
+              "file": "telemetry.ts",
+              "line": 102
+            },
+            {
+              "method": "GET",
+              "path": "/api/telemetry/summary",
+              "middleware": [],
+              "file": "telemetry.ts",
+              "line": 123
+            },
+            {
+              "method": "GET",
+              "path": "/api/telemetry/editor-summary",
+              "middleware": [],
+              "file": "telemetry.ts",
+              "line": 238
             }
           ]
         },
@@ -3248,5 +3331,5 @@
       ]
     }
   ],
-  "totalRoutes": 358
+  "totalRoutes": 368
 }

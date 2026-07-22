@@ -198,7 +198,8 @@ function groupRoutesByModule(routers: RouterInfo[]): Record<string, RouterInfo[]
       prefix.startsWith('/api/webhooks') ||
       prefix.startsWith('/api/stats') ||
       prefix.startsWith('/api/dashboard') ||
-      prefix.startsWith('/api/mcp')
+      prefix.startsWith('/api/mcp') ||
+      prefix.startsWith('/api/telemetry')
     ) {
       modules['platform-extensions'].push(router)
     }

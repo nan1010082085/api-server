@@ -21,10 +21,41 @@ vi.mock('../middleware/auth.js', () => ({
 
 const insertMany = vi.fn().mockResolvedValue([])
 const createError = vi.fn().mockResolvedValue({ _id: 'err-1' })
-const aggregate = vi.fn().mockResolvedValue([
-  { _id: 'ai.chat.send', count: 3 },
-  { _id: 'ai.plugin.enable', count: 1 },
-])
+
+/**
+ * 智能 aggregate mock：按 pipeline 形态返回不同结果
+ * - $group._id === '$name' -> 事件名汇总（funnel / editor totals）
+ * - $group._id.date 存在（$dateToString） -> 按天 timeseries
+ * - $group._id === '$properties.schemaId' -> top schemas
+ * - $group._id === '$userId' -> 活跃用户去重
+ */
+const aggregate = vi.fn((pipeline: unknown[]) => {
+  const stages = pipeline as Array<Record<string, unknown>>
+  const groupStage = stages.find((s) => s.$group) as { $group: { _id: unknown } } | undefined
+  const id = groupStage?.$group?._id
+  // daily: _id 是对象且含 date 字段
+  if (id && typeof id === 'object' && 'date' in (id as Record<string, unknown>)) {
+    return Promise.resolve([
+      { _id: { date: '2026-07-20', name: 'save' }, count: 5 },
+      { _id: { date: '2026-07-20', name: 'publish' }, count: 2 },
+      { _id: { date: '2026-07-21', name: 'save' }, count: 8 },
+    ])
+  }
+  if (id === '$properties.schemaId') {
+    return Promise.resolve([
+      { _id: 'schema-1', count: 12 },
+      { _id: 'schema-2', count: 4 },
+    ])
+  }
+  if (id === '$userId') {
+    return Promise.resolve([{ _id: 'u1' }, { _id: 'u2' }, { _id: 'u3' }])
+  }
+  // 默认：事件名汇总（funnel）
+  return Promise.resolve([
+    { _id: 'ai.chat.send', count: 3 },
+    { _id: 'ai.plugin.enable', count: 1 },
+  ])
+})
 const countDocuments = vi.fn().mockResolvedValue(2)
 
 vi.mock('../models/TelemetryEvent.js', () => ({
@@ -68,10 +99,7 @@ beforeEach(async () => {
   vi.clearAllMocks()
   insertMany.mockResolvedValue([])
   createError.mockResolvedValue({ _id: 'err-1' })
-  aggregate.mockResolvedValue([
-    { _id: 'ai.chat.send', count: 3 },
-    { _id: 'ai.plugin.enable', count: 1 },
-  ])
+  // aggregate 保留智能实现（按 pipeline 形态分流），clearAllMocks 不会重置实现
   countDocuments.mockResolvedValue(2)
 
   if (server) {
@@ -179,5 +207,48 @@ describe('GET /api/telemetry/summary', () => {
     const res = await request('GET', '/api/telemetry/summary')
     expect(res.status).toBe(200)
     expect(res.body.data.funnel['ai.chat.send']).toBe(3)
+  })
+})
+
+describe('GET /api/telemetry/editor-summary', () => {
+  it('aggregates editor events by name / day / schema / active users', async () => {
+    const res = await request('GET', '/api/telemetry/editor-summary?hours=168')
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    const data = res.body.data
+    expect(data.hours).toBe(168)
+    // totals 含全部 editor 事件名（未命中的为 0）
+    expect(data.totals).toHaveProperty('save')
+    expect(data.totals).toHaveProperty('publish')
+    expect(data.totals).toHaveProperty('undo')
+    expect(Object.keys(data.totals).sort()).toEqual(
+      [
+        'save', 'publish', 'unpublish', 'delete',
+        'undo', 'redo', 'create', 'copy', 'import', 'export',
+      ].sort(),
+    )
+    // daily timeseries
+    expect(Array.isArray(data.daily)).toBe(true)
+    expect(data.daily.length).toBeGreaterThan(0)
+    expect(data.daily[0]).toHaveProperty('date')
+    expect(data.daily[0]).toHaveProperty('counts')
+    // topSchemas
+    expect(data.topSchemas[0]).toEqual({ schemaId: 'schema-1', count: 12 })
+    // activeUsers（mock 返回 3 个唯一 userId）
+    expect(data.activeUsers).toBe(3)
+    // totalEvents
+    expect(typeof data.totalEvents).toBe('number')
+  })
+
+  it('defaults hours to 168 when omitted', async () => {
+    const res = await request('GET', '/api/telemetry/editor-summary')
+    expect(res.status).toBe(200)
+    expect(res.body.data.hours).toBe(168)
+  })
+
+  it('gracefully defaults invalid hours to 168', async () => {
+    const res = await request('GET', '/api/telemetry/editor-summary?hours=abc')
+    expect(res.status).toBe(200)
+    expect(res.body.data.hours).toBe(168)
   })
 })

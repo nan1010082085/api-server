@@ -43,3 +43,35 @@ export const FUNNEL_EVENT_NAMES = [
   'ai.workflow.execute_fail',
   'ai.plugin.enable',
 ] as const
+
+/**
+ * 编辑器关键路径埋点事件名（与 editor src/api/telemetryApi.ts TelemetryEvent 对齐）。
+ * 用于 editor-summary 聚合分组，不限制 /events 入站（入站接受任意 name）。
+ */
+export const EDITOR_EVENT_NAMES = [
+  'save',
+  'publish',
+  'unpublish',
+  'delete',
+  'undo',
+  'redo',
+  'create',
+  'copy',
+  'import',
+  'export',
+] as const
+
+export const editorSummaryQuerySchema = z.object({
+  hours: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === '') return 168
+      const n = Number(v)
+      if (!Number.isFinite(n) || n <= 0) return 168
+      return Math.min(Math.floor(n), 24 * 90)
+    }),
+})
+
+export type EditorSummaryQuery = z.infer<typeof editorSummaryQuerySchema>
+
