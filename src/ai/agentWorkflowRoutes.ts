@@ -20,6 +20,7 @@ import Router from '@koa/router'
 import type { AgentWorkflowTemplateId } from '@schema-platform/platform-shared/ai'
 import { authMiddleware } from '../middleware/auth.js'
 import { isValidObjectId } from '../utils/objectId.js'
+import { AgentWorkflowModel } from './models/agentWorkflow.js'
 import {
   listAgentWorkflows,
   createAgentWorkflow,
@@ -40,7 +41,6 @@ import {
   generateInvokeKey,
   maskInvokeKey,
 } from './services/agentWorkflowInvoke.js'
-import { AgentWorkflowModel } from './models/agentWorkflow.js'
 
 const router = new Router({ prefix: '/api/ai' })
 
@@ -142,6 +142,74 @@ router.delete('/workflows/:id', async (ctx) => {
       success: false,
       error: { message: err instanceof Error ? err.message : '删除失败' },
     }
+  }
+})
+
+/**
+ * GET /workflows/:id/export
+ * 导出工作流为 JSON DSL（name + description + draftGraph + routingKeywords）
+ */
+router.get('/workflows/:id/export', async (ctx) => {
+  if (rejectInvalidObjectId(ctx, ctx.params.id, 'workflow id')) return
+  try {
+    const workflow = await AgentWorkflowModel.findOne({
+      _id: ctx.params.id,
+      createdBy: getUserId(ctx),
+    }).lean()
+    if (!workflow) {
+      ctx.status = 404
+      ctx.body = { success: false, error: { message: 'Workflow not found' } }
+      return
+    }
+    const w = workflow as unknown as Record<string, unknown>
+    const exportData = {
+      format: 'schema-platform-workflow',
+      version: 1,
+      name: w.name,
+      description: w.description ?? '',
+      routingKeywords: (w.routingKeywords as string[]) ?? [],
+      graph: w.draftGraph,
+      exportedAt: new Date().toISOString(),
+    }
+    ctx.set('Content-Type', 'application/json')
+    ctx.set('Content-Disposition', `attachment; filename="${String(w.name).replace(/[^a-zA-Z0-9\-_]/g, '_')}.json"`)
+    ctx.body = exportData
+  } catch (err) {
+    ctx.status = 500
+    ctx.body = { success: false, error: { message: err instanceof Error ? err.message : 'Export failed' } }
+  }
+})
+
+/**
+ * POST /workflows/import
+ * 从 JSON DSL 导入工作流（创建新 draft）
+ */
+router.post('/workflows/import', async (ctx) => {
+  const body = ctx.request.body as {
+    format?: string
+    name?: string
+    description?: string
+    routingKeywords?: string[]
+    graph?: Record<string, unknown>
+  }
+  if (!body?.graph) {
+    ctx.status = 400
+    ctx.body = { success: false, error: { message: '缺少 graph 数据' } }
+    return
+  }
+  try {
+    const userId = getUserId(ctx)
+    const name = body.name ?? '导入的工作流'
+    const data = await createAgentWorkflow(name, userId, 'blank')
+    // 覆盖 draftGraph 和元数据
+    const update: Record<string, unknown> = { draftGraph: body.graph }
+    if (body.description) update.description = body.description
+    if (body.routingKeywords) update.routingKeywords = body.routingKeywords
+    await AgentWorkflowModel.updateOne({ _id: data.id, createdBy: userId }, { $set: update })
+    ctx.body = { success: true, data: { id: data.id, name } }
+  } catch (err) {
+    ctx.status = 500
+    ctx.body = { success: false, error: { message: err instanceof Error ? err.message : 'Import failed' } }
   }
 })
 
