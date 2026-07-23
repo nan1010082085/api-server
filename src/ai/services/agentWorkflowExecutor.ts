@@ -143,6 +143,7 @@ interface WorkflowGraphNode {
     variableName?: string
     variableValue?: string
     variableMode?: 'set' | 'append' | 'increment'
+    switchBranches?: Array<{ label: string; expression: string }>
   }
 }
 
@@ -151,7 +152,7 @@ interface WorkflowGraphEdge {
   source: string
   target: string
   sourceHandle?: string
-  data?: { branch?: 'true' | 'false' | 'default' }
+  data?: { branch?: string }
 }
 
 interface WorkflowGraph {
@@ -169,7 +170,7 @@ interface ExecuteParams {
 
 interface NodeRunResult {
   output: unknown
-  branch?: 'true' | 'false'
+  branch?: string
   wait?: boolean
   error?: string
 }
@@ -519,7 +520,7 @@ function evaluateIfExpression(expression: string, ctx: RuntimeContext): boolean 
 function pickNextNode(
   graph: WorkflowGraph,
   currentId: string,
-  branch?: 'true' | 'false',
+  branch?: string,
 ): string | null {
   const edges = getOutgoingEdges(graph, currentId)
   if (edges.length === 0) return null
@@ -1813,6 +1814,25 @@ async function runNode(
 
       ctx.nodeOutputs.__variables = vars
       return { output: { variable: varName, value: vars[varName], mode } }
+    }
+
+    case 'switch': {
+      const branches = data.switchBranches ?? []
+      if (!branches.length) return nodeFailure('多路分支未配置任何分支')
+
+      for (let i = 0; i < branches.length; i++) {
+        const branch = branches[i]
+        try {
+          const result = evaluateIfExpression(branch.expression ?? 'false', ctx)
+          if (result) {
+            return { output: { branch: branch.label, index: i }, branch: `branch_${i}` }
+          }
+        } catch (err) {
+          return nodeFailure(`分支 ${branch.label} 表达式错误: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+      // 所有分支都不匹配，走 default（最后一条边）
+      return { output: { branch: 'default', index: -1 }, branch: 'default' }
     }
 
     default:
