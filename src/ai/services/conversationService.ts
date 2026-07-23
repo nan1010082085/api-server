@@ -69,6 +69,8 @@ export interface IAIConversation {
   activeAgent: ActiveAgent
   /** 对话历史摘要（当消息数超过阈值时自动生成） */
   historySummary?: string
+  /** 分享链接 ID（非 null 时可通过 /shared/:shareId 公开访问） */
+  shareId?: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -116,6 +118,7 @@ const aiConversationSchema = new mongoose.Schema<IAIConversation>(
     messages: { type: [messageSchema], default: [] },
     activeAgent: { type: String, enum: ['router', 'editor', 'flow', 'page', 'general'], default: 'router' },
     historySummary: { type: String },
+    shareId: { type: String, default: null, sparse: true, unique: true },
   },
   {
     timestamps: true,

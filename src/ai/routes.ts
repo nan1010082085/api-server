@@ -778,6 +778,82 @@ router.delete('/conversations/:id', async (ctx) => {
 })
 
 // ────────────────────────────────────────────
+// Conversation Share API
+// ────────────────────────────────────────────
+
+/**
+ * POST /api/ai/conversations/:id/share
+ * 生成公开分享链接（返回 shareId）
+ */
+router.post('/conversations/:id/share', async (ctx) => {
+  const id = ctx.params.id
+  const userId = ctx.state.user?.id ?? ctx.state.user?.userId
+  if (!userId) {
+    ctx.status = 401
+    ctx.body = { success: false, error: { message: 'Authentication required' } }
+    return
+  }
+
+  const convo = await AIConversationModel.findOne({ _id: id, userId })
+  if (!convo) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Conversation not found.' } }
+    return
+  }
+
+  if (!convo.shareId) {
+    const { v4: uuidv4 } = await import('uuid')
+    convo.shareId = uuidv4().slice(0, 12)
+    await convo.save()
+  }
+
+  ctx.body = { success: true, data: { shareId: convo.shareId } }
+})
+
+/**
+ * DELETE /api/ai/conversations/:id/share
+ * 取消分享
+ */
+router.delete('/conversations/:id/share', async (ctx) => {
+  const id = ctx.params.id
+  const userId = ctx.state.user?.id ?? ctx.state.user?.userId
+  if (!userId) {
+    ctx.status = 401
+    ctx.body = { success: false, error: { message: 'Authentication required' } }
+    return
+  }
+
+  await AIConversationModel.updateOne({ _id: id, userId }, { $set: { shareId: null } })
+  ctx.body = { success: true }
+})
+
+/**
+ * GET /api/ai/conversations/shared/:shareId
+ * 公开访问分享的对话（无需认证）
+ */
+router.get('/conversations/shared/:shareId', async (ctx) => {
+  const shareId = ctx.params.shareId
+  const convo = await AIConversationModel.findOne({ shareId }).lean()
+  if (!convo) {
+    ctx.status = 404
+    ctx.body = { success: false, error: { message: 'Shared conversation not found.' } }
+    return
+  }
+
+  const c = convo as unknown as Record<string, unknown>
+  ctx.body = {
+    success: true,
+    data: {
+      id: String(c._id),
+      activeAgent: c.activeAgent,
+      messages: (c.messages as unknown[]) ?? [],
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    },
+  }
+})
+
+// ────────────────────────────────────────────
 // Message Feedback API
 // ────────────────────────────────────────────
 
