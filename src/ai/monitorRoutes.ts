@@ -598,6 +598,36 @@ router.get('/node-stats/timeline', async (ctx) => {
 })
 
 // ────────────────────────────────────────────
+// GET /api/ai/monitor/node-type-stats — 按节点类型聚合
+// ────────────────────────────────────────────
+
+router.get('/node-type-stats', async (ctx) => {
+  const stats = await WorkflowNodeMetricModel.aggregate([
+    {
+      $group: {
+        _id: '$nodeType',
+        totalCalls: { $sum: 1 },
+        successRate: { $avg: { $cond: ['$success', 1, 0] } },
+        avgDuration: { $avg: '$duration' },
+        maxDuration: { $max: '$duration' },
+      },
+    },
+    { $sort: { totalCalls: -1 } },
+  ])
+
+  ctx.body = {
+    success: true,
+    data: stats.map((s) => ({
+      nodeType: s._id,
+      totalCalls: s.totalCalls,
+      successRate: Math.round(s.successRate * 100),
+      avgDuration: Math.round(s.avgDuration),
+      maxDuration: s.maxDuration,
+    })),
+  }
+})
+
+// ────────────────────────────────────────────
 // GET /api/ai/monitor/plugin-stats — Plugin performance statistics
 // ────────────────────────────────────────────
 
