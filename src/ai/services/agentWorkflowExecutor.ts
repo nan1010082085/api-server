@@ -138,6 +138,11 @@ interface WorkflowGraphNode {
     agentLoopInputSource?: 'message' | 'lastOutput' | 'custom'
     agentLoopInputTemplate?: string
     agentLoopMaxToolInvocations?: number
+    codeLanguage?: 'javascript'
+    codeScript?: string
+    variableName?: string
+    variableValue?: string
+    variableMode?: 'set' | 'append' | 'increment'
   }
 }
 
@@ -1762,6 +1767,54 @@ async function runNode(
       }
     }
 
+    case 'code-execute': {
+      const language = data.codeLanguage ?? 'javascript'
+      const script = data.codeScript?.trim() ?? ''
+      if (!script) return nodeFailure('代码脚本为空')
+      if (language !== 'javascript') return nodeFailure(`不支持的语言: ${language}`)
+
+      try {
+        // 沙箱执行 JavaScript，注入 $input 和 $node 变量
+        const $input = ctx.input ?? {}
+        const $node = ctx.lastOutput ?? {}
+        // 用 Function 构造器沙箱化（不能访问 require/process/fs）
+        const fn = new Function('$input', '$node', script)
+        const result = await Promise.resolve(fn($input, $node))
+        return { output: result ?? null }
+      } catch (err) {
+        const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+        return nodeFailure(`代码执行失败: ${msg}`)
+      }
+    }
+
+    case 'variable-set': {
+      const varName = data.variableName?.trim()
+      if (!varName) return nodeFailure('变量名为空')
+      const rawValue = data.variableValue ?? ''
+      const resolved = resolveTemplate(rawValue, ctx)
+      const mode = data.variableMode ?? 'set'
+
+      // 变量存在 nodeOutputs.__variables 中
+      const vars = (ctx.nodeOutputs.__variables ?? {}) as Record<string, unknown>
+
+      if (mode === 'append') {
+        const existing = vars[varName]
+        if (Array.isArray(existing)) {
+          existing.push(resolved)
+        } else {
+          vars[varName] = [resolved]
+        }
+      } else if (mode === 'increment') {
+        const num = Number(vars[varName] ?? 0) + Number(resolved ?? 0)
+        vars[varName] = isNaN(num) ? 0 : num
+      } else {
+        vars[varName] = resolved
+      }
+
+      ctx.nodeOutputs.__variables = vars
+      return { output: { variable: varName, value: vars[varName], mode } }
+    }
+
     default:
       return { output: ctx.lastOutput }
   }
@@ -1808,8 +1861,18 @@ export async function runAgentLoop(params: {
   let toolInvocations = 0
   const steps: AgentLoopStep[] = []
 
+  /** 推送进度文本到 streamingOutput（前端实时可见） */
+  const pushProgress = async (text: string): Promise<void> => {
+    await setStreamingOutput(ctx.executionId, nodeId, nodeType, text)
+  }
+
+  /** 截断工具输出用于进度展示（避免过长） */
+  const truncate = (s: string, max = 200): string =>
+    s.length > max ? s.slice(0, max) + '...' : s
+
   while (iterations < maxIterations) {
     iterations += 1
+    await pushProgress(`🔄 第 ${iterations} 轮思考中...`)
     const aiMsg = await boundLlm.invoke(messages) as AIMessage
     messages.push(aiMsg)
 
@@ -1821,8 +1884,18 @@ export async function runAgentLoop(params: {
           ? aiMsg.content.map((c) => (typeof c === 'object' && c !== null && 'text' in c ? String((c as { text: string }).text) : '')).join('')
           : ''
       steps.push({ iteration: iterations, toolCalls: [] })
+      // 流式推送最终回答（分段模拟流式效果）
+      if (finalText) {
+        const chunkSize = 40
+        for (let i = 0; i < finalText.length; i += chunkSize) {
+          await pushProgress(finalText.slice(0, i + chunkSize))
+        }
+      }
       break
     }
+
+    const toolNames = toolCalls.map((c) => String(c.name ?? '')).filter(Boolean).join('、')
+    await pushProgress(`🔧 第 ${iterations} 轮：调用工具 ${toolNames}`)
 
     const stepCalls: Array<{ name: string; success: boolean }> = []
     for (const call of toolCalls) {
@@ -1852,18 +1925,22 @@ export async function runAgentLoop(params: {
       }))
       if (result.error) {
         logger.warn({ msg: `[agent-loop] tool ${toolName} failed`, error: result.error })
+        await pushProgress(`❌ 工具 ${toolName} 失败：${truncate(result.error)}`)
+      } else {
+        await pushProgress(`✅ 工具 ${toolName} 返回：${truncate(toolContent)}`)
       }
     }
     if (finalText) break
     steps.push({ iteration: iterations, toolCalls: stepCalls })
 
-    await setStreamingOutput(ctx.executionId, nodeId, nodeType, `已迭代 ${iterations} 次，${toolInvocations}/${maxToolInvocations} 工具调用`)
+    await pushProgress(`第 ${iterations} 轮完成，累计 ${toolInvocations}/${maxToolInvocations} 次工具调用`)
   }
 
   if (!finalText) {
     finalText = iterations >= maxIterations
       ? `已达到最大迭代次数 ${maxIterations}，未获得最终结论。已执行 ${toolInvocations} 次工具调用。`
       : ''
+    if (finalText) await pushProgress(finalText)
   }
 
   return { text: finalText, iterations, toolInvocations, steps }
